@@ -1,19 +1,23 @@
-script(src='vue.js')
-script(src='cycle.js')
+doctype html
 
-div(id='app')
-    h2 {{item}} is good
-    ul
-        li(v-for='product in products').
-            {{ product }}
-    p Computed thing: {{ totalProducts }}
-    p Current count: {{ count }}
-    button(@click='increment') Increase count
-    input(type='number', v-model.number='count')
-    span(:title='item').
-        Hover here
-    button(@click='saveState') Save
-    thing(:x='count')
+head
+    script(src='vue.js')
+    script(src='cycle.js')
+
+body
+    div(id='app')
+        h2 {{item}} is good
+        ul
+            li(v-for='product in products').
+                {{ product }}
+        p Computed thing: {{ totalProducts }}
+        p Current count: {{ count }}
+        button(@click='increment') Increase count
+        input(type='number', v-model.number='count')
+        span(:title='item').
+            Hover here
+        button(@click='saveState') Save
+        thing(:x='count')
 
 script.
     'use strict';
@@ -45,7 +49,7 @@ script.
             : initialState
     }
 
-    const app = new Vue({
+    let app = new Vue({
         el: '#app',
         // "Essential" state values.
         data: restoredState,
