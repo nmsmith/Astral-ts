@@ -1,17 +1,17 @@
-'use strict';
+'use strict'
 /* global Vue */
 
 Vue.component('thing', {
     props: ['x'],
     template: '<li>The current count is {{ x }}</li>'
-});
+})
 
-let restoredState;
+let restoredState
+let saveAndRestoreAutomatically = true
 
-// Vue makes a copy of this data, so keeping it out of scope
-// will prevent us from accidentally linking back to it!
+// Define initial state and load previous from memory
 {
-    let products = [{x: 3}, {y: 9}, {z: 0}, {w: 0}];
+    let products = [{x: 3}, {y: 9}, {z: 0}, {w: 0}]
     
     let initialState = {
         item: 'Thing',
@@ -23,7 +23,7 @@ let restoredState;
         },
     }
     
-    restoredState = (localStorage.state && localStorage.state != "undefined")
+    restoredState = (saveAndRestoreAutomatically && localStorage.state && localStorage.state != "undefined")
         ? {...initialState, ...JSON.retrocycle(JSON.parse(localStorage.state))}
         : initialState
 }
@@ -36,13 +36,13 @@ new Vue({
     // These are read-only by default, but you can add setters as well.
     computed: {
         totalProducts () {
-            return this.products.reduce((curr, x) => curr + x);
+            return this.products.reduce((curr, x) => curr + x)
         }
     },
     // A method that runs on app start. Can be used to perform external effects.
     created () {
         // Set up save-on-close behaviour
-        window.addEventListener('beforeunload', this.saveState)
+        if (saveAndRestoreAutomatically) window.addEventListener('beforeunload', this.saveState)
         this.cursor = this.products[0]
     },
     // Methods should (only) be used to perform a state transition or an external effect.
@@ -61,4 +61,4 @@ new Vue({
     // This is an imperative event-response model.
     watch: {
     },
-});
+})

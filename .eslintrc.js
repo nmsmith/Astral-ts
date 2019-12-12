@@ -23,5 +23,6 @@ module.exports = {
         "pug"
     ],
     "rules": {
+        "semi": ["error", "never"],
     }
 };
