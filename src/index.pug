@@ -21,6 +21,7 @@ body
 
 script.
     'use strict';
+    /* global Vue */
 
     Vue.component('thing', {
         props: ['x'],
@@ -33,7 +34,7 @@ script.
     // will prevent us from accidentally linking back to it!
     {
         let products = [{x: 3}, {y: 7}, {z: 0}];
-
+        
         let initialState = {
             item: 'Thing',
             products: products,
@@ -49,7 +50,7 @@ script.
             : initialState
     }
 
-    let app = new Vue({
+    new Vue({
         el: '#app',
         // "Essential" state values.
         data: restoredState,

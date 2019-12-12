@@ -1,0 +1,9 @@
+{
+    "eslint.validate": [
+        { "language" : "pug" },
+        { "language" : "jade" },
+        "html",
+        "javascript",
+        "javascriptreact"
+    ],
+}
