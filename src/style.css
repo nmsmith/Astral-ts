@@ -1,0 +1,17 @@
+/* generic styles */
+
+.row {
+    display: flex;
+    flex-direction: row;
+}
+
+.col {
+    display: flex;
+    flex-direction: column;
+}
+
+.w300 {
+    width: 300px;
+}
+
+/* specialized styles */
