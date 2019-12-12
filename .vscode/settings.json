@@ -6,4 +6,8 @@
         "javascript",
         "javascriptreact"
     ],
+
+    "[jade]": {
+        //"editor.lineHeight": 30
+    }
 }

@@ -7,17 +7,22 @@ head
 
 body
     div.col.w300(id='app')
-        h2 {{item}} is good
+        h2.
+            {{item}} is good
         ul
-            li(v-for='product in products').
+            li(v-for = 'product in products').
                 {{ product }}
-        p Computed thing: {{ totalProducts }}
-        p Current count: {{ count }}
-        button(@click='increment') Increase count
-        input(type='number', v-model.number='count')
-        span(:title='item').
+        p.
+            Computed thing: {{ totalProducts }}
+        p.
+            Current count: {{ count }}
+        button(@click = 'increment').
+            Increase count
+        input(type = 'number', v-model.number = 'count')
+        span(:title = 'item').
             Hover here
-        button(@click='saveState') Save
-        thing(:x='count')
+        button(@click = 'saveState').
+            Save
+        thing(:x = 'count')
 
 script(src='app.js')
