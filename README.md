@@ -1,12 +1,10 @@
-This project uses Pug syntax to define DOM trees (rather than HTML).
-
-Pug can be installed via NPM:
-> npm install -g pug
+This project uses Pug syntax for HTML templates, and SASS for CSS.
+The compilers for both of these tools are installed as an NPM development dependency.
 
 An introduction to Pug syntax can be found here:
 https://codeburst.io/getting-started-with-pug-template-engine-e49cfa291e33
 
-To set up live reloading (including running Pug):
+To set up live reloading (including running Pug & SASS):
 > pip install livereload
 
 Then run the reload script:

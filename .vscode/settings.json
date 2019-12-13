@@ -7,6 +7,8 @@
         "javascriptreact"
     ],
 
+    "puglint.enable": true,
+
     "[jade]": {
         //"editor.lineHeight": 30
     }

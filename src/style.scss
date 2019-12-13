@@ -1,0 +1,56 @@
+/* generic styles */
+
+body, button, menu {
+    /* The font should be inherited by ALL elements (according to CSS reset),
+     * however, most browsers ignore font inheritance for things like buttons.
+     */
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 16px;
+}
+
+h1 {
+    font-size: 24px;
+    font-weight: bold;
+    padding-bottom: 12px;
+}
+
+.row {
+    display: flex;
+    flex-direction: row;
+}
+
+.col {
+    display: flex;
+    flex-direction: column;
+}
+
+.xFill {
+    width: 100%;
+}
+
+.yFill {
+    height: 100%;
+}
+
+.fill {
+    @extend .xFill;
+    @extend .yFill;
+}
+
+/* component-specific styles */
+
+$main-pad: 10px;
+
+.sidebar {
+    @extend .col;
+    height: 100%;
+    width: 200px;
+    padding: $main-pad;
+    background-color: #ffefbc;
+}
+
+.database {
+    @extend .col;
+    padding: $main-pad;
+    background-color: #ffffff;
+}

@@ -1,28 +1,41 @@
 doctype html
 
-head
-    script(src='lib/vue.js')
-    script(src='lib/cycle.js')
-    link(rel='stylesheet', type='text/css', href='style.css')
+html.fill
+    head
+        script(src='lib/vue.js')
+        script(src='lib/cycle.js')
+        link(rel='stylesheet', type='text/css', href='reset.css')
+        link(rel='stylesheet' type='text/css', href='style.css')
 
-body
-    div.col.w300(id='app')
-        h2.
-            {{item}} is good
-        ul
-            li(v-for = 'product in products').
-                {{ product }}
-        p.
-            Computed thing: {{ totalProducts }}
-        p.
-            Current count: {{ count }}
-        button(@click = 'increment').
-            Increase count
-        input(type = 'number', v-model.number = 'count')
-        span(:title = 'item').
-            Hover here
-        button(@click = 'saveState').
-            Save
-        thing(:x = 'count')
+    body.fill
+        div(id = 'app').row.fill
+            //- sidebar
+            div.sidebar
+                h1.
+                    Databases
+                p thing
+            //- DB area
+            div.database.fill
+                p(v-for = "rule in currentDB.rules").
+                    {{ rule }}
 
-script(src='app.js')
+            //-
+                h2.
+                    {{item}} is good
+                ul
+                    li(v-for = 'product in products').
+                        {{ product }}
+                p.
+                    Computed thing: {{ totalProducts }}
+                p.
+                    Current count: {{ count }}
+                button(@click = 'increment').
+                    Increase count
+                input(type = 'number', v-model.number = 'count')
+                span(:title = 'item').
+                    Hover here
+                button(@click = 'saveState').
+                    Save
+                thing(:x = 'count')
+
+    script(src='app.js')
