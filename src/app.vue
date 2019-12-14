@@ -1,5 +1,6 @@
-<template lang="pug" src='view.pug'></template>
-<script lang="typescript">
+<template lang="pug" src="./view.pug"></template>
+<style lang="scss" src="./style.scss"></style>
+<script lang="ts">
 
 import JSON from "json-decycle"
 
@@ -52,7 +53,8 @@ window.oncontextmenu = (e: Event): void => {
         : initialState
 }
 
-export default {
+import Vue from "vue"
+export default Vue.extend({
     //el: "#app",
     name: "App",
     // "Essential" state values.
@@ -88,6 +90,6 @@ export default {
     // This is an imperative event-response model.
     watch: {
     },
-}
+})
 
 </script>

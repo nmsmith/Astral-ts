@@ -1,7 +1,11 @@
-export default {
+/* eslint-disable */
+const VueLoaderPlugin = require("vue-loader/lib/plugin")
+
+module.exports = {
     mode: "development",
-    entry: "./src/app.vue",
+    entry: "./src/main.ts",
     devtool: "inline-source-map",
+    plugins: [new VueLoaderPlugin()],
     module: {
         rules: [
             {
@@ -19,8 +23,21 @@ export default {
                 }
             },
             {
+                test: /\.pug$/,
+                loader: 'pug-plain-loader'
+            },
+            {
+                test: /\.scss$/,
+                use: [
+                  'vue-style-loader',
+                  'css-loader',
+                  'sass-loader'
+                ]
+            },
+            {
                 test: /\.ts?$/,
-                use: "ts-loader",
+                loader: "ts-loader",
+                options: { appendTsSuffixTo: [/\.vue$/] },
                 exclude: /node_modules/,
             }
         ]
