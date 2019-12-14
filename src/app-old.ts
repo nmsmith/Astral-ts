@@ -1,25 +1,46 @@
-"use strict"
-/* global Vue */
+import Vue from "vue"
+import JSON from "json-decycle"
 
-Vue.component("thing", {
-    props: ["x"],
-    template: "<li>The current count is {{ x }}</li>"
-})
+// eslint-disable-next-line
+function copyTree(x: any): any {
+    return JSON.parse(JSON.stringify(x))
+}
 
-let restoredState
-let saveAndRestoreAutomatically = false
+interface Database {
+    name: string;
+    rules: string[];
+}
+
+interface State {
+    databases: Database[];
+    currentDB: Database;
+    // eslint-disable-next-line
+    toJSON(): any;
+}
+
+let restoredState: State
+const saveAndRestoreAutomatically = false
+
+window.oncontextmenu = (e: Event): void => {
+    e.preventDefault()
+}
 
 // Define initial state and load previous from memory
 {
-    let defaultDB = {
+    const defaultDB: Database = {
         name: "Default",
-        rules: ["rule 1", "rule 2", "rule 3"]
+        rules: ["rule 1", "rule 2", "rule 5"]
     }
-    
-    let initialState = {
-        databases: [defaultDB],
+
+    const anotherDB: Database = {
+        name: "Other",
+        rules: ["banana"]
+    }
+
+    const initialState: State = {
+        databases: [defaultDB, anotherDB],
         currentDB: defaultDB,
-        toJSON () {
+        toJSON() {
             return this
         },
     }
@@ -31,27 +52,31 @@ let saveAndRestoreAutomatically = false
 
 new Vue({
     el: "#app",
+    template: "<div><template src='view.html'></template></div>",
     // "Essential" state values.
     data: restoredState,
     // Derived state values. These stay cached once computed.
     // These are read-only by default, but you can add setters as well.
     computed: {
-        totalProducts () {
+        totalProducts(): number {
             return 0 //return this.products.reduce((curr, x) => curr + x)
         }
     },
     // A method that runs on app start. Can be used to perform external effects.
-    created () {
+    created(): void {
         // Set up save-on-close behaviour
         if (saveAndRestoreAutomatically) window.addEventListener("beforeunload", this.saveState)
     },
     // Methods should (only) be used to perform a state transition or an external effect.
     // They are useful for polling external state. Return values are not cached.
     methods: {
-        increment () {
-            
+        showDB(i: number): void {
+            this.currentDB = this.databases[i]
         },
-        saveState () {
+        newRule(i: number): void {
+            this.currentDB.rules.splice(i, 0, "inserted!")
+        },
+        saveState(): void {
             // TODO: Have data auto-save periodically (every 10 sec?)
             localStorage.state = JSON.stringify(JSON.decycle(this.$data))
         },

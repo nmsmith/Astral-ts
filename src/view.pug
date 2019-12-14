@@ -1,0 +1,15 @@
+//- Main view
+div.row.fill
+
+    div.sidebar
+        h1.
+            Databases
+        button.noselect(v-for = "(db, index) in databases", @click = "showDB(index)").
+            {{ db.name }}
+
+    div.database.fill
+        div.insertHere(@click = "newRule(0)")
+        template(v-for = "(rule, index) in currentDB.rules")
+            p.
+                {{ rule }}
+            div.insertHere(@click = "newRule(index + 1)")

@@ -1,4 +1,12 @@
 {
+    "scripts": {
+        "test": "echo \"Error: no tests specified\"",
+        "prebuild": "npm run clean && npx pug --pretty src --out site/build && npx sass src/style.scss site/build/style.css",
+        "build": "webpack",
+        "clean": "npx shx rm -r site/build",
+        "server": "http-server ./site",
+        "start": "npm run build -s && npm run server -s"
+    },
     "devDependencies": {
         "@typescript-eslint/eslint-plugin": "^2.11.0",
         "@typescript-eslint/parser": "^2.11.0",
@@ -6,8 +14,15 @@
         "eslint-plugin-vue": "^6.0.1",
         "pug": "^2.0.4",
         "sass": "^1.23.7",
-        "tslint": "^5.20.1",
-        "typescript": "^3.7.3"
+        "shelljs": "^0.8.3",
+        "ts-loader": "^6.2.1",
+        "typescript": "^3.7.3",
+        "vue-loader": "^15.7.2",
+        "webpack": "^4.41.2",
+        "webpack-cli": "^3.3.10"
     },
-    "dependencies": {}
+    "dependencies": {
+        "json-decycle": "^1.0.0",
+        "vue": "^2.6.10"
+    }
 }
