@@ -8,5 +8,5 @@ import App from "./app"
 new Vue({
   el: "#app",
   components: { App },
-  render: h => h(App)
+  render: (h:any) => h(App)
 })

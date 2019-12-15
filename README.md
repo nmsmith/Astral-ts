@@ -1,14 +1,8 @@
 This project uses Pug syntax for HTML templates, and SASS for CSS.
-The compilers for both of these tools are installed as an NPM development dependency.
+These languages are compiled as part of the Webpack build/bundling process.
 
 An introduction to Pug syntax can be found here:
 https://codeburst.io/getting-started-with-pug-template-engine-e49cfa291e33
 
-To set up live reloading (including running Pug & SASS):
-> pip install livereload
-
-Then run the reload script:
-> python3 live-reload.py
-
-And go to:
-> localhost:5050
+To develop with live reloading use:
+> npm run live

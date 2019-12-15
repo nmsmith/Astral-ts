@@ -5,8 +5,7 @@
         "prebuild": "npm run clean",
         "build": "webpack",
         "clean": "shx rm -r site/build || exit 0",
-        "server": "http-server ./site",
-        "start": "npm run build -s && npm run server -s"
+        "live": "webpack-dev-server"
     },
     "devDependencies": {
         "@typescript-eslint/eslint-plugin": "^2.11.0",
@@ -26,7 +25,8 @@
         "vue-loader": "^15.7.2",
         "vue-template-compiler": "^2.6.11",
         "webpack": "^4.41.2",
-        "webpack-cli": "^3.3.10"
+        "webpack-cli": "^3.3.10",
+        "webpack-dev-server": "^3.9.0"
     },
     "dependencies": {
         "json-decycle": "^1.0.0",

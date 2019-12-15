@@ -5,6 +5,10 @@ module.exports = {
     mode: "development",
     entry: "./src/main.ts",
     devtool: "inline-source-map",
+    devServer: {
+        contentBase: __dirname + "/site",
+        port: 8080,
+    },
     plugins: [new VueLoaderPlugin()],
     module: {
         rules: [
@@ -57,7 +61,7 @@ module.exports = {
         extensions: [".ts", ".js", ".vue"],
     },
     output: {
-        path: __dirname + "/site/build",
+        path: __dirname + "/site",
         filename: "bundle.js",
     }
 }
