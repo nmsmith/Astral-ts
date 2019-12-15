@@ -21,44 +21,44 @@ interface State {
     toJSON(): any;
 }
 
-let restoredState: State
 const saveAndRestoreAutomatically = false
 
 window.oncontextmenu = (e: Event): void => {
     e.preventDefault()
 }
 
-// Define initial state and load previous from memory
-{
-    const defaultDB: Database = {
-        name: "Default",
-        rules: ["rule 1", "rule 2", "rule 5"]
-    }
-
-    const anotherDB: Database = {
-        name: "Other",
-        rules: ["banana"]
-    }
-
-    const initialState: State = {
-        databases: [defaultDB, anotherDB],
-        currentDB: defaultDB,
-        toJSON() {
-            return this
-        },
-    }
-    
-    restoredState = (saveAndRestoreAutomatically && localStorage.state && localStorage.state != "undefined")
-        ? {...initialState, ...JSON.retrocycle(JSON.parse(localStorage.state))}
-        : initialState
-}
-
 import Vue from "vue"
+
+// Vue.extend helps TypeScript figure out that this is a Vue view,
+// enabling type-checking of how the view is used (esp. for "this").
 export default Vue.extend({
     //el: "#app",
     name: "App",
     // "Essential" state values.
-    data: restoredState,
+    data(): State {
+        // Define initial state and load previous from memory
+        const defaultDB: Database = {
+            name: "Default",
+            rules: ["rule 1", "rule 2", "rule 5"]
+        }
+
+        const anotherDB: Database = {
+            name: "Other",
+            rules: ["banana"]
+        }
+
+        const initialState: State = {
+            databases: [defaultDB, anotherDB],
+            currentDB: defaultDB,
+            toJSON() {
+                return this
+            },
+        }
+
+        return (saveAndRestoreAutomatically && localStorage.state && localStorage.state != "undefined")
+            ? {...initialState, ...JSON.retrocycle(JSON.parse(localStorage.state))}
+            : initialState
+    },
     // Derived state values. These stay cached once computed.
     // These are read-only by default, but you can add setters as well.
     computed: {

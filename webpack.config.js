@@ -27,6 +27,14 @@ module.exports = {
                 loader: 'pug-plain-loader'
             },
             {
+                test: /\.css$/,
+                use: [
+                  'style-loader',
+                  'css-loader',
+                ],
+                exclude: /node_modules/,
+            },
+            {
                 test: /\.scss$/,
                 use: [
                   'vue-style-loader',
