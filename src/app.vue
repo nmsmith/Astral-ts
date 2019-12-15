@@ -2,13 +2,13 @@
 <style lang="scss" src="./style.scss"></style>
 <script lang="ts">
 
-import Cycle from "json-cycle"
 import "./types/globals"
 
+// Disable right-click menu
 window.oncontextmenu = (e: Event): void => {
     e.preventDefault()
 }
-
+// Define array insert
 Array.prototype.insert = function<T>(index: number, item: T): T[] {
     return this.splice(index, 0, item)
 }
@@ -32,7 +32,6 @@ interface State {
 }
 
 function initialState(): State {
-    // Define initial state and load previous from memory
     const defaultDB: Database = {
         name: "Default",
         rules: ["rule 1", "rule 2", "rule 3"]
@@ -53,12 +52,20 @@ function initialState(): State {
 // Vue.extend helps TypeScript figure out that this is a Vue view,
 // enabling type-checking of how the view is used (esp. for "this").
 import Vue from "vue"
+import Cycle from "json-cycle"
 export default Vue.extend({
     name: "App",
     data() {
-        return (saveAndRestoreAutomatically && localStorage.state !== undefined && localStorage.state !== "undefined")
-            ? {...initialState(), ...Cycle.retrocycle(JSON.parse(localStorage.state))}
-            : initialState()
+        const freshState = initialState()
+        // If applicable, load existing state from local storage
+        if (saveAndRestoreAutomatically && localStorage.state !== undefined && localStorage.state !== "undefined") {
+            const restoredState = Object.assign(freshState, Cycle.retrocycle(JSON.parse(localStorage.state)))
+            restoredState.insertingRule = null
+            return restoredState
+        }
+        else {
+            return freshState
+        }
     },
     // Derived state values. These are cached. Read-only by default, but you can add setters.
     computed: {
@@ -76,6 +83,7 @@ export default Vue.extend({
     methods: {
         showDB(i: number): void {
             this.currentDB = this.databases[i]
+            this.insertingRule = null
         },
         _getRuleInput(): HTMLInputElement {
             return (this.$refs.ruleInput as HTMLInputElement[])[0]

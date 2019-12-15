@@ -67,16 +67,6 @@ $main-pad: 10px;
     background-color: #ffffff;
 }
 
-@keyframes grow {
-    from {
-        // Font height + default input element padding
-        
-    }
-    to {
-        
-    }
-}
-
 .insertHere {
     @extend .xFill;
     height: 12px;
