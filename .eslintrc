@@ -16,7 +16,9 @@
     "parserOptions": {
         "ecmaVersion": 2018,
         "parser": "@typescript-eslint/parser",
-        "sourceType": "module"
+        "sourceType": "module",
+        "project": "./tsconfig.json",
+        "extraFileExtensions": ["vue"]
     },
     "plugins": [
         "vue",
@@ -24,6 +26,9 @@
     ],
     "rules": {
         "semi": ["error", "never"],
-        "quotes": [2, "double"]
+        "quotes": [2, "double"],
+        "eqeqeq": ["error", "always"],
+        "no-implicit-coercion": 2,
+        "@typescript-eslint/strict-boolean-expressions": 2
     }
 }
