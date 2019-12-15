@@ -29,7 +29,7 @@
         "webpack-dev-server": "^3.9.0"
     },
     "dependencies": {
-        "json-decycle": "^1.0.0",
+        "json-cycle": "^1.3.0",
         "vue": "^2.6.11"
     }
 }

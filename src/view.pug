@@ -6,10 +6,24 @@ div.row.fill
             Databases
         button.noselect(v-for = "(db, index) in databases", @click = "showDB(index)").
             {{ db.name }}
+        br
+        button(@click = "resetState") Reset state
 
     div.database.fill
-        div.insertHere(@click = "newRule(0)")
-        template(v-for = "(rule, index) in currentDB.rules")
-            p.
-                {{ rule }}
-            div.insertHere(@click = "newRule(index + 1)")
+        template(v-for = "(n, index) in dbEntryCount")
+            template(v-if = "(insertingRule === null) || index < insertingRule.at")
+                div.insertHere(@click = "newRule(index)")
+                p.
+                    {{ currentDB.rules[index] }}
+            template(v-else-if = "index === insertingRule.at")
+                input(
+                        ref = "ruleInput"
+                        :value = "insertingRule.text"
+                        placeholder = "Enter a rule..."
+                        @keyup.enter = "ruleAdded"
+                )
+            template(v-else-if = "index > insertingRule.at")
+                p.
+                    {{ currentDB.rules[index-1] }}
+                div.insertHere(@click = "newRule(index)")
+        div.insertHere(@click = "newRule(dbEntryCount)")

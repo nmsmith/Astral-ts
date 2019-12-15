@@ -13,5 +13,7 @@
 
     "[jade]": {
         //"editor.lineHeight": 30
-    }
+    },
+
+    "typescript.tsdk": "./node_modules/typescript/lib"
 }

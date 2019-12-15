@@ -1,11 +1,13 @@
 /* generic styles */
 
+$standard-font-size: 16px;
+
 body, button, menu {
     /* The font should be inherited by ALL elements (according to CSS reset),
      * however, most browsers ignore font inheritance for things like buttons.
      */
     font-family: Helvetica, Arial, sans-serif;
-    font-size: 16px;
+    font-size: $standard-font-size;
 }
 
 h1 {
@@ -65,11 +67,23 @@ $main-pad: 10px;
     background-color: #ffffff;
 }
 
+@keyframes grow {
+    from {
+        // Font height + default input element padding
+        
+    }
+    to {
+        
+    }
+}
+
 .insertHere {
     @extend .xFill;
-    height: 18px;
+    height: 12px;
+    //transition: height 0.2s;
 }
 
 .insertHere:hover {
     background-color: #ffefbc;
+    //height: $standard-font-size + 8px;
 }
