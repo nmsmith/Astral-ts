@@ -53,15 +53,16 @@ h1 {
 
 $main-pad: 10px;
 
-.sidebar {
-    @extend .col;
-    @extend .yFill;
-    width: 200px;
+.toolbar {
+    @extend .row;
+    @extend .xFill;
+    height: 30px;
     padding: $main-pad;
     background-color: #ffefbc;
 }
 
 .database {
+    @extend .fill;
     @extend .col;
     padding: $main-pad;
     background-color: #ffffff;

@@ -1,15 +1,8 @@
 //- Main view
-div.row.fill
-
-    div.sidebar
-        h1.
-            Databases
-        button.noselect(v-for = "(db, index) in databases", @click = "showDB(index)").
-            {{ db.name }}
-        br
+div.col.fill
+    div.toolbar
         button(@click = "resetState") Reset state
-
-    div.database.fill
+    div.database
         template(v-for = "(n, index) in dbEntryCount")
             template(v-if = "(insertingRule === null) || index < insertingRule.at")
                 div.insertHere(@click = "newRule(index)")
@@ -17,13 +10,27 @@ div.row.fill
                     {{ currentDB.rules[index] }}
             template(v-else-if = "index === insertingRule.at")
                 input(
-                        ref = "ruleInput"
-                        :value = "insertingRule.text"
-                        placeholder = "Enter a rule..."
-                        @keyup.enter = "ruleAdded"
+                    ref = "ruleInput"
+                    v-model = "insertingRule.text"
+                    placeholder = "Enter a rule..."
+                    @keyup.enter = "ruleAdded"
                 )
             template(v-else-if = "index > insertingRule.at")
                 p.
                     {{ currentDB.rules[index-1] }}
                 div.insertHere(@click = "newRule(index)")
         div.insertHere(@click = "newRule(dbEntryCount)")
+        
+        br
+        p.
+            Create a new constant:
+        input(
+            v-model = "constantInputText"
+            @keyup.enter = "constantCreated"
+        )
+        p {{ constantInputText }}
+        p.
+            Existing matches:
+        template(v-for = "label in searchMatches")
+            p.
+                {{ label }}
