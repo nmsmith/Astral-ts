@@ -73,7 +73,7 @@ interface RuleView {
 import * as IDRegistry from "./id-registry"
 
 interface State {
-    idRegistry: IDRegistry.Type<EntityUUID>
+    idRegistry: IDRegistry.T<EntityUUID>
     currentView: RuleView
     insertingRule: {at: number, text: string} | null
     constantInputText: string

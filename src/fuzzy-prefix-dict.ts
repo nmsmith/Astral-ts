@@ -13,9 +13,11 @@
 
 type FuzzyDictNode<Value> = FuzzyDictInterior<Value> | FuzzyDictLeaf<Value>
 
-export interface FuzzyDict<Value> {
+interface FuzzyDict<Value> {
     next: FuzzyDictNode<Value>[]
 }
+
+export type T<Value> = FuzzyDict<Value>
 
 interface FuzzyDictInterior<Value> {
     prefix: string // consider this an edge label
