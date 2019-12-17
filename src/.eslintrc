@@ -25,10 +25,22 @@
         "@typescript-eslint"
     ],
     "rules": {
-        "semi": ["error", "never"],
-        "quotes": [2, "double"],
+        "semi": "off",
+        "quotes": ["error", "double"],
         "eqeqeq": ["error", "always"],
-        "no-implicit-coercion": 2,
-        "@typescript-eslint/strict-boolean-expressions": 2
+        "no-implicit-coercion": "error",
+        "@typescript-eslint/semi": ["error", "never"],
+        "@typescript-eslint/strict-boolean-expressions": "error",
+        "@typescript-eslint/interface-name-prefix": "off",
+        "@typescript-eslint/consistent-type-definitions": "error",
+        "@typescript-eslint/member-delimiter-style": ["error", {
+            "singleline": {
+                "delimiter": "comma",
+                "requireLast": false
+            },
+            "multiline": {
+                "delimiter": "none"
+            }
+        }]
     }
 }

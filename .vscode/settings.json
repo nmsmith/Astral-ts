@@ -1,15 +1,6 @@
 {
-    "eslint.validate": [
-        { "language" : "pug" },
-        { "language" : "jade" },
-        "html",
-        "javascript",
-        "typescript",
-        "javascriptreact",
-        "vue"
-    ],
-
     "vetur.validation.template": false,
+    "vetur.validation.script": false,
 
     "[jade]": {
         //"editor.lineHeight": 30
