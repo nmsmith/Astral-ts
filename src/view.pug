@@ -28,7 +28,7 @@ div.col.fill
             v-model = "constantInputText"
             @keyup.enter = "constantCreated"
         )
-        p {{ constantInputText }}
+        br
         p.
             Existing matches:
         template(v-for = "match in searchMatches")

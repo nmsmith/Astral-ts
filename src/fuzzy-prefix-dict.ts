@@ -181,7 +181,7 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
                 const firstRowUnchecked = column - errorTolerance
                 const firstRow = Math.max(0, firstRowUnchecked) 
                 // Later columns can exceed key length, so round down
-                const lastRowUnchecked = firstRowUnchecked + tableHeight
+                const lastRowUnchecked = firstRowUnchecked + tableHeight - 1
                 const lastRow = Math.min(lastRowUnchecked, key.length)
 
                 let minCost = Infinity
@@ -241,7 +241,7 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
             // If we've reached here, then we've not yet compared against the entire key.
             // Continue looking in this child's children, if they exist.
             if (child.type === "Leaf") {
-                return // Nothing left in this subtree
+                continue nextChild // Nothing left in this subtree
             }
             else {
                 const newPath = currentPath + child.prefix
@@ -257,7 +257,7 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
             matches.push({
                 key: currentPath,
                 value: tree.value,
-                distance: 0,
+                distance: distance,
             })
         }
         else {
