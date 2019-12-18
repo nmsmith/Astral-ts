@@ -138,7 +138,8 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string): SearchR
                     matches.push({
                         key: newPath,
                         value: child.value,
-                        distance: 0})
+                        distance: 0,
+                    })
                 }
                 else {
                     // Visit each grandchild

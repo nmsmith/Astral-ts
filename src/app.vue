@@ -123,7 +123,7 @@ export default Vue.extend({
             const searchResults = IDRegistry.getMatchesForPrefix(this.idRegistry, this.constantInputText)
             searchResults.sort((a, b) => a.distance - b.distance)
             return searchResults
-        }
+        },
     },
     // A method that runs on app start. Can be used to perform external effects.
     created(): void {

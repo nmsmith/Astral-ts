@@ -26,6 +26,7 @@
     ],
     "rules": {
         "semi": "off",
+        "comma-dangle": ["error", "always-multiline"],
         "quotes": ["error", "double"],
         "eqeqeq": ["error", "always"],
         "no-implicit-coercion": "error",
