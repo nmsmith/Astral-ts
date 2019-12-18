@@ -25,12 +25,18 @@ export function newID(registry: IDRegistry<number>, label?: string): number {
 export function getID(registry: IDRegistry<number>, label: string): number | undefined {
     let firstResult = undefined
     FuzzyDict.fuzzySearch(registry.namesDict, label).some(result => {
-        if (result.distance === 0) {
+        if (result.key === label) {
             firstResult = result.value
             return true
         }
     })
     return firstResult
+}
+
+export type SearchResult<Value> = FuzzyDict.SearchResult<Value>
+
+export function getMatchesForPrefix(registry: IDRegistry<number>, label: string): SearchResult<number>[] {
+    return FuzzyDict.fuzzySearch(registry.namesDict, label)
 }
 
 export function getLabel(registry: IDRegistry<number>, id: number): string {

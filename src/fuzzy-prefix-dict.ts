@@ -97,7 +97,7 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
                 type: "Interior",
                 next: [newLeafNode, child]
             }
-            children[childIndex] = newInteriorNode
+            children.set(childIndex, newInteriorNode)
             // Job done
             return
         }
@@ -107,7 +107,7 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
     tree.next.push({prefix: key, type: "Leaf", value: value})
 }
 
-interface SearchResult<Value> {
+export interface SearchResult<Value> {
     key: string
     value: Value
     distance: number
@@ -127,16 +127,23 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string): SearchR
             if (cutIndex === child.prefix.length && child.type === "Interior") {
                 // Go deeper
                 const disagreedSuffixKey = key.slice(cutIndex)
-                const path = key.slice(0, cutIndex)
-                fuzzySearchStep(child, disagreedSuffixKey, path)
+                const newPath = currentPath + key.slice(0, cutIndex)
+                fuzzySearchStep(child, disagreedSuffixKey, newPath)
             }
-            // If the strings are identical, and the child is a leaf
-            else if (cutIndex === child.prefix.length && cutIndex === key.length && child.type === "Leaf") {
-                // Collect the value
-                matches.push({
-                    key: currentPath + key,
-                    value: child.value,
-                    distance: 0})
+            // If the strings are identical up to the key length
+            else if (cutIndex === key.length) {
+                // Collect all values in this subtree
+                const newPath = currentPath + child.prefix
+                if (child.type === "Leaf") {
+                    matches.push({
+                        key: newPath,
+                        value: child.value,
+                        distance: 0})
+                }
+                else {
+                    // Visit each grandchild
+                    fuzzySearchStep(child, "", newPath)
+                }
             }
             // The key doesn't match the child prefix, try another child
             else {

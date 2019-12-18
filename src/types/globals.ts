@@ -1,6 +1,7 @@
 declare global {
     interface Array<T> {
-        insert(index: number, item: T): T[];
+        set(index: number, value: T): void
+        insert(index: number, value: T): T[]
     }
 }
 

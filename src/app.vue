@@ -1,12 +1,17 @@
 <template lang="pug" src="./view.pug"></template>
 <style lang="scss" src="./style.scss"></style>
 <script lang="ts">
-
+import Vue from "vue"
 import "./types/globals"
 
 // Disable right-click menu
 window.oncontextmenu = (e: Event): void => {
     e.preventDefault()
+}
+
+// Define array assignment (that Vue can react to)
+Array.prototype.set = function<T>(index: number, value: T): void {
+    Vue.set(this, index, value)
 }
 
 // Define array insert
@@ -72,6 +77,9 @@ interface RuleView {
 
 import * as IDRegistry from "./id-registry"
 
+// N.B. The State should be pure data. To ensure serializability
+// & deserializability, there should be no functions or methods
+// anywhere in the state.
 interface State {
     idRegistry: IDRegistry.T<EntityUUID>
     currentView: RuleView
@@ -91,7 +99,6 @@ function initialState(): State {
 // --- GLOBAL CONSTANTS ---
 const saveAndRestoreAutomatically = true
 
-import Vue from "vue"
 import Cycle from "json-cycle"
 export default Vue.extend({
     name: "App",
@@ -112,14 +119,10 @@ export default Vue.extend({
         dbEntryCount(): number { // Taking into account a "new rule" slot
            return 0 //return this.currentDB.rules.length + ((this.insertingRule === null) ? 0 : 1)
         },
-        searchMatches(): EntityUUID[] {
-            const id = IDRegistry.getID(this.idRegistry, this.constantInputText)
-            if (id === undefined) {
-                return []
-            }
-            else {
-                return [id]
-            }
+        searchMatches(): IDRegistry.SearchResult<EntityUUID>[] {
+            const searchResults = IDRegistry.getMatchesForPrefix(this.idRegistry, this.constantInputText)
+            searchResults.sort((a, b) => a.distance - b.distance)
+            return searchResults
         }
     },
     // A method that runs on app start. Can be used to perform external effects.

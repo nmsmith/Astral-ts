@@ -31,6 +31,6 @@ div.col.fill
         p {{ constantInputText }}
         p.
             Existing matches:
-        template(v-for = "label in searchMatches")
+        template(v-for = "match in searchMatches")
             p.
-                {{ label }}
+                Name [{{ match.key }}] for entity [{{ match.value }}]
