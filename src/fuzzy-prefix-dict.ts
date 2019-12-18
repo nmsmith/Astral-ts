@@ -113,46 +113,158 @@ export interface SearchResult<Value> {
     distance: number
 }
 
-export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string): SearchResult<Value>[] {
+export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTolerance: number): SearchResult<Value>[] {
     const matches: SearchResult<Value>[] = []
+    // Special case for when the key is length zero (don't need a DP table)
+    if (key.length === 0) {
+        tree.next.forEach(child => collectStrings(child, child.prefix, 0))
+        return matches
+    }
+
+    // Set up the dynamic programming memo table.
+    // We're only computing the table diagonal of width proportional to the error tolerance.
+    // If we are able to hit the bottom row of the table with one of the entries being less
+    // than the tolerance, then we have found an acceptable match between the key and a prefix.
+    const tableWidth = key.length + 1 + errorTolerance
+    const tableHeight = 2*errorTolerance + 1
+
+    class Table {
+        private readonly table: number[]
+
+        constructor() {
+            // We only store a subset of the table.
+            // This is technically the table diagonal reshaped into a rectangle.
+            this.table = Array<number>(tableWidth * tableHeight)
+            // Initialize the first column of the table
+            for (let i = 0; i < tableHeight; ++i) {
+                this.table[i] = i - errorTolerance
+            }
+        }
+        // Given coords into the full table, get an index in the sparse table.
+        // Gives a garbage answer if you enter coordinates outside the diagonal.
+        private tableIndex(row: number, column: number): number {
+            const xCoord = column
+            const yCoord = row + errorTolerance - column
+            return yCoord + tableHeight * xCoord
+        }
+
+        // Returns whether the point is actually represented in the array
+        private pointInBounds(row: number, column: number): boolean {
+            return Math.abs(row - column) <= errorTolerance
+        }
+
+        get(row: number, column: number): number {
+            return this.pointInBounds(row, column)
+                ? this.table[this.tableIndex(row, column)]
+                : Infinity
+        }
+
+        // Assume the code that uses this setter is iterating over the diagonal
+        // correctly: i.e. it will not try to set outside the valid range.
+        set(row: number, column: number, value: number) {
+            this.table[this.tableIndex(row, column)] = value
+        }
+    }
+
+    const table = new Table()
     
-    function fuzzySearchStep(tree: FuzzyDict<Value>, key: string, currentPath: string): void {
+    function fuzzySearchStep(tree: FuzzyDict<Value>, currentPath: string, firstColumn: number): void {
         const children = tree.next
+        nextChild:
         for (let childIndex = 0; childIndex < children.length; ++childIndex) {
             const child = children[childIndex]
-            const cutIndex = differIndex(key, child.prefix)
-            
-            // If the strings match over the whole child prefix (including the possibility
-            // of the strings being identical), and there's more tree to explore
-            if (cutIndex === child.prefix.length && child.type === "Interior") {
-                // Go deeper
-                const disagreedSuffixKey = key.slice(cutIndex)
-                const newPath = currentPath + key.slice(0, cutIndex)
-                fuzzySearchStep(child, disagreedSuffixKey, newPath)
-            }
-            // If the strings are identical up to the key length
-            else if (cutIndex === key.length) {
-                // Collect all values in this subtree
-                const newPath = currentPath + child.prefix
-                if (child.type === "Leaf") {
-                    matches.push({
-                        key: newPath,
-                        value: child.value,
-                        distance: 0,
-                    })
+            //const cutIndex = differIndex(key, child.prefix)
+            const numPrefixChars = child.prefix.length
+            for (let columnOffset = 0; columnOffset < numPrefixChars; ++columnOffset) {
+                const column = firstColumn + columnOffset
+                // First few columns creep into negative rows, so round up to 0
+                const firstRowUnchecked = column - errorTolerance
+                const firstRow = Math.max(0, firstRowUnchecked) 
+                // Later columns can exceed key length, so round down
+                const lastRowUnchecked = firstRowUnchecked + tableHeight
+                const lastRow = Math.min(lastRowUnchecked, key.length)
+
+                let minCost = Infinity
+                // Fill the column
+                for (let row = firstRow; row <= lastRow; ++row) {
+                    // Fill the table cell using the Damerau-Levenshtein formula.
+                    // Edge cases are covered by table.get, which returns Infinity
+                    // if asked for a cell outside its bounds.
+                    const insertion = table.get(row-1, column) + 1
+                    const deletion = table.get(row, column-1) + 1
+                    const substitution = row > 0 // need to check this to safely index "key"
+                        ? ( table.get(row-1, column-1) + (
+                                key[row-1] === child.prefix[columnOffset]
+                                    ? 0
+                                    : 1
+                            )
+                          )
+                        : Infinity
+                    const swap = (
+                           row > 1
+                        && column > 1
+                        && key[row-1] ===
+                            // If we're only looking at the first char of the
+                            // current prefix, we need to look at the currentPath
+                            (columnOffset===0
+                                ? currentPath[currentPath.length-1]
+                                : child.prefix[columnOffset-1]
+                            )
+                        && key[row-2] === child.prefix[columnOffset]
+                        )
+                        ? table.get(row-2, column-2) + 1
+                        : Infinity
+                    
+                    const cost = Math.min(insertion, deletion, substitution, swap)
+                    // Update the table and keep track of the minimum cost in the column
+                    table.set(row, column, cost)
+                    minCost = Math.min(minCost, cost)
                 }
-                else {
-                    // Visit each grandchild
-                    fuzzySearchStep(child, "", newPath)
+                
+                // If all the values in the column exceeded our error tolerance,
+                // then any strings with this prefix are NOT sufficiently similar.
+                // Give up searching this subtree.
+                if (minCost > errorTolerance) {
+                    continue nextChild
                 }
+                // If we've matched the entire key and we're within the error tolerance,
+                // then all strings with this prefix are sufficiently similar.
+                // Collect all key/value pairs for this subtree.
+                else if (lastRow === key.length && table.get(lastRow, column) <= errorTolerance) {
+                    const newPath = currentPath + child.prefix
+                    collectStrings(child, newPath, table.get(lastRow, column))
+                    continue nextChild
+                }
+                else continue // Move onto the next character in the prefix
             }
-            // The key doesn't match the child prefix, try another child
+
+            // If we've reached here, then we've not yet compared against the entire key.
+            // Continue looking in this child's children, if they exist.
+            if (child.type === "Leaf") {
+                return // Nothing left in this subtree
+            }
             else {
-                continue
+                const newPath = currentPath + child.prefix
+                fuzzySearchStep(child, newPath, firstColumn + numPrefixChars)
             }
         }
     }
 
-    fuzzySearchStep(tree, key, "")
+    // Collect all the key/value pairs for the given subtree.
+    // This key/value pairs differ from the search key by the given distance.
+    function collectStrings(tree: FuzzyDictNode<Value>, currentPath: string, distance: number) {
+        if (tree.type === "Leaf") {
+            matches.push({
+                key: currentPath,
+                value: tree.value,
+                distance: 0,
+            })
+        }
+        else {
+            tree.next.forEach(child => collectStrings(child, currentPath + child.prefix, distance))
+        }
+    }
+
+    fuzzySearchStep(tree, "", 1)
     return matches
 }
