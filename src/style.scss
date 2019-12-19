@@ -1,5 +1,11 @@
 /* generic styles */
 
+.matchParentSize {
+    // Note: don't use this in any parent with padding/multiple siblings
+    width: 100%;
+    height: 100%;
+}
+
 $standard-font-size: 16px;
 
 body, button, menu {
@@ -26,20 +32,11 @@ h1 {
     flex-direction: column;
 }
 
-.xFill {
-    width: 100%;
+.grow {
+    flex-grow: 1;
 }
 
-.yFill {
-    height: 100%;
-}
-
-.fill {
-    @extend .xFill;
-    @extend .yFill;
-}
-
-.noselect {
+.noSelect {
     -webkit-touch-callout: none; /* iOS Safari */
       -webkit-user-select: none; /* Safari */
        -khtml-user-select: none; /* Konqueror HTML */
@@ -49,27 +46,32 @@ h1 {
                                     supported by Chrome, Opera and Firefox */
  }
 
+ .hiddenButAccessible {
+    position: absolute !important;
+    height: 1px;
+    width: 1px;
+    overflow: hidden;
+    clip: rect(1px,1px,1px,1px);
+  }
+
 /* component-specific styles */
 
 $main-pad: 10px;
 
 .toolbar {
     @extend .row;
-    @extend .xFill;
     height: 30px;
     padding: $main-pad;
     background-color: #ffefbc;
 }
 
 .database {
-    @extend .fill;
     @extend .col;
     padding: $main-pad;
     background-color: #ffffff;
 }
 
 .insertHere {
-    @extend .xFill;
     height: 12px;
     //transition: height 0.2s;
 }
@@ -77,4 +79,40 @@ $main-pad: 10px;
 .insertHere:hover {
     background-color: #ffefbc;
     //height: $standard-font-size + 8px;
+}
+
+.greyedText {
+    color: #666666;
+}
+
+.zeroSize {
+    width: 0;
+    height: 0;
+    overflow: visible;
+}
+
+.searchBox {
+    border-style: solid;
+    border-width: 1px;
+    padding: 4px;
+}
+
+.suggestionBox {
+    @extend .searchBox;
+    background-color: #e5e5e5;
+    margin-top: -1px;
+}
+
+.highlighted {
+    background-color: #ffff22;
+}
+
+.inputForSearchBox {
+    font: inherit; // Important: needs to match the font of the overlaid label
+    width: 1000px; // Long enough to cover all use-cases
+    padding: 0px;
+    margin-top: -2px;
+    border-style: none;
+    color: #00000000;
+    caret-color: #000000ff;
 }

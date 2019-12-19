@@ -35,8 +35,8 @@ export function getID(registry: IDRegistry<number>, label: string): number | und
 
 export type SearchResult<Value> = FuzzyDict.SearchResult<Value>
 
-export function getMatchesForPrefix(registry: IDRegistry<number>, label: string): SearchResult<number>[] {
-    return FuzzyDict.fuzzySearch(registry.namesDict, label, 1)
+export function getMatchesForPrefix(registry: IDRegistry<number>, label: string, errorTolerance: number): SearchResult<number>[] {
+    return FuzzyDict.fuzzySearch(registry.namesDict, label, errorTolerance)
 }
 
 export function getLabel(registry: IDRegistry<number>, id: number): string {

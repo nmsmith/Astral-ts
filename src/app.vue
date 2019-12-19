@@ -84,7 +84,10 @@ interface State {
     idRegistry: IDRegistry.T<EntityUUID>
     currentView: RuleView
     insertingRule: {at: number, text: string} | null
-    constantInputText: string
+    constantInputState: {
+        text: string
+        selection: number
+    }
 }
 
 function initialState(): State {
@@ -92,7 +95,10 @@ function initialState(): State {
         idRegistry: IDRegistry.empty(),
         currentView: {rules: []},
         insertingRule: null,
-        constantInputText: "",
+        constantInputState: {
+            text: "",
+            selection: 0,
+        },
     }
 }
 
@@ -120,10 +126,29 @@ export default Vue.extend({
            return 0 //return this.currentDB.rules.length + ((this.insertingRule === null) ? 0 : 1)
         },
         searchMatches(): IDRegistry.SearchResult<EntityUUID>[] {
-            const searchResults = IDRegistry.getMatchesForPrefix(this.idRegistry, this.constantInputText)
+            const errorTolerance = (this.constantInputState.text.length <= 1) ? 0 : 1
+            const searchResults = IDRegistry.getMatchesForPrefix(this.idRegistry, this.constantInputState.text, errorTolerance)
             searchResults.sort((a, b) => a.distance - b.distance)
             return searchResults
         },
+        // exactMatch(): IDRegistry.SearchResult<EntityUUID> | undefined {
+        //     if (    this.searchMatches.length >= 1
+        //         &&  this.searchMatches[0].distance === 0
+        //         && (this.searchMatches.length === 1 || this.searchMatches[1].distance > 0))
+        //     {
+        //         return this.searchMatches[0]
+        //     }
+        //     else return undefined
+        // },
+        textForSearchMatches(): string[] {
+            return this.searchMatches.map(match => `${match.key} [${match.value}]`)
+            //return (this.exactMatch === undefined) ? text : text.slice(1)
+        },
+        // autocompleteText(): string {
+        //     return (this.exactMatch !== undefined)
+        //         ? `${this.exactMatch.key.slice(this.constantInputText.length)} [${this.exactMatch.value}]`
+        //         : ""
+        // },
     },
     // A method that runs on app start. Can be used to perform external effects.
     created(): void {
@@ -133,15 +158,30 @@ export default Vue.extend({
     // Methods should (only) be used to perform a state transition or an external effect.
     // They are useful for polling external state. Return values are not cached.
     methods: {
+        focusConstantInput(): void {
+            (this.$refs.constantInput as HTMLInputElement).focus()
+        },
         newRule(i: number): void {
             this.insertingRule = {at: i, text: ""}
             this.$nextTick(() => {
                 return (this.$refs.ruleInput as HTMLInputElement[])[0].focus()
             })
         },
+        selectPrevious(): void {
+            if (this.constantInputState.selection > 0) {
+                --this.constantInputState.selection
+            }
+        },
+        selectNext(): void {
+            if (this.constantInputState.selection < this.searchMatches.length - 1) {
+                ++this.constantInputState.selection
+            }
+        },
         constantCreated(): void {
-            if (this.constantInputText.length > 0) {
-                IDRegistry.newID(this.idRegistry, this.constantInputText)
+            if (this.constantInputState.text.length > 0) {
+                IDRegistry.newID(this.idRegistry, this.constantInputState.text)
+                this.constantInputState.text = ""
+                this.constantInputState.selection = 0
             }
         },
         ruleAdded(): void {
