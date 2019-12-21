@@ -3,6 +3,7 @@
 <script lang="ts">
 import Vue from "vue"
 import "./types/globals"
+import * as IDRegistry from "./id-registry"
 
 // Disable right-click menu
 window.oncontextmenu = (e: Event): void => {
@@ -24,24 +25,21 @@ function copyTree(x: any): any {
     return JSON.parse(JSON.stringify(x))
 }
 
-type EntityUUID = number
-type VarID = number
-
 interface ConstRef {
     type: "Const"
-    ref: EntityUUID
+    ref: IDRegistry.ID
 }
 
-function constRef(ref: EntityUUID): ConstRef {
+function constRef(ref: IDRegistry.ID): ConstRef {
     return {type: "Const", ref: ref}
 }
 
 interface VarRef {
     type: "Var"
-    ref: VarID
+    ref: IDRegistry.ID
 }
 
-function varRef(ref: VarID): VarRef {
+function varRef(ref: IDRegistry.ID): VarRef {
     return {type: "Var", ref: ref}
 }
 
@@ -67,6 +65,7 @@ function link(subject: Ref, relation: Ref, object: Ref): Link {
 
 interface Rule {
     //idRegistry: IDRegistry<VarID>  for local variables
+    id: number
     head?: Link
     body: Link[]
 }
@@ -75,15 +74,14 @@ interface RuleView {
     rules: Rule[]
 }
 
-import * as IDRegistry from "./id-registry"
-
 // N.B. The State should be pure data. To ensure serializability
 // & deserializability, there should be no functions or methods
 // anywhere in the state.
 interface State {
-    idRegistry: IDRegistry.T<EntityUUID>
+    entityRegistry: IDRegistry.T
+    ruleRegistry: IDRegistry.T
+    rules: Rule[]
     currentView: RuleView
-    insertingRule: {at: number, text: string} | null
     constantInputState: {
         text: string
         selection: number
@@ -92,15 +90,26 @@ interface State {
 
 function initialState(): State {
     return {
-        idRegistry: IDRegistry.empty(),
+        entityRegistry: IDRegistry.empty(),
+        ruleRegistry: IDRegistry.empty(),
+        rules: [],
         currentView: {rules: []},
-        insertingRule: null,
         constantInputState: {
             text: "",
             selection: 0,
         },
     }
 }
+
+/// --- CUSTOM DIRECTIVES ---
+Vue.directive("focus", {
+  // When the bound element is inserted into the DOM
+  inserted: function (el) {
+      console.log("element inserted")
+    // Focus the element
+    el.focus()
+  },
+})
 
 // --- GLOBAL CONSTANTS ---
 const saveAndRestoreAutomatically = true
@@ -123,15 +132,20 @@ export default Vue.extend({
     // Derived state values. These are cached. Read-only by default, but you can add setters.
     computed: {
         dbEntryCount(): number { // Taking into account a "new rule" slot
-           return 0 //return this.currentDB.rules.length + ((this.insertingRule === null) ? 0 : 1)
+           return this.rules.length
         },
-        searchMatches(): IDRegistry.SearchResult<EntityUUID>[] {
+        allEntities(): IDRegistry.SearchResult[] {
+            // TODO: Make this efficient with a lazy constant (list/tree) browser
+            // and a specialized non-fuzzy-search/iterator implementation
+            return IDRegistry.getMatchesForPrefix(this.entityRegistry, "", 0)
+        },
+        searchMatches(): IDRegistry.SearchResult[] {
             const errorTolerance = (this.constantInputState.text.length <= 1) ? 0 : 1
-            const searchResults = IDRegistry.getMatchesForPrefix(this.idRegistry, this.constantInputState.text, errorTolerance)
+            const searchResults = IDRegistry.getMatchesForPrefix(this.entityRegistry, this.constantInputState.text, errorTolerance)
             searchResults.sort((a, b) => a.distance - b.distance)
             return searchResults
         },
-        // exactMatch(): IDRegistry.SearchResult<EntityUUID> | undefined {
+        // exactMatch(): IDRegistry.SearchResult | undefined {
         //     if (    this.searchMatches.length >= 1
         //         &&  this.searchMatches[0].distance === 0
         //         && (this.searchMatches.length === 1 || this.searchMatches[1].distance > 0))
@@ -162,10 +176,8 @@ export default Vue.extend({
             (this.$refs.constantInput as HTMLInputElement).focus()
         },
         newRule(i: number): void {
-            this.insertingRule = {at: i, text: ""}
-            this.$nextTick(() => {
-                return (this.$refs.ruleInput as HTMLInputElement[])[0].focus()
-            })
+            const id = IDRegistry.newID(this.ruleRegistry, this.constantInputState.text)
+            this.rules.insert(i, {id: id, body: []})
         },
         selectPrevious(): void {
             if (this.constantInputState.selection > 0) {
@@ -179,7 +191,7 @@ export default Vue.extend({
         },
         constantCreated(): void {
             if (this.constantInputState.text.length > 0) {
-                IDRegistry.newID(this.idRegistry, this.constantInputState.text)
+                IDRegistry.newID(this.entityRegistry, this.constantInputState.text)
                 this.constantInputState.text = ""
                 this.constantInputState.selection = 0
             }

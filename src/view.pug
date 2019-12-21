@@ -1,29 +1,39 @@
 //- Main view
 div.matchParentSize.col
+    form(autocomplete="false")
     div.toolbar
         button(@click = "resetState") Reset state
     div.database.col
-        template(v-for = "(n, index) in dbEntryCount")
-            template(v-if = "(insertingRule === null) || index < insertingRule.at")
-                div.insertHere(@click = "newRule(index)")
-                p {{ currentDB.rules[index] }}
-            template(v-else-if = "index === insertingRule.at")
-                input(
-                    ref = "ruleInput"
-                    v-model = "insertingRule.text"
-                    placeholder = "Enter a rule..."
-                    @keyup.enter = "ruleAdded"
-                )
-            template(v-else-if = "index > insertingRule.at")
-                p {{ currentDB.rules[index-1] }}
-                div.insertHere(@click = "newRule(index)")
-        div.insertHere(@click = "newRule(dbEntryCount)")
+        div.insertHere(@click = "newRule(0)")
+        template(v-for = "(_, index) in dbEntryCount")
+            div.row(:key="rules[index].id")
+                div.col
+                    input(autocomplete = "nope", v-focus)
+                    // TODO: Have to make this input field a component in order
+                    // to give each instance its own derived state (search results).
+                    // But then I will have to pass the STATE of the component
+                    // via a prop (to maintain a central store).
+                    // Note: Vuex is obsolete since mutations have to occur through
+                    // special mutation functions (for the purposes of logging).
+                    // In ES6 this is done automatically via the Proxy API.
+
+                    // Alternately, the Vue 3.0 "composition syntax" will let
+                    // me instantiate new computed() state at runtime!
+                    // I REALLY CAN'T WAIT FOR VUE 3!
+
+                    //template(v-for = "(text, index) in rules[index].searchMatchText")
+                    //    div.suggestionBox(:class="{highlighted: index === constantInputState.selection}").
+                    //        {{ text }}
+                p if
+                input(autocomplete = "nope")
+            div.insertHere(@click = "newRule(index+1)")
 
         br
         p Create a new constant:
         div.searchBox.row(@click = "focusConstantInput")
             div.zeroSize
                 input.inputForSearchBox(
+                    autocomplete = "nope"
                     ref = "constantInput"
                     v-model = "constantInputState.text"
                     @keydown.enter = "constantCreated"
