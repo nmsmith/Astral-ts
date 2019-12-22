@@ -28,7 +28,7 @@ export function getID(registry: IDRegistry, label: string): ID | undefined {
     let firstResult = undefined
     FuzzyDict.fuzzySearch(registry.namesDict, label, 0).some(result => {
         if (result.key === label) {
-            firstResult = result.value
+            firstResult = result.val
             return true
         }
     })

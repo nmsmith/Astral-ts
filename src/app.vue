@@ -77,12 +77,12 @@ interface RuleView {
 // N.B. The State should be pure data. To ensure serializability
 // & deserializability, there should be no functions or methods
 // anywhere in the state.
-interface State {
-    entityRegistry: IDRegistry.T
+type State = {
+    subjectRegistry: IDRegistry.T
     ruleRegistry: IDRegistry.T
     rules: Rule[]
     currentView: RuleView
-    constantInputState: {
+    subjectInputState: {
         text: string
         selection: number
     }
@@ -90,11 +90,11 @@ interface State {
 
 function initialState(): State {
     return {
-        entityRegistry: IDRegistry.empty(),
+        subjectRegistry: IDRegistry.empty(),
         ruleRegistry: IDRegistry.empty(),
         rules: [],
         currentView: {rules: []},
-        constantInputState: {
+        subjectInputState: {
             text: "",
             selection: 0,
         },
@@ -111,111 +111,59 @@ Vue.directive("focus", {
   },
 })
 
-// --- GLOBAL CONSTANTS ---
 const saveAndRestoreAutomatically = true
 
+// --- MAIN APPLICATION LOGIC ---
+import {createComponent, ref, reactive, toRefs, computed, watch, Ref as VRef} from "@vue/composition-api"
 import Cycle from "json-cycle"
-export default Vue.extend({
-    name: "App",
-    data(): State {
-        const freshState = initialState()
-        // If applicable, load existing state from local storage
-        if (saveAndRestoreAutomatically && localStorage.state !== undefined && localStorage.state !== "undefined") {
-            const restoredState = Object.assign(freshState, Cycle.retrocycle(JSON.parse(localStorage.state)))
-            restoredState.insertingRule = null
-            return restoredState
+export default createComponent({
+    setup() {
+        const state: State = reactive(initialState())
+        // const freshState = initialState()
+        // // If applicable, load existing state from local storage
+        // if (saveAndRestoreAutomatically && localStorage.state !== undefined && localStorage.state !== "undefined") {
+        //     const restoredState = Object.assign(freshState, Cycle.retrocycle(JSON.parse(localStorage.state)))
+        //     restoredState.insertingRule = null
+        //     return restoredState
+        // }
+        // else {
+        //     return freshState
+        // }
+        const stateActions = {
+            save(): void {
+                // TODO: Have data auto-save periodically (every 10 sec?)
+                localStorage.state = JSON.stringify(Cycle.decycle(state))
+            },
+            reset(): void {
+                // Assign each property value of initialState to the current state.
+                Object.assign(state, initialState())
+            },
         }
-        else {
-            return freshState
+
+        if (saveAndRestoreAutomatically) window.addEventListener("beforeunload", stateActions.save)
+
+
+
+
+
+        
+
+        const rule = {
+            actions: {
+                newRule(i: number): void {
+                    const id = IDRegistry.newID(state.ruleRegistry, state.subjectInputState.text)
+                    state.rules.insert(i, {id: id, body: []})
+                },
+            },
         }
-    },
-    // Derived state values. These are cached. Read-only by default, but you can add setters.
-    computed: {
-        dbEntryCount(): number { // Taking into account a "new rule" slot
-           return this.rules.length
-        },
-        allEntities(): IDRegistry.SearchResult[] {
-            // TODO: Make this efficient with a lazy constant (list/tree) browser
-            // and a specialized non-fuzzy-search/iterator implementation
-            return IDRegistry.getMatchesForPrefix(this.entityRegistry, "", 0)
-        },
-        searchMatches(): IDRegistry.SearchResult[] {
-            const errorTolerance = (this.constantInputState.text.length <= 1) ? 0 : 1
-            const searchResults = IDRegistry.getMatchesForPrefix(this.entityRegistry, this.constantInputState.text, errorTolerance)
-            searchResults.sort((a, b) => a.distance - b.distance)
-            return searchResults
-        },
-        // exactMatch(): IDRegistry.SearchResult | undefined {
-        //     if (    this.searchMatches.length >= 1
-        //         &&  this.searchMatches[0].distance === 0
-        //         && (this.searchMatches.length === 1 || this.searchMatches[1].distance > 0))
-        //     {
-        //         return this.searchMatches[0]
-        //     }
-        //     else return undefined
-        // },
-        textForSearchMatches(): string[] {
-            return this.searchMatches.map(match => `${match.key} [${match.value}]`)
-            //return (this.exactMatch === undefined) ? text : text.slice(1)
-        },
-        // autocompleteText(): string {
-        //     return (this.exactMatch !== undefined)
-        //         ? `${this.exactMatch.key.slice(this.constantInputText.length)} [${this.exactMatch.value}]`
-        //         : ""
-        // },
-    },
-    // A method that runs on app start. Can be used to perform external effects.
-    created(): void {
-        // Set up save-on-close behaviour
-        if (saveAndRestoreAutomatically) window.addEventListener("beforeunload", this.saveState)
-    },
-    // Methods should (only) be used to perform a state transition or an external effect.
-    // They are useful for polling external state. Return values are not cached.
-    methods: {
-        focusConstantInput(): void {
-            (this.$refs.constantInput as HTMLInputElement).focus()
-        },
-        newRule(i: number): void {
-            const id = IDRegistry.newID(this.ruleRegistry, this.constantInputState.text)
-            this.rules.insert(i, {id: id, body: []})
-        },
-        selectPrevious(): void {
-            if (this.constantInputState.selection > 0) {
-                --this.constantInputState.selection
-            }
-        },
-        selectNext(): void {
-            if (this.constantInputState.selection < this.searchMatches.length - 1) {
-                ++this.constantInputState.selection
-            }
-        },
-        constantCreated(): void {
-            if (this.constantInputState.text.length > 0) {
-                IDRegistry.newID(this.entityRegistry, this.constantInputState.text)
-                this.constantInputState.text = ""
-                this.constantInputState.selection = 0
-            }
-        },
-        ruleAdded(): void {
-            // if (this.insertingRule !== null) {
-            //     this.currentDB.rules.insert(this.insertingRule.at, this._getRuleInput().value)
-            //     this.insertingRule = null
-            // }
-        },
-        saveState(): void {
-            // TODO: Have data auto-save periodically (every 10 sec?)
-            localStorage.state = JSON.stringify(Cycle.decycle(this.$data))
-        },
-        resetState(): void {
-            // Assign each property value of initialState to the current state.
-            Object.assign(this.$data, initialState())
-        },
-    },
-    // For running external effects when a "data" or "computed" property changes.
-    // Use this over a computed property if you need to perform asynchronous work (e.g. an API call).
-    // This is an imperative event-response model.
-    watch: {
+
+        return {
+            ...toRefs(state),
+            subjectInput,
+            ...subject.computed,
+            ...subject.actions,
+            ...rule.actions,
+        }
     },
 })
-
 </script>

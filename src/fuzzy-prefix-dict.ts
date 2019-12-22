@@ -28,7 +28,7 @@ interface FuzzyDictInterior<Value> {
 interface FuzzyDictLeaf<Value> {
     prefix: string // consider this an edge label
     type: "Leaf"
-    value: Value
+    val: Value
 }
 
 export function empty<Value>(): FuzzyDict<Value> {
@@ -87,7 +87,7 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
             const newLeafNode: FuzzyDictLeaf<Value> = {
                 prefix: disagreedSuffixKey,
                 type: "Leaf",
-                value: value
+                val: value
             }
             // Update existing node
             child.prefix = disagreedSuffixTree
@@ -104,12 +104,12 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
     }
     // If we've reached here, then none of the children partially
     // matched our key, so we should insert the key as a new child.
-    tree.next.push({prefix: key, type: "Leaf", value: value})
+    tree.next.push({prefix: key, type: "Leaf", val: value})
 }
 
 export interface SearchResult<Value> {
     key: string
-    value: Value
+    val: Value
     distance: number
 }
 
@@ -261,7 +261,7 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
             if (bestSolutionFound < Infinity) {
                 matches.push({
                     key: currentPath + node.prefix,
-                    value: node.value,
+                    val: node.value,
                     distance: bestSolutionFound,
                 })
             }
@@ -276,7 +276,7 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
         if (node.type === "Leaf") {
             matches.push({
                 key: newPath,
-                value: node.value,
+                val: node.value,
                 distance: distance,
             })
         }

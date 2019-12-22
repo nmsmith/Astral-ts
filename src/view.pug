@@ -5,7 +5,7 @@ div.matchParentSize.col
         button(@click = "resetState") Reset state
     div.database.col
         div.insertHere(@click = "newRule(0)")
-        template(v-for = "(_, index) in dbEntryCount")
+        template(v-for = "(_, index) in rules.length")
             div.row(:key="rules[index].id")
                 div.col
                     input(autocomplete = "nope", v-focus)
