@@ -33,7 +33,9 @@
         "@typescript-eslint/semi": ["error", "never"],
         "@typescript-eslint/strict-boolean-expressions": "error",
         "@typescript-eslint/interface-name-prefix": "off",
-        "@typescript-eslint/consistent-type-definitions": "error",
+        // Unfortunately, Vue's "toRef" does not work on interfaces,
+        // so sometimes type aliases are necessary.
+        //"@typescript-eslint/consistent-type-definitions": "error",
         "@typescript-eslint/member-delimiter-style": ["error", {
             "singleline": {
                 "delimiter": "comma",
