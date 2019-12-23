@@ -6,8 +6,7 @@
     "extends": [
         "eslint:recommended",
         "plugin:@typescript-eslint/eslint-recommended",
-        "plugin:@typescript-eslint/recommended",
-        "plugin:vue/essential"
+        "plugin:@typescript-eslint/recommended"
     ],
     "globals": {
         "Atomics": "readonly",
@@ -17,16 +16,20 @@
         "ecmaVersion": 2018,
         "parser": "@typescript-eslint/parser",
         "sourceType": "module",
-        "project": "./tsconfig.json",
-        "extraFileExtensions": ["vue"]
+        "project": "./tsconfig.json"
     },
     "plugins": [
-        "vue",
         "@typescript-eslint"
     ],
     "rules": {
         "semi": "off",
-        "comma-dangle": ["error", "always-multiline"],
+        "comma-dangle": ["error", {
+            "arrays": "always-multiline",
+            "objects": "always-multiline",
+            "imports": "always-multiline",
+            "exports": "always-multiline",
+            "functions": "only-multiline"
+        }],
         "quotes": ["error", "double"],
         "eqeqeq": ["error", "always"],
         "no-implicit-coercion": "error",
