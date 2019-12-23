@@ -1,7 +1,7 @@
 import "./reset.css"
 import "./style.scss"
-import { Ref, ref, reactive, toRefs, computed, effect } from "@vue/reactivity"
-import {scheduleEffect, div, p, button} from "./view-library"
+import { Ref, ref, reactive, toRefs, computed, ComputedRef, effect, readonly } from "@vue/reactivity"
+import {div, p, button} from "./view-library"
 
 import "./types/globals"
 import * as IDRegistry from "./id-registry"
@@ -101,26 +101,44 @@ const saveAndRestoreAutomatically = true
 
 const state = reactive({count: 0})
 
-const items: Ref<HTMLElement[]> = ref([])
-
 // TODO: Which JS objects actually have a toString() method?
 export function str(value: number | boolean): string {
     return value.toString()
 }
 
+const r = reactive({textContent: "content", title: "foo"})
+
+// Turn an object into a reactive version that always stays up to date.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function allDerived<T extends Record<keyof T, () => any>>(obj: T): Readonly<{ [P in keyof T]: ReturnType<T[P]> }> {
+    return readonly(Object.assign({}, ...Object.entries<() => T[keyof T]>(obj).map(([k, v]) => ({[k]: computed(v)}))))
+}
+
+// This is a hack for derived DOM ATTRIBUTES only.
+// This function allows a Ref to masquerade as a normal value so that it typechecks
+// for the HTML API. The view library will re-identify it as a Ref later.
+function derived<T>(obj: () => T): T {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return computed(obj) as any
+}
+
 const view = div(
     {},
     ref([
-        p(toRefs(state).count),
-        button(
-            {onClick: () => ++state.count},
-            "Increment"
-        ),
-        button(
-            {onClick: () => items.value.push(p("item"))},
-            "Add item"
-        ),
-        div({}, items),
+        p(allDerived({
+            textContent: () => state.count.toString(),
+        })),
+        p({
+            textContent: derived(() => state.count.toString()),
+        }),
+        button({
+            textContent: "Increment",
+            onclick: () => ++state.count,
+        }),
+        button({
+            textContent: "Title",
+            onmouseenter: () => r.title += " x",
+        }),
     ])
 )
 
