@@ -1,19 +1,16 @@
 import "./reset.css"
 import "./style.scss"
-import { Ref, ref, reactive, toRefs, computed, ComputedRef, effect, readonly } from "@vue/reactivity"
-import {div, p, button} from "./view-library"
+import "./globals"
+import { reactive } from "@vue/reactivity"
+import { derived, allDerived } from "./reactivity-extra"
+import {div, box, p, br, button, input} from "./view-library"
+import Cycle from "json-cycle"
 
-import "./types/globals"
 import * as IDRegistry from "./id-registry"
 
 // Disable right-click menu
 window.oncontextmenu = (e: Event): void => {
     e.preventDefault()
-}
-
-// Define array insert
-Array.prototype.insert = function<T>(index: number, item: T): T[] {
-    return this.splice(index, 0, item)
 }
 
 // eslint-disable-next-line
@@ -74,11 +71,11 @@ interface RuleView {
 // & deserializability, there should be no functions or methods
 // anywhere in the state.
 type State = {
-    subjectRegistry: IDRegistry.T
+    conceptRegistry: IDRegistry.T
     ruleRegistry: IDRegistry.T
     rules: Rule[]
     currentView: RuleView
-    subjectInputState: {
+    conceptInputState: {
         text: string
         selection: number
     }
@@ -86,62 +83,70 @@ type State = {
 
 function initialState(): State {
     return {
-        subjectRegistry: IDRegistry.empty(),
+        conceptRegistry: IDRegistry.empty(),
         ruleRegistry: IDRegistry.empty(),
         rules: [],
         currentView: {rules: []},
-        subjectInputState: {
+        conceptInputState: {
             text: "",
             selection: 0,
         },
     }
 }
 
+const state = reactive(initialState())
+
+function saveState(): void {
+    // TODO: Have data auto-save periodically (every 10 sec?)
+    localStorage.state = JSON.stringify(Cycle.decycle(state))
+}
+function resetState(): void {
+    // Assign each property value of initialState to the current state.
+    Object.assign(state, initialState())
+}
+
 const saveAndRestoreAutomatically = true
 
-const state = reactive({count: 0})
+if (saveAndRestoreAutomatically) window.addEventListener("beforeunload", saveState)
 
-// TODO: Which JS objects actually have a toString() method?
-export function str(value: number | boolean): string {
-    return value.toString()
+function newRule(i: number): void {
+    const id = IDRegistry.newID(state.ruleRegistry, state.conceptInputState.text)
+    state.rules.insert(i, {id: id, body: []})
 }
 
-const r = reactive({textContent: "content", title: "foo"})
-
-// Turn an object into a reactive version that always stays up to date.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function allDerived<T extends Record<keyof T, () => any>>(obj: T): Readonly<{ [P in keyof T]: ReturnType<T[P]> }> {
-    return readonly(Object.assign({}, ...Object.entries<() => T[keyof T]>(obj).map(([k, v]) => ({[k]: computed(v)}))))
-}
-
-// This is a hack for derived DOM ATTRIBUTES only.
-// This function allows a Ref to masquerade as a normal value so that it typechecks
-// for the HTML API. The view library will re-identify it as a Ref later.
-function derived<T>(obj: () => T): T {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return computed(obj) as any
-}
-
-const view = div(
-    {},
-    ref([
-        p(allDerived({
-            textContent: () => state.count.toString(),
-        })),
-        p({
-            textContent: derived(() => state.count.toString()),
+const appView =
+    div ({
+        className: "matchParentSize col",
+    },[
+        div ({
+            className: "toolbar",
+        },[
+            button ("Reset state", {
+                onclick: resetState,
+            }),
+        ]),
+        div ({
+            className: "database col",
+        },[
+            box ({
+                className: "insertHere",
+                onclick: () => newRule(0), // onclick: true   WORKS WHEN WE ADD DRAGGABLE PROP
+                //draggable: true,
+            }),
+        ]),
+        br (),
+        p ("Create a new concept:"),
+        input ({
+            autocomplete: "nope",
+            value: derived(() => state.conceptInputState.text),
+            valueChanged: v => state.conceptInputState.text = v,
         }),
-        button({
-            textContent: "Increment",
-            onclick: () => ++state.count,
+        button("Set to Hello", {
+            onclick: () => state.conceptInputState.text = "Hello",
         }),
-        button({
-            textContent: "Title",
-            onmouseenter: () => r.title += " x",
-        }),
+        p (derived(() => state.conceptInputState.text)),
     ])
-)
 
-document.body.append(view)
+document.body.append(appView)
 
 
