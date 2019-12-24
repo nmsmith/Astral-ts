@@ -138,21 +138,19 @@ export function button<Keys extends keyof HTMLButtonElement>(
     return element("button", attributes)
 }
 
-type ValueChangedAttribute = {valueChanged: (newValue: string) => void}
-
-export function input<Keys extends keyof HTMLInputElement | "valueChanged">(
-    attributes: SubRecord<Keys, HTMLInputElement & ValueChangedAttribute> = {} as any,
+export function input<Keys extends keyof HTMLInputElement>(
+    attributes: SubRecord<Keys, HTMLInputElement> = {} as any,
 ): HTMLInputElement {
-    if ((attributes as any).valueChanged === undefined) {
+    const valueAttr = (attributes as SubRecord<Keys | "value", HTMLInputElement>).value
+    // If the "value" attribute exists and is a Ref, then set up two-way binding
+    if (isRef(valueAttr)) {
+        Object.assign(attributes, {oninput: (event: Event) => {
+            //event.stopPropagation() // Unnecessary. Will never be caught by mistake by another input.
+            (valueAttr as any).value = (event.target as HTMLInputElement).value
+        }})
         return element("input", attributes)
     }
     else {
-        // Add a callback for when the input value changes
-        const callback = (attributes as unknown as ValueChangedAttribute).valueChanged;
-        (attributes as any).oninput = function(event: Event) {
-            //event.stopPropagation() // Unnecessary. Will never be caught by mistake by another input.
-            callback((event.target as HTMLInputElement).value)
-        }
         return element("input", attributes)
     }
 }

@@ -142,7 +142,6 @@ const appView =
             input ({
                 autocomplete: "nope",
                 value: toRefs(state.conceptInputState).text,
-                valueChanged: v => state.conceptInputState.text = v,
             }),
             button("Set to Hello", {
                 onclick: () => state.conceptInputState.text = "Hello",
