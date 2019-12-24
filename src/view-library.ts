@@ -1,4 +1,4 @@
-import { isRef, isReactive, effect } from "@vue/reactivity"
+import { Ref, isRef, isReactive, effect } from "@vue/reactivity"
 
 const printMutations = true
 
@@ -45,32 +45,21 @@ function withDOMUpdates(stateUpdate: Function): Function {
     }
 }
 
-type SubRecord<Keys extends keyof Element, Element> = { [K in Keys]: Element[K] }
+type SubRecord<Keys extends keyof Element, Element> = { [K in Keys]: Element[K] | Ref<Element[K]> }
 
 // Type-safe assignment to EXISTING properties of the given object.
 function assign<AssKeys extends keyof T, T>(object: T, assignment: SubRecord<AssKeys, T>): void {
-    // If the set of properties is observable ("reactive"), then schedule their
-    // reassignment (DOM update) every time they change.
-    if (isReactive(assignment)) {
-        for (const key in assignment) {
-            scheduleEffect(() => {
-                object[(key as AssKeys)] = printMutation(assignment[key])
-            })
-        }
-    }
     // If SOME of the properties are observable (refs), then cast them to
     // their ref type and grab their actual .value
-    else {
-        for (const key in assignment) {
-            if (isRef(assignment[key])) {
-                scheduleEffect(() => {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    object[(key as AssKeys)] = printMutation((assignment[key] as any).value)
-                })
-            }
-            else {
-                object[(key as AssKeys)] = assignment[key]
-            }
+    for (const key in assignment) {
+        if (isRef(assignment[key])) {
+            scheduleEffect(() => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                object[(key as AssKeys)] = printMutation((assignment[key] as any).value)
+            })
+        }
+        else {
+            object[(key as AssKeys)] = (assignment[key] as any)
         }
     }
 }
@@ -112,15 +101,6 @@ function attachChildren(el: HTMLElement, children: HTMLElement[]): void {
     }
 }
 
-function attachTextContent(el: HTMLElement, textContent: string): void {
-    if (isRef(textContent)) {
-        scheduleEffect(() => el.textContent = printMutation((textContent as any).value))
-    }
-    else {
-        el.textContent = textContent
-    }
-}
-
 export function div<Keys extends keyof HTMLDivElement>(
     attributes: SubRecord<Keys, HTMLDivElement>,
     children: HTMLElement[],
@@ -136,28 +116,26 @@ export function box<Keys extends keyof HTMLDivElement>(
     return element("div", attributes)
 }
 
-export function p<Keys extends keyof HTMLParagraphElement>(
-    textContent: string,
-    attributes: SubRecord<Keys, HTMLParagraphElement> = {} as any,
-): HTMLParagraphElement {
-    const el = element("p", attributes)
-    attachTextContent(el, textContent)
-    return el
-}
-
 export function br<Keys extends keyof HTMLBRElement>(
     attributes: SubRecord<Keys, HTMLBRElement> = {} as any,
 ): HTMLBRElement {
     return element("br", attributes)
 }
 
+export function p<Keys extends keyof HTMLParagraphElement>(
+    textContent: string | Ref<string>,
+    attributes: SubRecord<Keys, HTMLParagraphElement> = {} as any,
+): HTMLParagraphElement {
+    Object.assign(attributes, {textContent: textContent})
+    return element("p", attributes)
+}
+
 export function button<Keys extends keyof HTMLButtonElement>(
-    textContent: string,
+    textContent: string | Ref<string>,
     attributes: SubRecord<Keys, HTMLButtonElement> = {} as any,
 ): HTMLButtonElement {
-    const el = element("button", attributes)
-    attachTextContent(el, textContent)
-    return el
+    Object.assign(attributes, {textContent: textContent})
+    return element("button", attributes)
 }
 
 type ValueChangedAttribute = {valueChanged: (newValue: string) => void}

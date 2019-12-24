@@ -1,8 +1,7 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { reactive } from "@vue/reactivity"
-import { derived, allDerived } from "./reactivity-extra"
+import { Ref, toRefs, reactive, computed } from "@vue/reactivity"
 import {div, box, p, br, button, input} from "./view-library"
 import Cycle from "json-cycle"
 
@@ -71,6 +70,7 @@ interface RuleView {
 // & deserializability, there should be no functions or methods
 // anywhere in the state.
 type State = {
+    count: string
     conceptRegistry: IDRegistry.T
     ruleRegistry: IDRegistry.T
     rules: Rule[]
@@ -83,6 +83,7 @@ type State = {
 
 function initialState(): State {
     return {
+        count: "x",
         conceptRegistry: IDRegistry.empty(),
         ruleRegistry: IDRegistry.empty(),
         rules: [],
@@ -128,23 +129,26 @@ const appView =
         div ({
             className: "database col",
         },[
+            p (toRefs(state).count),
+            button("Increment", {
+                onclick: () => (state.count += " x"),
+            }),
             box ({
                 className: "insertHere",
-                onclick: () => newRule(0), // onclick: true   WORKS WHEN WE ADD DRAGGABLE PROP
-                //draggable: true,
+                onclick: () => newRule(0),
             }),
+            br (),
+            p ("Create a new concept:"),
+            input ({
+                autocomplete: "nope",
+                value: toRefs(state.conceptInputState).text,
+                valueChanged: v => state.conceptInputState.text = v,
+            }),
+            button("Set to Hello", {
+                onclick: () => state.conceptInputState.text = "Hello",
+            }),
+            p (toRefs(state.conceptInputState).text),
         ]),
-        br (),
-        p ("Create a new concept:"),
-        input ({
-            autocomplete: "nope",
-            value: derived(() => state.conceptInputState.text),
-            valueChanged: v => state.conceptInputState.text = v,
-        }),
-        button("Set to Hello", {
-            onclick: () => state.conceptInputState.text = "Hello",
-        }),
-        p (derived(() => state.conceptInputState.text)),
     ])
 
 document.body.append(appView)
