@@ -87,7 +87,7 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
             const newLeafNode: FuzzyDictLeaf<Value> = {
                 prefix: disagreedSuffixKey,
                 type: "Leaf",
-                value: value
+                value: value,
             }
             // Update existing node
             child.prefix = disagreedSuffixTree
@@ -95,7 +95,7 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
             const newInteriorNode: FuzzyDictInterior<Value> = {
                 prefix: agreedPrefix,
                 type: "Interior",
-                next: [newLeafNode, child]
+                next: [newLeafNode, child],
             }
             children[childIndex] = newInteriorNode
             // Job done

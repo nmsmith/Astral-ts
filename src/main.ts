@@ -1,7 +1,8 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { Ref, toRefs, reactive, computed } from "@vue/reactivity"
+import { ref, Ref, toRefs, isRef, reactive as observable, computed as derived, effect } from "@vue/reactivity"
+import { $if, $for } from "./reactivity-extra"
 import {div, box, p, br, button, input} from "./view-library"
 import Cycle from "json-cycle"
 
@@ -58,8 +59,8 @@ function link(subject: ConceptRef, relation: ConceptRef, object: ConceptRef): Li
 interface Rule {
     //idRegistry: IDRegistry<VarID>  for local variables
     id: number
-    head?: Link
-    body: Link[]
+    head: string //head?: Link
+    body: string //Link[]
 }
 
 interface RuleView {
@@ -70,7 +71,9 @@ interface RuleView {
 // & deserializability, there should be no functions or methods
 // anywhere in the state.
 type State = {
-    count: string
+    count: number
+    count2: number
+    count3: number
     conceptRegistry: IDRegistry.T
     ruleRegistry: IDRegistry.T
     rules: Rule[]
@@ -83,7 +86,9 @@ type State = {
 
 function initialState(): State {
     return {
-        count: "x",
+        count: 0,
+        count2: 0,
+        count3: 0,
         conceptRegistry: IDRegistry.empty(),
         ruleRegistry: IDRegistry.empty(),
         rules: [],
@@ -95,7 +100,7 @@ function initialState(): State {
     }
 }
 
-const state = reactive(initialState())
+const state = observable(initialState())
 
 function saveState(): void {
     // TODO: Have data auto-save periodically (every 10 sec?)
@@ -112,7 +117,21 @@ if (saveAndRestoreAutomatically) window.addEventListener("beforeunload", saveSta
 
 function newRule(i: number): void {
     const id = IDRegistry.newID(state.ruleRegistry, state.conceptInputState.text)
-    state.rules.insert(i, {id: id, body: []})
+    //state.rules.insert(i, {id: id, body: []})
+    state.rules.insert(i, {id: id, head: id.toString(), body: ""})
+}
+
+// const x = cached(()=>{
+//     console.log(`Count: ${state.count}`)
+//     const y = cached(() => console.log(`Count2: ${state.count2}`))
+//     effect(() => console.log(`Inner recomputed... ${y.value}`))
+//     return 1
+// })
+// effect(() => console.log(`Outer recomputed... ${x.value}`))
+
+function log<T>(x: T): T {
+    console.log("executed")
+    return x
 }
 
 const appView =
@@ -127,23 +146,73 @@ const appView =
             }),
         ]),
         div ({
-            className: "database col",
+            className: "database",
         },[
-            p (toRefs(state).count),
-            button("Increment", {
-                onclick: () => (state.count += " x"),
+            button ("Increment", {
+                onclick: () => ++state.count,
             }),
+            $if (() => state.count >= 3, {
+                $then: [ p ("Count reached!") ],
+                $else: [ p (derived(() => `Current count: ${state.count}`)) ],
+            }),
+            button ("Increment", {
+                onclick: () => ++state.count2,
+            }),
+            derived (() => {
+                if (state.count2 >= 3) {
+                    return [p("Count reached!")]
+                }
+                else {
+                    return []
+                }
+            }),
+            button ("Increment", {
+                onclick: () => ++state.count3,
+            }),
+            derived (() => {
+                if (state.count3 >= 3) {
+                    // TODO: I need to make this a keyed list somehow,
+                    // to avoid unnecessary DOM tree mutations when count
+                    // reaches 4, 5, 6... etc.
+                    return [p("Count reached!")]
+                }
+                else {
+                    return []
+                }
+            }),
+            br (),
+            br (),
+            // Real stuff begins here
             box ({
                 className: "insertHere",
                 onclick: () => newRule(0),
             }),
+            $for (toRefs(state).rules, (rule, index) => [
+                div({
+                    className: "row",
+                },[
+                    input({
+                        autocomplete: "nope",
+                        value: toRefs(rule).head,
+                    }),
+                    p("if"),
+                    input({
+                        autocomplete: "nope",
+                        value: toRefs(rule).body,
+                    }),
+                ]),
+                box({
+                    className: "insertHere",
+                    onclick: () => newRule(index+1),
+                }),
+            ]),
             br (),
             p ("Create a new concept:"),
             input ({
                 autocomplete: "nope",
                 value: toRefs(state.conceptInputState).text,
             }),
-            button("Set to Hello", {
+            button ("Set to Hello", {
                 onclick: () => state.conceptInputState.text = "Hello",
             }),
             p (toRefs(state.conceptInputState).text),
