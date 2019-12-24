@@ -1,43 +1,42 @@
 import { Ref, isRef, isReactive, effect } from "@vue/reactivity"
 
-const printMutations = true
+const printDOMUpdates = true
 
-function printMutation<T>(value: T): T {
-    if (printMutations) {
-        console.log("Reassigned value:")
+function printDOMUpdate<T>(value: T): T {
+    if (printDOMUpdates) {
+        console.log("Updated DOM value to:")
         console.log(value)
     }
     return value
 }
 
-// Keep a queue of all the effects that need running.
-// TODO: Associate each unique effect with some kind of key so that we don't
-// run the same effect several times (i.e. diff the same subtree several times).
+// Keep a queue of all the DOM updates that need to happen.
+// TODO: Associate each update with some kind of key so that we don't
+// run the same update several times.
 const domUpdates: Function[] = []
 
-// eslint-disable-next-line prefer-const
-let scheduleDOMUpdates = true
-
-// export function pauseDOMUpdates(): void {
-//     scheduleDOMUpdates = false
-// }
-
-// export function resumeDOMUpdates(): void {
-//     scheduleDOMUpdates = true
-// }
-
-function scheduleEffect(node: () => void): void {
-    // Create an effect that (by default) runs immediately, and registers any state that it
-    // accesses as a dependency.
-    // By default, the effect will be re-executed every time the value of a dependency changes.
-    // If a scheduler is provided, the effect will instead invoke the scheduler whenever
-    // the value of a dependency changes. The scheduler can then decide when to run the effect.
-    effect(node, {scheduler: job => { if (scheduleDOMUpdates) domUpdates.push(job) }}) 
+function scheduleDOMUpdate(node: () => void): void {
+    // Create an effect that (by default) runs immediately, and registers
+    // any state that it accesses as a dependency.
+    // By default, the effect will be re-executed every time the value of a
+    // dependency changes. If a scheduler is provided, the effect will instead
+    // invoke the scheduler whenever the value of a dependency changes. The
+    // scheduler can then decide when/whether to run the effect.
+    effect(node, {scheduler: job => {
+        domUpdates.push(job)
+    }}) 
 }
+
+function scheduleDOMUpdateConditional(shouldSchedule: {value: boolean}, node: () => void): void {
+    effect(node, {scheduler: job => {
+        if (shouldSchedule.value) domUpdates.push(job)
+    }}) 
+}
+
 // Update the DOM after executing the given state update function.
 // Updating the DOM synchronously prevents any race condition where (e.g.)
 // the user can click a button to alter some state that no longer exists.
-function withDOMUpdates(stateUpdate: Function): Function {
+function thenUpdateDOM(stateUpdate: Function): Function {
     return (...args: any[]): void => {
         stateUpdate(...args)
         domUpdates.forEach(f => f())
@@ -45,39 +44,62 @@ function withDOMUpdates(stateUpdate: Function): Function {
     }
 }
 
-type SubRecord<Keys extends keyof Element, Element> = { [K in Keys]: Element[K] | Ref<Element[K]> }
+type SubRecord<Keys extends keyof Element, Element> =
+    { [K in Keys]: Element[K] }
 
-// Type-safe assignment to EXISTING properties of the given object.
-function assign<AssKeys extends keyof T, T>(object: T, assignment: SubRecord<AssKeys, T>): void {
-    // If SOME of the properties are observable (refs), then cast them to
-    // their ref type and grab their actual .value
+type SubRecordWithRefs<Keys extends keyof Element, Element> =
+    { [K in Keys]: Element[K] | Ref<Element[K]> }
+
+// Type-safe assignment to EXISTING properties of the given object
+function assignProps<AssKeys extends keyof T, T>(
+    object: T,
+    assignment: SubRecord<AssKeys, T>,
+): void {
+    for (const key in assignment) {
+        object[key] = assignment[key]
+    }
+}
+
+// Assign props and attach listeners to re-assign props whose values are refs
+function assignPropsWithListeners<AssKeys extends keyof T, T>(
+    object: T,
+    assignment: SubRecordWithRefs<AssKeys, T>,
+): void {
     for (const key in assignment) {
         if (isRef(assignment[key])) {
-            scheduleEffect(() => {
+            scheduleDOMUpdate(() => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                object[(key as AssKeys)] = printMutation((assignment[key] as any).value)
+                object[(key as AssKeys)] = printDOMUpdate((assignment[key] as any).value)
             })
         }
         else {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             object[(key as AssKeys)] = (assignment[key] as any)
         }
     }
 }
 
-export function element<Keys extends keyof Element, Element extends HTMLElement>(
-    name: string,
-    attributes: SubRecord<Keys, Element>,
-): Element {
-    const el = document.createElement(name) as Element
-    // Ensure that DOM events trigger DOM updates after running
+// Ensures that DOM events trigger DOM updates after running
+export function wrapEventHandlers<Keys extends keyof Element, Element extends HTMLElement>(
+    attributes: SubRecordWithRefs<Keys, Element>
+): void {
     for (const key in attributes) {
         if (key.startsWith("on")) {
             // Unsafe: we're presuming all keys starting with "on" have a value of function type
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            attributes[key] = withDOMUpdates(attributes[key] as any) as any
+            attributes[key] = thenUpdateDOM(attributes[key] as any) as any
         }
     }
-    assign(el, attributes)
+}
+
+// Create a HTML element with the given name and attributes. 
+export function element<Keys extends keyof Element, Element extends HTMLElement>(
+    name: string,
+    attributes: SubRecordWithRefs<Keys, Element>,
+): Element {
+    const el = document.createElement(name) as Element
+    wrapEventHandlers(attributes)
+    assignPropsWithListeners(el, attributes)
     return el
 }
 
@@ -85,7 +107,7 @@ export function element<Keys extends keyof Element, Element extends HTMLElement>
 // TODO: Create a non-reactive (static) version of each of the DOM node constructors?
 function attachChildren(el: HTMLElement, children: HTMLElement[]): void {
     if (isReactive(children)) {
-        scheduleEffect(() => {
+        scheduleDOMUpdate(() => {
             while(el.firstChild !== null) {
                 el.removeChild(el.firstChild)
             }
@@ -102,7 +124,7 @@ function attachChildren(el: HTMLElement, children: HTMLElement[]): void {
 }
 
 export function div<Keys extends keyof HTMLDivElement>(
-    attributes: SubRecord<Keys, HTMLDivElement>,
+    attributes: SubRecordWithRefs<Keys, HTMLDivElement>,
     children: HTMLElement[],
 ): HTMLDivElement {
     const el = element("div", attributes)
@@ -111,20 +133,20 @@ export function div<Keys extends keyof HTMLDivElement>(
 }
 
 export function box<Keys extends keyof HTMLDivElement>(
-    attributes: SubRecord<Keys, HTMLDivElement>,
+    attributes: SubRecordWithRefs<Keys, HTMLDivElement>,
 ): HTMLDivElement {
     return element("div", attributes)
 }
 
 export function br<Keys extends keyof HTMLBRElement>(
-    attributes: SubRecord<Keys, HTMLBRElement> = {} as any,
+    attributes: SubRecordWithRefs<Keys, HTMLBRElement> = {} as any,
 ): HTMLBRElement {
     return element("br", attributes)
 }
 
 export function p<Keys extends keyof HTMLParagraphElement>(
     textContent: string | Ref<string>,
-    attributes: SubRecord<Keys, HTMLParagraphElement> = {} as any,
+    attributes: SubRecordWithRefs<Keys, HTMLParagraphElement> = {} as any,
 ): HTMLParagraphElement {
     Object.assign(attributes, {textContent: textContent})
     return element("p", attributes)
@@ -132,25 +154,53 @@ export function p<Keys extends keyof HTMLParagraphElement>(
 
 export function button<Keys extends keyof HTMLButtonElement>(
     textContent: string | Ref<string>,
-    attributes: SubRecord<Keys, HTMLButtonElement> = {} as any,
+    attributes: SubRecordWithRefs<Keys, HTMLButtonElement> = {} as any,
 ): HTMLButtonElement {
     Object.assign(attributes, {textContent: textContent})
     return element("button", attributes)
 }
 
 export function input<Keys extends keyof HTMLInputElement>(
-    attributes: SubRecord<Keys, HTMLInputElement> = {} as any,
-): HTMLInputElement {
-    const valueAttr = (attributes as SubRecord<Keys | "value", HTMLInputElement>).value
-    // If the "value" attribute exists and is a Ref, then set up two-way binding
-    if (isRef(valueAttr)) {
-        Object.assign(attributes, {oninput: (event: Event) => {
-            //event.stopPropagation() // Unnecessary. Will never be caught by mistake by another input.
-            (valueAttr as any).value = (event.target as HTMLInputElement).value
+    attributes: SubRecordWithRefs<Keys, HTMLInputElement> = {} as any,
+): HTMLInputElement { 
+    // Don't call the element() function; we need something more custom
+    const el = document.createElement("input") as HTMLInputElement
+
+    const attrsWithValue =
+        attributes as SubRecordWithRefs<Keys | "value", HTMLInputElement>
+    const valueRef: string | Ref<string> | undefined =
+        attrsWithValue.value
+    // If the "value" attribute exists and is a Ref, then set up two-way binding.
+    if (valueRef !== undefined && typeof valueRef !== "string") {
+        // Can switch off DOM update when the input is mutating its own binding
+        const mutateThisInput = {value: true}
+        // Set up watcher
+        scheduleDOMUpdateConditional(mutateThisInput, () => {
+            el.value = printDOMUpdate(valueRef.value)
+        })
+        // Remove "value" from list of attributes so it doesn't get assigned later
+        delete (attrsWithValue as any).value
+        // Update the "value" attribute whenever the input is changed
+        const attributesIncludingOnInput =
+            attributes as SubRecordWithRefs<Keys | "oninput", HTMLInputElement>
+        const oninput = attributesIncludingOnInput.oninput
+        assignProps(attributesIncludingOnInput, {oninput: function (event: Event) {
+            mutateThisInput.value = false
+            valueRef.value = (event.target as HTMLInputElement).value
+            mutateThisInput.value = true
+            // Call the original oninput attribute that was provided (if any)
+            if (oninput !== undefined && oninput !== null) {
+                if (typeof oninput === "function") {
+                    oninput.call(this, event)
+                }
+                else if (oninput.value !== null) {
+                    oninput.value.call(this, event)
+                }
+            }
         }})
-        return element("input", attributes)
     }
-    else {
-        return element("input", attributes)
-    }
+
+    wrapEventHandlers(attributes)
+    assignPropsWithListeners(el, attributes)
+    return el
 }
