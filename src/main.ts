@@ -1,9 +1,8 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { toRefs, reactive as observable, computed as derived } from "@vue/reactivity"
-import { $if, $for } from "./reactivity-extra"
-import {app, div, box, p, br, button, input} from "./view-library"
+import { toRefs, reactive as observable, computed, ComputedRef } from "@vue/reactivity"
+import {$derived, $if, $for, app, div, box, p, br, button, input} from "./view-library"
 import Cycle from "json-cycle"
 import { merge } from "lodash"
 
@@ -137,17 +136,19 @@ function newRule(i: number): void {
     state.rules.insert(i, {id: id, head: id.toString(), body: ""})
 }
 
-const searchMatches = derived(() => {
-    const text = state.conceptInputState.text
-    const errorTolerance = (text.length <= 1) ? 0 : 1
-    const searchResults = IDRegistry.getMatchesForPrefix(state.conceptRegistry, text, errorTolerance)
-    searchResults.sort((a, b) => a.distance - b.distance)
-    return searchResults
-})
+const searchMatches: ComputedRef<IDRegistry.SearchResult[]> =
+    computed(() => {
+        const text = state.conceptInputState.text
+        const errorTolerance = (text.length <= 1) ? 0 : 1
+        const searchResults = IDRegistry.getMatchesForPrefix(state.conceptRegistry, text, errorTolerance)
+        searchResults.sort((a, b) => a.distance - b.distance)
+        return searchResults
+    })
 
-const textForSearchMatches = derived((): string[] => {
-    return searchMatches.value.map(match => `${match.key} [${match.value}]`)
-})
+const textForSearchMatches: ComputedRef<string[]> =
+    computed((): string[] => {
+        return searchMatches.value.map(match => `${match.key} [${match.value}]`)
+    })
 
 function selectPrevious(): void {
     if (state.conceptInputState.selection > 0) {
@@ -187,8 +188,8 @@ app("app",
                 onclick: () => ++state.count,
             }),
             $if (() => state.count >= 3, {
-                $then: () => [ p ("Count reached!") ],
-                $else: () => [ p (derived(() => `Current count: ${state.count}`)) ],
+                _then: () => [ p ("Count reached!") ],
+                _else: () => [ p ($derived(() => `Current count: ${state.count}`)) ],
             }),
             br (),
             br (),
@@ -231,8 +232,8 @@ app("app",
                 p(text, {
                     className:
                         $if (() => index === state.conceptInputState.selection, {
-                            $then: () => "suggestionBox highlighted",
-                            $else: () => "suggestionBox",
+                            _then: () => "suggestionBox highlighted",
+                            _else: () => "suggestionBox",
                         }),
                 }),
             ]),
