@@ -29,9 +29,11 @@
         "webpack-dev-server": "^3.9.0"
     },
     "dependencies": {
+        "@types/lodash": "^4.14.149",
         "@vue/composition-api": "^0.3.4",
         "@vue/reactivity": "^3.0.0-alpha.0",
         "json-cycle": "^1.3.0",
+        "lodash.merge": "^4.6.2",
         "vue": "^2.6.11"
     }
 }

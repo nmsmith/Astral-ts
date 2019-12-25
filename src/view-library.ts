@@ -164,7 +164,6 @@ type HTMLChildren =
     (HTMLElement | Ref<HTMLElement[]>)[] // | ComputedElements[] | Ref<ComputedElements[]>)[]
 
 // TODO: Figure out how to properly move children around when the array changes.
-// TODO: Create a non-reactive (static) version of each of the DOM node constructors?
 function attachChildren(el: HTMLElement, children: HTMLChildren): void {
     for (const childGroup of children) {
         if (isRef(childGroup)) {

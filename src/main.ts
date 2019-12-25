@@ -1,10 +1,11 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { ref, Ref, toRefs, isRef, reactive as observable, computed as derived, effect } from "@vue/reactivity"
+import { toRefs, reactive as observable, computed as derived } from "@vue/reactivity"
 import { $if, $for } from "./reactivity-extra"
 import {app, div, box, p, br, button, input} from "./view-library"
 import Cycle from "json-cycle"
+import { merge } from "lodash"
 
 import * as IDRegistry from "./id-registry"
 
@@ -100,38 +101,40 @@ function initialState(): State {
     }
 }
 
+// Set up fresh state
 const state = observable(initialState())
+
+// Load previous state, if applicable
+if (   localStorage.loadLastState === "true"
+    && localStorage.state !== undefined
+    && localStorage.state !== "undefined"
+) {
+    // Deeply replace each property of the state with those loaded from storage.
+    // Note: if we need to customize the merging behaviour then Lodash also has a "mergeWith" fn.
+    merge(state, Cycle.retrocycle(JSON.parse(localStorage.state)))
+}
+
+// Expose a reference to the state for debugging
+console.log(state)
 
 function saveState(): void {
     // TODO: Have data auto-save periodically (every 10 sec?)
     localStorage.state = JSON.stringify(Cycle.decycle(state))
 }
+
 function resetState(): void {
-    // Assign each property value of initialState to the current state.
-    Object.assign(state, initialState())
+    localStorage.loadLastState = false
+    location.reload()
 }
 
-const saveAndRestoreAutomatically = true
-
-if (saveAndRestoreAutomatically) window.addEventListener("beforeunload", saveState)
+// Save on quit, and load on start
+window.addEventListener("beforeunload", saveState)
+localStorage.loadLastState = true
 
 function newRule(i: number): void {
     const id = IDRegistry.newID(state.ruleRegistry, state.conceptInputState.text)
     //state.rules.insert(i, {id: id, body: []})
     state.rules.insert(i, {id: id, head: id.toString(), body: ""})
-}
-
-// const x = cached(()=>{
-//     console.log(`Count: ${state.count}`)
-//     const y = cached(() => console.log(`Count2: ${state.count2}`))
-//     effect(() => console.log(`Inner recomputed... ${y.value}`))
-//     return 1
-// })
-// effect(() => console.log(`Outer recomputed... ${x.value}`))
-
-function log<T>(x: T): T {
-    console.log("executed")
-    return x
 }
 
 app("app",
