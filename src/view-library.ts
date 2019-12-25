@@ -135,17 +135,19 @@ export function app(rootNodeID: string, appHTML: HTMLElement): void {
     }
     else {
         rootNode.replaceWith(appHTML)
-        const observer = new MutationObserver(function (mutations: MutationRecord[]) {
-            mutations.forEach(mutation => {
-                mutation.removedNodes.forEach(node => {
-                    if ((node as any).$effect !== undefined) {
-                        console.log(`Stopping effects for node: ${node.textContent}`)
-                        stop((node as any).$effect)
-                    }
-                })
-            })
-        })
-        observer.observe(appHTML, {childList: true, subtree: true})
+        // TODO: This observer is stopping effects for suggestion boxes nodes
+        // which are STILL ATTACHED to the DOM!
+        // const observer = new MutationObserver(function (mutations: MutationRecord[]) {
+        //     mutations.forEach(mutation => {
+        //         mutation.removedNodes.forEach(node => {
+        //             if ((node as any).$effect !== undefined) {
+        //                 console.log(`Stopping effects for node: ${node.textContent}`)
+        //                 stop((node as any).$effect)
+        //             }
+        //         })
+        //     })
+        // })
+        // observer.observe(appHTML, {childList: true, subtree: true})
     }
 }
 

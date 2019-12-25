@@ -137,6 +137,38 @@ function newRule(i: number): void {
     state.rules.insert(i, {id: id, head: id.toString(), body: ""})
 }
 
+const searchMatches = derived(() => {
+    const text = state.conceptInputState.text
+    const errorTolerance = (text.length <= 1) ? 0 : 1
+    const searchResults = IDRegistry.getMatchesForPrefix(state.conceptRegistry, text, errorTolerance)
+    searchResults.sort((a, b) => a.distance - b.distance)
+    return searchResults
+})
+
+const textForSearchMatches = derived((): string[] => {
+    return searchMatches.value.map(match => `${match.key} [${match.value}]`)
+})
+
+function selectPrevious(): void {
+    if (state.conceptInputState.selection > 0) {
+        --state.conceptInputState.selection
+    }
+}
+
+function selectNext(): void {
+    if (state.conceptInputState.selection < searchMatches.value.length - 1) {
+        ++state.conceptInputState.selection
+    }
+}
+
+function createConcept(): void {
+    if (state.conceptInputState.text.length > 0) {
+        IDRegistry.newID(state.conceptRegistry, state.conceptInputState.text)
+        state.conceptInputState.text = ""
+        state.conceptInputState.selection = 0
+    }
+}
+
 app("app",
     div ({
         className: "matchParentSize col",
@@ -189,11 +221,21 @@ app("app",
             input ({
                 autocomplete: "nope",
                 value: toRefs(state.conceptInputState).text,
+                onkeydown: (e: KeyboardEvent) => {
+                    if (e.key === "ArrowDown") selectNext()
+                    else if (e.key === "ArrowUp") selectPrevious()
+                    else if (e.key === "Enter") createConcept()
+                },
             }),
-            button ("Set to Hello", {
-                onclick: () => state.conceptInputState.text = "Hello",
-            }),
-            p (toRefs(state.conceptInputState).text),
+            $for (textForSearchMatches, (text: string, index) => [
+                p(text, {
+                    className:
+                        $if (() => index === state.conceptInputState.selection, {
+                            $then: () => "suggestionBox highlighted",
+                            $else: () => "suggestionBox",
+                        }),
+                }),
+            ]),
         ]),
     ])
 )
