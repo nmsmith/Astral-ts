@@ -170,6 +170,12 @@ function createConcept(): void {
     }
 }
 
+
+
+// ----- THE APP VIEW -----
+// WARNING: I shouldn't be using computed() anywhere in the view.
+// If I need derived view state, use $derived() instead.
+
 app("app",
     div ({
         className: "matchParentSize col",
@@ -198,7 +204,7 @@ app("app",
                 className: "insertHere",
                 onclick: () => newRule(0),
             }),
-            $for (toRefs(state).rules, (rule, index) => [
+            $for (state.rules, (rule, index) => [
                 div({
                     className: "row",
                 },[

@@ -41,7 +41,7 @@ export function $if<T>(
 }
 
 export function $for<T, R>(
-    items: Ref<T[]>,
+    items: T[] | Ref<T[]>,
     f: (item: T, index: number) => R[],
 ): DerivedViewState<R[]> {
     return markAsDVS(computedFor(items, f))

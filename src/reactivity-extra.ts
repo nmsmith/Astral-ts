@@ -1,4 +1,4 @@
-import { ref, Ref, ComputedRef, computed, effect } from "@vue/reactivity"
+import { ref, Ref, isRef, ComputedRef, effect } from "@vue/reactivity"
 
 // Reactive if-expression. Constructs a ComputedRef whose value is always equal to
 // the value of the branch given by the latest value of the condition. Note that
@@ -33,20 +33,30 @@ export function computedIf<T>(
 
 // Reactive for-loop for iteratively constructing a sequence of values.
 // Emulates Vue's v-for directive.
+// Accepts either a reactive/observable array, or a Ref to an array.
 export function computedFor<T, R>(
-    items: Ref<T[]>,
+    items: T[] | Ref<T[]>,
     f: (item: T, index: number) => R[],
 ): ComputedRef<R[]> {
     // We have to initialize this as undefined, but it will get
     // assigned a value immediately when the effect runs.
     const result: Ref<R[] | undefined> = ref(undefined)
-    ;(result as any).effect = effect(() => {
-        console.log("TRIGGERED: $for")
-        const array: R[] = []
-        items.value.forEach((item, i) => {
-            array.push(...f(item as T, i))
+    ;(result as any).effect = isRef(items)
+        ? effect(() => {
+            console.log("TRIGGERED: $for")
+            const array: R[] = []
+            items.value.forEach((item, i) => {
+                array.push(...f(item as T, i))
+            })
+            result.value = array
         })
-        result.value = array
-    })
+        : effect(() => {
+            console.log("TRIGGERED: $for")
+            const array: R[] = []
+            items.forEach((item, i) => {
+                array.push(...f(item as T, i))
+            })
+            result.value = array
+        })
     return (result as ComputedRef<R[]>)
 }
