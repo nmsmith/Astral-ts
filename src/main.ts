@@ -3,7 +3,7 @@ import "./style.scss"
 import "./globals"
 import { ref, Ref, toRefs, isRef, reactive as observable, computed as derived, effect } from "@vue/reactivity"
 import { $if, $for } from "./reactivity-extra"
-import {div, box, p, br, button, input} from "./view-library"
+import {app, div, box, p, br, button, input} from "./view-library"
 import Cycle from "json-cycle"
 
 import * as IDRegistry from "./id-registry"
@@ -134,7 +134,7 @@ function log<T>(x: T): T {
     return x
 }
 
-const appView =
+app("app",
     div ({
         className: "matchParentSize col",
     },[
@@ -152,33 +152,8 @@ const appView =
                 onclick: () => ++state.count,
             }),
             $if (() => state.count >= 3, {
-                $then: [ p ("Count reached!") ],
-                $else: [ p (derived(() => `Current count: ${state.count}`)) ],
-            }),
-            button ("Increment", {
-                onclick: () => ++state.count2,
-            }),
-            derived (() => {
-                if (state.count2 >= 3) {
-                    return [p("Count reached!")]
-                }
-                else {
-                    return []
-                }
-            }),
-            button ("Increment", {
-                onclick: () => ++state.count3,
-            }),
-            derived (() => {
-                if (state.count3 >= 3) {
-                    // TODO: I need to make this a keyed list somehow,
-                    // to avoid unnecessary DOM tree mutations when count
-                    // reaches 4, 5, 6... etc.
-                    return [p("Count reached!")]
-                }
-                else {
-                    return []
-                }
+                $then: () => [ p ("Count reached!") ],
+                $else: () => [ p (derived(() => `Current count: ${state.count}`)) ],
             }),
             br (),
             br (),
@@ -218,7 +193,5 @@ const appView =
             p (toRefs(state.conceptInputState).text),
         ]),
     ])
-
-document.body.append(appView)
-
+)
 

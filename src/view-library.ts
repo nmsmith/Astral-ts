@@ -1,4 +1,4 @@
-import { Ref, isRef, isReactive, effect } from "@vue/reactivity"
+import { Ref, isRef, isReactive, effect, ReactiveEffect, stop } from "@vue/reactivity"
 
 // The below function can be used to construct a proposed sequence of child elements
 // without physically constructing the DOM nodes. Instead, the sequence is
@@ -38,8 +38,7 @@ const printDOMUpdates = true
 
 function printDOMUpdate<T>(value: T): T {
     if (printDOMUpdates) {
-        console.log("Updated DOM value to:")
-        console.log(value)
+        console.log(`Updated DOM value: { ${value} }`)
     }
     return value
 }
@@ -49,21 +48,23 @@ function printDOMUpdate<T>(value: T): T {
 // run the same update several times.
 const domUpdates: Function[] = []
 
-function scheduleDOMUpdate(node: () => void): void {
+function scheduleDOMUpdate(update: () => void): ReactiveEffect<void> {
     // Create an effect that (by default) runs immediately, and registers
     // any state that it accesses as a dependency.
     // By default, the effect will be re-executed every time the value of a
     // dependency changes. If a scheduler is provided, the effect will instead
     // invoke the scheduler whenever the value of a dependency changes. The
     // scheduler can then decide when/whether to run the effect.
-    effect(node, {scheduler: job => {
-        if (printDOMUpdates) console.log("Scheduling DOM update")
+    return effect(update, {scheduler: job => {
+        //if (printDOMUpdates) console.log("Scheduling DOM update")
         domUpdates.push(job)
     }}) 
 }
 
-function scheduleDOMUpdateConditional(shouldSchedule: {value: boolean}, node: () => void): void {
-    effect(node, {scheduler: job => {
+function scheduleDOMUpdateConditional(
+    shouldSchedule: {value: boolean}, node: () => void
+): ReactiveEffect<void> {
+    return effect(node, {scheduler: job => {
         if (shouldSchedule.value) domUpdates.push(job)
     }}) 
 }
@@ -97,19 +98,18 @@ function assignProps<AssKeys extends keyof T, T>(
 
 // Assign props and attach listeners to re-assign props whose values are refs
 function assignPropsWithListeners<AssKeys extends keyof T, T>(
-    object: T,
+    el: T,
     assignment: SubRecordWithRefs<AssKeys, T>,
 ): void {
     for (const key in assignment) {
         if (isRef(assignment[key])) {
-            scheduleDOMUpdate(() => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                object[(key as AssKeys)] = printDOMUpdate((assignment[key] as any).value)
-            })
+            (el as any).$effect =
+                scheduleDOMUpdate(() => {
+                    el[(key as AssKeys)] = printDOMUpdate((assignment[key] as any).value)
+                })
         }
         else {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            object[(key as AssKeys)] = (assignment[key] as any)
+            el[(key as AssKeys)] = (assignment[key] as any)
         }
     }
 }
@@ -121,9 +121,31 @@ export function wrapEventHandlers<Keys extends keyof Element, Element extends HT
     for (const key in attributes) {
         if (key.startsWith("on")) {
             // Unsafe: we're presuming all keys starting with "on" have a value of function type
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             attributes[key] = thenUpdateDOM(attributes[key] as any) as any
         }
+    }
+}
+
+/// Find the node with the given ID and replace it with the app's HTML.
+/// Also organises clean-up code.
+export function app(rootNodeID: string, appHTML: HTMLElement): void {
+    const rootNode = document.getElementById(rootNodeID)
+    if (rootNode === null) {
+        console.error(`Unable to find app root node with ID: ${rootNodeID}`)
+    }
+    else {
+        rootNode.replaceWith(appHTML)
+        const observer = new MutationObserver(function (mutations: MutationRecord[]) {
+            mutations.forEach(mutation => {
+                mutation.removedNodes.forEach(node => {
+                    if ((node as any).$effect !== undefined) {
+                        console.log(`Stopping effects for node: ${node.textContent}`)
+                        stop((node as any).$effect)
+                    }
+                })
+            })
+        })
+        observer.observe(appHTML, {childList: true, subtree: true})
     }
 }
 
@@ -154,22 +176,23 @@ function attachChildren(el: HTMLElement, children: HTMLChildren): void {
             el.appendChild(markerChild)
             // Stores children that are already in the DOM tree,
             // so that we can remove them when the ref is updated.
-            const existingChildren: HTMLElement[] = []
-            scheduleDOMUpdate(() => {
-                printDOMUpdate("Children replaced")
-                for (const child of existingChildren) {
-                    el.removeChild(child)
-                }
-                existingChildren.length = 0
-                // Create a sequence of nodes to add
-                const newChildren = document.createDocumentFragment()
-                for (const child of childGroup.value) {
-                    newChildren.appendChild(child as HTMLElement)
-                    existingChildren.push(child as HTMLElement)
-                }
-                // Add the nodes to the DOM
-                el.insertBefore(newChildren, markerChild)
-            })
+            const existingChildren: HTMLElement[] = [];
+            (el as any).$effect =
+                scheduleDOMUpdate(() => {
+                    printDOMUpdate("children replaced")
+                    for (const child of existingChildren) {
+                        el.removeChild(child)
+                    }
+                    existingChildren.length = 0
+                    // Create a sequence of nodes to add
+                    const newChildren = document.createDocumentFragment()
+                    for (const child of childGroup.value) {
+                        newChildren.appendChild(child as HTMLElement)
+                        existingChildren.push(child as HTMLElement)
+                    }
+                    // Add the nodes to the DOM
+                    el.insertBefore(newChildren, markerChild)
+                })
         }
         // We have a non-reactive (static) element
         else {
@@ -230,11 +253,12 @@ export function input<Keys extends keyof HTMLInputElement>(
     // If the "value" attribute exists and is a Ref, then set up two-way binding.
     if (valueRef !== undefined && typeof valueRef !== "string") {
         // Can switch off DOM update when the input is mutating its own binding
-        const mutateThisInput = {value: true}
+        const mutateThisInput = {value: true};
         // Set up watcher
-        scheduleDOMUpdateConditional(mutateThisInput, () => {
-            el.value = printDOMUpdate(valueRef.value)
-        })
+        (el as any).$effect =
+            scheduleDOMUpdateConditional(mutateThisInput, () => {
+                el.value = printDOMUpdate(valueRef.value)
+            })
         // Remove "value" from list of attributes so it doesn't get assigned later
         delete (attrsWithValue as any).value
         // Update the "value" attribute whenever the input is changed
