@@ -228,18 +228,17 @@ function attachChildren(el: WithCleanupData<HTMLElement>, children: HTMLChildren
                     for (const child of existingChildren) {
                         el.removeChild(child)
                         const childWithStuff = child as WithCleanupData<HTMLElement>
+
                         // We're removing the child, so destroy the child's own effects
                         const effects = childWithStuff.$effects
-                        if (effects !== undefined) {    
-                            effects.forEach(stop)
-                            // This marks the node as deleted so pending DOM update events don't run
-                            ;(child as any).$effects = undefined
-                        }
+                        effects.forEach(stop)
+                        // This marks the node as deleted so pending DOM update events don't run
+                        ;(child as any).$effects = undefined
+
                         // Remove the child's derivedSubtrees from the list
                         const subtrees = childWithStuff.$subtreeRefs
-                        if (subtrees !== undefined) {
-                            subtrees.forEach(ref => derivedSubtreeConstructionOrder.delete(ref))
-                        }
+                        subtrees.forEach(ref => derivedSubtreeConstructionOrder.delete(ref))
+
                         // Log the deletion of this child
                         console.log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
                     }
