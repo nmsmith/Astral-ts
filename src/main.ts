@@ -1,8 +1,8 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { toRefs, reactive as observable, computed, ComputedRef } from "@vue/reactivity"
-import {$derived, $if, $for, app, div, box, p, br, button, input} from "./view-library"
+import { toRefs, reactive as observable, computed as derivedUnmanaged, ComputedRef } from "@vue/reactivity"
+import {$derived, $if, $for, app, div, p, br, button, input} from "./view-library"
 import Cycle from "json-cycle"
 import { merge } from "lodash"
 
@@ -137,7 +137,7 @@ function newRule(i: number): void {
 }
 
 const searchMatches: ComputedRef<IDRegistry.SearchResult[]> =
-    computed(() => {
+    derivedUnmanaged(() => {
         const text = state.conceptInputState.text
         const errorTolerance = (text.length <= 1) ? 0 : 1
         const searchResults = IDRegistry.getMatchesForPrefix(state.conceptRegistry, text, errorTolerance)
@@ -146,7 +146,7 @@ const searchMatches: ComputedRef<IDRegistry.SearchResult[]> =
     })
 
 const textForSearchMatches: ComputedRef<string[]> =
-    computed((): string[] => {
+    derivedUnmanaged((): string[] => {
         return searchMatches.value.map(match => `${match.key} [${match.value}]`)
     })
 
@@ -200,25 +200,25 @@ app("app",
             br (),
             br (),
             // Real stuff begins here
-            box ({
+            div ({
                 className: "insertHere",
                 onclick: () => newRule(0),
             }),
             $for (state.rules, (rule, index) => [
-                div({
+                div ({
                     className: "row",
                 },[
-                    input({
+                    input ({
                         autocomplete: "nope",
                         value: toRefs(rule).head,
                     }),
-                    p("if"),
-                    input({
+                    p ("if"),
+                    input ({
                         autocomplete: "nope",
                         value: toRefs(rule).body,
                     }),
                 ]),
-                box({
+                div ({
                     className: "insertHere",
                     onclick: () => newRule(index+1),
                 }),
@@ -235,7 +235,7 @@ app("app",
                 },
             }),
             $for (textForSearchMatches, (text: string, index) => [
-                p(text, {
+                p (text, {
                     className:
                         $if (() => index === state.conceptInputState.selection, {
                             _then: () => "suggestionBox highlighted",

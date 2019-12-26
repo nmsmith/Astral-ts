@@ -18,13 +18,19 @@ export function computedIf<T>(
     const result: Ref<T | undefined> = ref(undefined)
     let conditionPrevious: boolean | undefined = undefined
     ;(result as any).effect = effect(() => {
-        console.log("TRIGGERED: $if")
+        console.log("IF")
         const conditionNow = condition()
         if (conditionNow === true && conditionPrevious !== true) {
+            console.log("  switched to first branch")
             result.value = _then() as any
+            
         }
         else if (conditionNow === false && conditionPrevious !== false) {
+            console.log("  switched to second branch")
             result.value = _else() as any
+        }
+        else {
+            console.log("  no change")
         }
         conditionPrevious = conditionNow
     })
@@ -43,7 +49,8 @@ export function computedFor<T, R>(
     const result: Ref<R[] | undefined> = ref(undefined)
     ;(result as any).effect = isRef(items)
         ? effect(() => {
-            console.log("TRIGGERED: $for")
+            console.log("FOR")
+            console.log("  constructed new list")
             const array: R[] = []
             items.value.forEach((item, i) => {
                 array.push(...f(item as T, i))
@@ -51,7 +58,8 @@ export function computedFor<T, R>(
             result.value = array
         })
         : effect(() => {
-            console.log("TRIGGERED: $for")
+            console.log("FOR")
+            console.log("  constructed new list")
             const array: R[] = []
             items.forEach((item, i) => {
                 array.push(...f(item as T, i))

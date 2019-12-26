@@ -1,4 +1,4 @@
-import { Ref, ComputedRef, isRef, computed, effect, ReactiveEffect, stop } from "@vue/reactivity"
+import { Ref, ComputedRef, isRef, computed, effect, ReactiveEffect, stop, ReactiveEffectOptions } from "@vue/reactivity"
 import { computedIf, computedFor } from "./reactivity-extra"
 
 /// Find the node with the given ID and replace it with the app's HTML.
@@ -49,28 +49,26 @@ export function $for<T, R>(
 
 const printDOMUpdates = true
 
-function printDOMUpdate<T>(value: T): T {
-    if (printDOMUpdates) {
-        console.log(`Updated DOM value: { ${value} }`)
-    }
-    return value
-}
-
 // Keep a set of all the DOM updates that need to happen.
 // Being a set, duplicate requests are ignored.
 const domUpdates: Set<Function> = new Set()
 
-function scheduleDOMUpdate(update: () => void): ReactiveEffect<void> {
+const domUpdateScheduler: ReactiveEffectOptions =
+    { scheduler: job => domUpdates.add(job) }
+
+function scheduleDOMUpdate(el: HTMLElement, update: () => void): ReactiveEffect<void> {
     // Create an effect that (by default) runs immediately, and registers
     // any state that it accesses as a dependency.
     // By default, the effect will be re-executed every time the value of a
     // dependency changes. If a scheduler is provided, the effect will instead
     // invoke the scheduler whenever the value of a dependency changes. The
     // scheduler can then decide when/whether to run the effect.
-    return effect(update, {scheduler: job => {
-        //if (printDOMUpdates) console.log("Scheduling DOM update")
-        domUpdates.add(job)
-    }}) 
+    return effect(() => {
+        // Don't update the node if it has just been deleted
+        if ((el as WithEffects<HTMLElement>).$effects !== undefined) {
+            update()
+        }
+    }, domUpdateScheduler) 
 }
 
 // function scheduleDOMUpdateConditional(
@@ -135,8 +133,10 @@ function assignReactiveAttributes<AssKeys extends keyof Element, Element extends
     for (const key in assignment) {
         const attrValue: ValueOrRef<any> = assignment[key]
         if (isRef(attrValue)) {
-            el.$effects.push(scheduleDOMUpdate(() => {
-                el[(key as AssKeys)] = printDOMUpdate(attrValue.value)
+            el.$effects.push(scheduleDOMUpdate(el, () => {
+                el[(key as AssKeys)] =  attrValue.value
+                console.log(`${el.nodeName} ${el.className}`)
+                console.log(`  ${key} = "${attrValue.value}"`)
             }))
             // If the attribute value is derived view state, store the effect
             // so that we can clean it up later.
@@ -170,18 +170,19 @@ function attachChildren(el: WithEffects<HTMLElement>, children: HTMLChildren): v
             // Store the effect for this derived view state so we can clean it up if/when
             // this element is removed from the DOM tree. Store the DOM update effect too.
             el.$effects.push(childGroup.effect,
-                scheduleDOMUpdate(() => {
-                    console.log(`Replacing children of ${el.nodeName}, class: ${el.className}`)
+                scheduleDOMUpdate(el, () => {
+                    console.log(`|START| Updating children of ${el.nodeName} with class "${el.className}"`)
                     for (const child of existingChildren) {
                         el.removeChild(child)
                         // We're removing the child, so destroy the child's own effects
                         const effects = (child as WithEffects<HTMLElement>).$effects
                         if (effects !== undefined && effects.length > 0) {    
                             effects.forEach(stop)
-                            console.log(`Removed and destroyed ${effects.length} effect(s) of ${child.nodeName}, text: ${child.textContent}`)
+                            ;(child as any).$effects = undefined
+                            console.log(`|     | Removed and destroyed ${effects.length} effect(s) of ${child.nodeName} with class "${child.className}" and text "${child.textContent}"`)
                         }
                         else {
-                            console.log(`Removed (had no effects) ${child.nodeName}, text: ${child.textContent}`)
+                            console.log(`|     | Removed (had no effects) ${child.nodeName} with class "${child.className}" and text "${child.textContent}"`)
                         }
                     }
                     existingChildren.length = 0
@@ -193,7 +194,7 @@ function attachChildren(el: WithEffects<HTMLElement>, children: HTMLChildren): v
                     }
                     // Add the nodes to the DOM
                     el.insertBefore(newChildren, markerChild)
-                    console.log("Children replaced.")
+                    console.log("| END |")
                 })
             )
         }
@@ -216,17 +217,11 @@ export function element<Keys extends keyof Element, Element extends HTMLElement>
 
 export function div<Keys extends keyof HTMLDivElement>(
     attributes: SubRecordWithRefs<Keys, HTMLDivElement>,
-    children: HTMLChildren,
+    children: HTMLChildren = [],
 ): HTMLDivElement {
     const el = element("div", attributes)
     attachChildren(el, children)
     return el
-}
-
-export function box<Keys extends keyof HTMLDivElement>(
-    attributes: SubRecordWithRefs<Keys, HTMLDivElement>,
-): HTMLDivElement {
-    return element("div", attributes)
 }
 
 export function br<Keys extends keyof HTMLBRElement>(
