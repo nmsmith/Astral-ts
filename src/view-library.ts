@@ -1,6 +1,8 @@
-import { Ref, ref, isRef, ComputedRef, effect, ReactiveEffect, ReactiveEffectOptions, stop } from "@vue/reactivity"
+import { Ref, ref, isRef, pauseTracking, resumeTracking, ComputedRef, effect, ReactiveEffect, ReactiveEffectOptions, stop } from "@vue/reactivity"
 
 // Styles for debug printing
+const normalStyle = ""
+const updateMsgStyle = "font-size: 120%; font-weight: bold; color: blue"
 const elementStyle = "font-weight: bold"
 const attributeStyle = "color: #7700ff"
 const textContentStyle = "color: #007700"
@@ -17,165 +19,205 @@ export function app(rootNodeID: string, appHTML: HTMLElement): void {
     }
 }
 
-// Derived view nodes (constructed via $-prefixed functions) are VIRTUAL DOM NODES
-// that produce concrete HTML (elements or attributes). They are considered owned
+// Derived attributes and doc fragments (constructed via $-prefixed functions) are
+// VIRTUAL DOM NODES that produce concrete HTML. They are considered to be owned
 // by the view, must be cleaned up when they are removed from the view.
 //
 // Currently, there are two things to clean up: the effect() that maintains the 
-// derived state (along with the corresponding effect which applies it to the DOM)
-// and the entry in updateOrder which determines the order in which 
-// the derived view state should be computed (top-down order).
-interface DerivedViewNode<T> extends WithCleanupData<unknown> {
+// derived state (along with the corresponding effect in the parent which applies
+// it to the DOM) and the entry in updateOrder which determines the order in which 
+// the derived view state should be computed.
+interface DerivedViewState<T = unknown> {
     $derived: true
     ref: Ref<T>
+    effect: ReactiveEffect
 }
 
+type DerivedAttribute<T> = DerivedViewState<T>
+
+type DerivedDocFragment = DerivedViewState<WithCleanupData<HTMLElement>[]>
+
+function isDerivedViewState(value: unknown): value is DerivedViewState {
+    return (value as DerivedViewState).$derived === true
+}
+
+// For attaching cleanup data to HTML elements
 type WithCleanupData<E> = E & {
     // Effects that need to be disabled
-    $effects: ReactiveEffect<void>[]
-    // Keys that need to be removed from updateOrder
-    $updateOrderKeys: (HTMLElement | DerivedViewNode<unknown>)[] 
-    // Derived view nodes that need their own cleanup
-    $descendentsToClean: DerivedViewNode<HTMLElement[]>[]
-}
-
-function isDerivedViewNode(value: unknown): value is DerivedViewNode<unknown> {
-    return (value as DerivedViewNode<unknown>).$derived === true
+    $ownEffects: ReactiveEffect[]
+    // Derived attributes & doc fragments that need to be cleaned up (their effect & updateOrder)
+    $derivedToClean: DerivedViewState[]
 }
 
 // ECMA Sets are iterated according to insertion order, and have sublinear insert/delete time.
-// All derived subtrees should be constructed (and registered) parent-first,
-// which is an optimal order to run the update jobs in.
-const updateOrder: Set<unknown> = new Set()
-// A map from the derived view state to its (potential) update function,
-// for each piece of view state that needs to be updated.
-const domUpdateJobs: Map<unknown, Function> = new Map()
+// We insert nodes (elements or derived nodes) into this list in the order that they are created,
+// since this reflects their natural dependencies. For example, an $if node dynamically creates
+// a document fragment.
+const updateOrder: Set<HTMLElement | DerivedViewState> = new Set()
+// A map from a node to the effects that need to be run for it.
+const domUpdateJobs: Map<HTMLElement | DerivedViewState, Set<ReactiveEffect>> = new Map()
 console.log("Watch this for memory leaks: ", updateOrder)
 
-function scheduleDOMUpdate(key: WithCleanupData<unknown>, update: () => void): ReactiveEffect<void> {
-    return effect(() => {
-        // Don't update the node if it has just been deleted
-        if (key.$effects !== undefined) {
-            update()
+function scheduleDOMUpdate(key: HTMLElement | DerivedViewState, update: () => void): ReactiveEffect {
+    return effect(update, {scheduler: eff => {
+        const existingSet = domUpdateJobs.get(key)
+        if (existingSet === undefined) {
+            const newSet = new Set() as Set<ReactiveEffect>
+            domUpdateJobs.set(key, newSet.add(eff as ReactiveEffect))
         }
-    }, {scheduler: job => domUpdateJobs.set(key, job)}) 
+        else {
+            existingSet.add(eff as ReactiveEffect)
+        }
+    }})
 }
 
 // A reactive attribute which is OWNED by the view.
 // It will be destroyed if it is ever detached from the view tree.
-export function $derived<T>(value: () => T): DerivedViewNode<T> {
-    const state: DerivedViewNode<T> = {
+export function $derived<T>(value: () => T): DerivedViewState<T> {
+    const state: {$derived: true} = {
         $derived: true,
-        ref: ref(undefined) as Ref<T>,
-        $effects: [],
-        $updateOrderKeys: [],
-        $descendentsToClean: [],
     }
-    updateOrder.add(state)
-    state.$updateOrderKeys.push(state)
+    updateOrder.add(state as DerivedViewState)
 
-    state.$effects.push(scheduleDOMUpdate(state, () => {
+    const result = ref(undefined) as Ref<T>
+    const update = scheduleDOMUpdate(state as DerivedViewState, () => {
         console.log("%cDERIVED", elementStyle)
-        state.ref.value = value() as any
-    }))
+        result.value = value() as any
+    })
 
-    return state
+    return Object.assign(state, {ref: result, effect: update})
+}
+
+// Every node that is permanently removed from the DOM must be cleaned up via this function
+function cleanUp(node: WithCleanupData<HTMLElement>): void {
+    // Double check this HTML element is one that we need to clean up
+    if (node.$ownEffects === undefined) return
+    // Remove this node from the list of registered nodes
+    updateOrder.delete(node)
+    // Destroy effects attached to the node
+    node.$ownEffects.forEach(stop)
+    // Clean up the derived view state attached to this node (attributes or children)
+    node.$derivedToClean.forEach(derived => {
+        updateOrder.delete(derived)
+        stop(derived.effect)
+    })
+    // Clean up all children currently attached
+    Array.from(node.children).forEach(node => cleanUp(node as WithCleanupData<HTMLElement>))
 }
 
 // A reactive subtree/attribute of the view, determined by a condition.
 export function $if<T>(
     condition: () => boolean,
     branches: {_then: () => T, _else: () => T},
-): DerivedViewNode<T> {
+): DerivedViewState<T> {
     const _then = branches._then
     const _else = branches._else
     let conditionPrevious: boolean | undefined = undefined
     
-    const state: DerivedViewNode<T> = {
+    const state: {$derived: true} = {
         $derived: true,
-        ref: ref(undefined) as Ref<T>,
-        $effects: [],
-        $updateOrderKeys: [],
-        $descendentsToClean: [],
     }
-    updateOrder.add(state)
-    state.$updateOrderKeys.push(state)
+    updateOrder.add(state as DerivedViewState)
 
-    state.$effects.push(scheduleDOMUpdate(state, () => {
+    const result = ref(undefined) as Ref<T>
+    const update = scheduleDOMUpdate(state as DerivedViewState, () => {
         console.log("%cIF", elementStyle)
         const conditionNow = condition()
         if (conditionNow === true && conditionPrevious !== true) {
             console.log("  switched to first branch")
-            state.ref.value = _then() as any
+            pauseTracking()
+            const oldValue = result.value
+            if (Array.isArray(oldValue)) {
+                (oldValue as WithCleanupData<HTMLElement>[]).forEach(cleanUp)
+            }
+            resumeTracking()
+            result.value = _then() as any
         }
         else if (conditionNow === false && conditionPrevious !== false) {
             console.log("  switched to second branch")
-            state.ref.value = _else() as any
+            pauseTracking()
+            const oldValue = result.value
+            if (Array.isArray(oldValue)) {
+                (oldValue as WithCleanupData<HTMLElement>[]).forEach(cleanUp)
+            }
+            resumeTracking()
+            result.value = _else() as any
         }
         else {
             console.log("  no change")
         }
         conditionPrevious = conditionNow
-    }))
+    })
 
-    return state
+    return Object.assign(state, {ref: result, effect: update})
 }
 
 // A reactive subtree of the view, constructed from a list of data.
 export function $for<T>(
     items: T[] | Ref<T[]>,
     f: (item: T, index: number) => HTMLElement[],
-): DerivedViewNode<HTMLElement[]> {
-    const state: DerivedViewNode<HTMLElement[]> = {
+): DerivedDocFragment {
+    const state: {$derived: true} = {
         $derived: true,
-        ref: ref(undefined) as Ref<any>,
-        $effects: [],
-        $updateOrderKeys: [],
-        $descendentsToClean: [],
     }
-    updateOrder.add(state)
-    state.$updateOrderKeys.push(state)
+    updateOrder.add(state as DerivedViewState)
 
-    state.$effects.push(isRef(items)
-        ? scheduleDOMUpdate(state, () => {
-            console.log("%cFOR", elementStyle)
+    const result: Ref<WithCleanupData<HTMLElement>[]> = ref([])
+    const update = isRef(items)
+        ? scheduleDOMUpdate(state as DerivedViewState, () => {
+            console.log(`%cFOR%c (${items.value.length} items)`, elementStyle, normalStyle)
             console.log("  all items changed (FIX ME)")
+            // clean up old elements
+            pauseTracking()
+            ;(result.value as WithCleanupData<HTMLElement>[]).forEach(cleanUp)
+            resumeTracking()
+            // construct new elements
             const array: HTMLElement[] = []
             items.value.forEach((item, i) => {
                 array.push(...f(item as T, i))
             })
-            state.ref.value = array
+            result.value = array as any
         })
-        : scheduleDOMUpdate(state, () => {
-            console.log("%cFOR", elementStyle)
+        : scheduleDOMUpdate(state as DerivedViewState, () => {
+            console.log(`%cFOR%c (${items.length} items)`, elementStyle, normalStyle)
             console.log("  all items changed (FIX ME)")
+            // clean up old elements
+            pauseTracking()
+            ;(result.value as WithCleanupData<HTMLElement>[]).forEach(cleanUp)
+            resumeTracking()
+            // construct new elements
             const array: HTMLElement[] = []
             items.forEach((item, i) => {
                 array.push(...f(item as T, i))
             })
-            state.ref.value = array
-        }))
+            result.value = array as any
+        })
 
-    return state
+    return Object.assign(state, {ref: result, effect: update})
 }
 
 // Update the DOM after executing the given state update function.
-function thenUpdateDOM(stateUpdate: Function): Function {
+let updateNumber = 0
+function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
     return (...args: unknown[]): void => {
-        console.log("----- Begin DOM update (event: FIXME) -----")
+        console.log(`%cDOM update ${++updateNumber} (event: ${eventName})`, updateMsgStyle)
         // Update the essential state
         stateUpdate(...args)
         // Update the DOM
-        updateOrder.forEach(ref => {
-            const job = domUpdateJobs.get(ref)
-            if (job !== undefined) job()
+        updateOrder.forEach(key => {
+            const updatesForKey = domUpdateJobs.get(key)
+            if (updatesForKey !== undefined) {
+                updatesForKey.forEach(eff => {
+                    if (eff.active) eff()
+                })
+            }
         })
         domUpdateJobs.clear()
     }
 }
 
 type SubRecordWithRefs<Keys extends keyof Element, Element> =
-    { [K in Keys]: Element[K] | Ref<Element[K]> | DerivedViewNode<Element[K]> }
+    { [K in Keys]: Element[K] | Ref<Element[K]> | DerivedAttribute<Element[K]> }
 
 function prettifyClassName(name: string): string {
     if (name.length > 0) {
@@ -192,53 +234,39 @@ function assignReactiveAttributes<AssKeys extends keyof Element, Element extends
     assignment: SubRecordWithRefs<AssKeys, Element>,
 ): WithCleanupData<Element> {
     for (const key in assignment) {
-        const attrValue: any | Ref<any> | DerivedViewNode<any> = assignment[key]
+        const attrValue: unknown | Ref<unknown> | DerivedAttribute<unknown> = assignment[key]
         // Update the attribute from a ref or a derived view state
-        const scheduleAttributeUpdate = (attr: Ref<any>): ReactiveEffect<void> =>
+        const scheduleAttributeUpdate = (attr: Ref<any>): ReactiveEffect =>
             scheduleDOMUpdate(el, () => {
                 el[(key as AssKeys)] =  attr.value
                 console.log(`%c${el.nodeName}${prettifyClassName(el.className)}`, elementStyle)
                 console.log(`  %c${key} = "${attr.value}"`, attributeStyle)
             })
         if (isRef(attrValue)) {
-            el.$effects.push(scheduleAttributeUpdate(attrValue))
+            el.$ownEffects.push(scheduleAttributeUpdate(attrValue))
         }
-        else if (isDerivedViewNode(attrValue)) {
-            // Parent inherits cleanup from child
-            el.$effects.push(scheduleAttributeUpdate(attrValue.ref), ...attrValue.$effects)
-            el.$updateOrderKeys.push(...attrValue.$updateOrderKeys)
-            // No derived subtrees to add
+        else if (isDerivedViewState(attrValue)) {
+            el.$ownEffects.push(scheduleAttributeUpdate(attrValue.ref))
+            el.$derivedToClean.push(attrValue)
         }
         else {
-            el[(key as AssKeys)] = attrValue
+            el[(key as AssKeys)] = attrValue as any
         }
     }
     return el
 }
 
-type HTMLChildrenWithCleanup =
-    (WithCleanupData<HTMLElement> | DerivedViewNode<WithCleanupData<HTMLElement[]>>)[]
-
 export type HTMLChildren =
-    (HTMLElement | DerivedViewNode<HTMLElement[]>)[]
+    (HTMLElement | DerivedViewState<HTMLElement[]>)[]
+
+type HTMLChildrenWithCleanup =
+    (WithCleanupData<HTMLElement> | DerivedDocFragment)[]
 
 // TODO: Figure out how to properly move children around when the array changes.
-function attachChildren(el: WithCleanupData<HTMLElement>, children: HTMLChildrenWithCleanup): void {
-    // Every node that is permanently removed from the DOM must be cleaned up via this function
-    function cleanUp(node: WithCleanupData<unknown>): void {
-        // Destroy effects for the node's static subtree
-        node.$effects.forEach(stop)
-        // This marks the node as deleted so pending DOM update events don't run
-        ;(node as any).$effects = undefined
-        // Remove the derived view state for the node's static subtree
-        node.$updateOrderKeys.forEach(key => updateOrder.delete(key))
-        // Clean up the derived view state OF the derived view state
-        node.$descendentsToClean.forEach(cleanUp)
-    }
-
+function attachChildren(el: WithCleanupData<HTMLElement>, children: HTMLChildren): void {
     for (const child of children) {
-        if (isDerivedViewNode(child)) {
-            const derivedChildren = child
+        if (isDerivedViewState(child)) {
+            const derivedDocFragment = child
             // Create a marker child so that when the ref is updated,
             // we know where we need to insert the new elements.
             const markerChild = document.createElement("div")
@@ -253,14 +281,14 @@ function attachChildren(el: WithCleanupData<HTMLElement>, children: HTMLChildren
                 console.log(`%c${el.nodeName}${prettifyClassName(el.className)}`, elementStyle)
                 for (const child of currentChildGroup) {
                     el.removeChild(child)
-                    cleanUp(child)
+                    //cleanUp(child) We're now cleaning up in $if and $for
                     // Log the deletion of this child
                     console.log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
                 }
                 currentChildGroup.length = 0
                 // Create a sequence of nodes to add
                 const newChildren = document.createDocumentFragment()
-                for (const child of derivedChildren.ref.value) {
+                for (const child of derivedDocFragment.ref.value) {
                     newChildren.appendChild(child as HTMLElement)
                     currentChildGroup.push(child as WithCleanupData<HTMLElement>)
                     // Log the addition of this child
@@ -271,17 +299,12 @@ function attachChildren(el: WithCleanupData<HTMLElement>, children: HTMLChildren
             })
 
             // When el is removed from the DOM, this is what needs cleaning up
-            el.$effects.push(updateChildren)
-            el.$descendentsToClean.push(derivedChildren)
+            el.$ownEffects.push(updateChildren)
+            el.$derivedToClean.push(derivedDocFragment)
         }
         // We have a non-reactive (static) element
         else {
-            el.appendChild(child)
-            // The child will never be deleted directly, so pass on its cleanup stuff
-            // to the parent so that the parent (or ancestor) can clean up.
-            el.$effects.push(...child.$effects)
-            el.$updateOrderKeys.push(...child.$updateOrderKeys)
-            el.$descendentsToClean.push(...child.$descendentsToClean)     
+            el.appendChild(child)  
         }
     }
 }
@@ -294,15 +317,13 @@ export function element<Keys extends keyof Element, Element extends HTMLElement>
     const el = document.createElement(name) as WithCleanupData<Element>
     updateOrder.add(el)
     // Initialize cleanup data
-    el.$effects = []
-    // IMPORTANT: When we add an el to the update order, we must register it for deletion later
-    el.$updateOrderKeys = [el]
-    el.$descendentsToClean = []
+    el.$ownEffects = []
+    el.$derivedToClean = []
     // Ensures that DOM events trigger DOM updates after running
     for (const key in attributes) {
         if (key.startsWith("on")) {
             // TODO: Unsafe... we're presuming all keys starting with "on" have a value of function type
-            attributes[key] = thenUpdateDOM(attributes[key] as any) as any
+            attributes[key] = thenUpdateDOM(key, attributes[key] as any) as any
         }
     }
     return assignReactiveAttributes(el, attributes)
@@ -313,7 +334,7 @@ export function div<Keys extends keyof HTMLDivElement>(
     children: HTMLChildren = [],
 ): HTMLDivElement {
     const el = element("div", attributes)
-    attachChildren(el, children as HTMLChildrenWithCleanup)
+    attachChildren(el, children as HTMLChildren)
     return el
 }
 
@@ -324,7 +345,7 @@ export function br<Keys extends keyof HTMLBRElement>(
 }
 
 export function p<Keys extends keyof HTMLParagraphElement>(
-    textContent: string | Ref<string> | DerivedViewNode<string>,
+    textContent: string | Ref<string> | DerivedAttribute<string>,
     attributes: SubRecordWithRefs<Keys, HTMLParagraphElement> = {} as any,
 ): HTMLParagraphElement {
     Object.assign(attributes, {textContent: textContent})
@@ -332,7 +353,7 @@ export function p<Keys extends keyof HTMLParagraphElement>(
 }
 
 export function button<Keys extends keyof HTMLButtonElement>(
-    textContent: string | Ref<string> | DerivedViewNode<string>,
+    textContent: string | Ref<string> | DerivedAttribute<string>,
     attributes: SubRecordWithRefs<Keys, HTMLButtonElement> = {} as any,
 ): HTMLButtonElement {
     Object.assign(attributes, {textContent: textContent})
@@ -347,7 +368,7 @@ export function input<Keys extends keyof HTMLInputElement>(
 
     // If the "value" attribute exists and is a Ref, then set up two-way binding
     const attrsWithValue = attributes as SubRecordWithRefs<Keys | "value", HTMLInputElement>
-    const valueRef: string | Ref<string> | DerivedViewNode<string> | undefined = attrsWithValue.value
+    const valueRef: string | Ref<string> | DerivedAttribute<string> | undefined = attrsWithValue.value
     if (valueRef !== undefined && isRef(valueRef)) {
         const existingOnInput = el.oninput as
                   ((this: GlobalEventHandlers, ev: Event) => any) | null
@@ -355,7 +376,7 @@ export function input<Keys extends keyof HTMLInputElement>(
         // If there is no existing oninput function
         if (existingOnInput === null) {
             // On input, update "value" and then update the DOM
-            el.oninput = thenUpdateDOM(function (event: Event): any {
+            el.oninput = thenUpdateDOM("oninput", function (event: Event): any {
                 valueRef.value = (event.target as HTMLInputElement).value
             }) as any
         }
