@@ -1,5 +1,7 @@
 import { ref, Ref, isRef, ComputedRef, effect } from "@vue/reactivity"
 
+const debugStyle = "font-weight: bold"
+
 // Reactive if-expression. Constructs a ComputedRef whose value is always equal to
 // the value of the branch given by the latest value of the condition. Note that
 // since the observables ("refs") that are triggered by the evaluation of condition()
@@ -18,7 +20,7 @@ export function computedIf<T>(
     const result: Ref<T | undefined> = ref(undefined)
     let conditionPrevious: boolean | undefined = undefined
     ;(result as any).effect = effect(() => {
-        console.log("IF")
+        console.log("%cIF", debugStyle)
         const conditionNow = condition()
         if (conditionNow === true && conditionPrevious !== true) {
             console.log("  switched to first branch")
@@ -49,8 +51,8 @@ export function computedFor<T, R>(
     const result: Ref<R[] | undefined> = ref(undefined)
     ;(result as any).effect = isRef(items)
         ? effect(() => {
-            console.log("FOR")
-            console.log("  constructed new list")
+            console.log("%cFOR", debugStyle)
+            console.log("  all items changed (FIX ME)")
             const array: R[] = []
             items.value.forEach((item, i) => {
                 array.push(...f(item as T, i))
@@ -58,8 +60,8 @@ export function computedFor<T, R>(
             result.value = array
         })
         : effect(() => {
-            console.log("FOR")
-            console.log("  constructed new list")
+            console.log("%cFOR", debugStyle)
+            console.log("  all items changed (FIX ME)")
             const array: R[] = []
             items.forEach((item, i) => {
                 array.push(...f(item as T, i))

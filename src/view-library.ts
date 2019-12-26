@@ -47,8 +47,6 @@ export function $for<T, R>(
     return markAsDVS(computedFor(items, f))
 }
 
-const printDOMUpdates = true
-
 // Keep a set of all the DOM updates that need to happen.
 // Being a set, duplicate requests are ignored.
 const domUpdates: Set<Function> = new Set()
@@ -70,14 +68,6 @@ function scheduleDOMUpdate(el: HTMLElement, update: () => void): ReactiveEffect<
         }
     }, domUpdateScheduler) 
 }
-
-// function scheduleDOMUpdateConditional(
-//     shouldSchedule: {value: boolean}, node: () => void
-// ): ReactiveEffect<void> {
-//     return effect(node, {scheduler: job => {
-//         if (shouldSchedule.value) domUpdates.add(job)
-//     }}) 
-// }
 
 // Update the DOM after executing the given state update function.
 // Updating the DOM synchronously prevents any race condition where (e.g.)
@@ -122,6 +112,19 @@ function wrapEventHandlers<Keys extends keyof Element, Element extends HTMLEleme
     }
 }
 
+function prettifyClassName(name: string): string {
+    if (name.length > 0) {
+        return "." + name.replace(" ",".")
+    }
+    else {
+        return name
+    }
+}
+
+const elementStyle = "font-weight: bold"
+const attributeStyle = "color: #7700ff"
+const textContentStyle = "color: #007700"
+
 // Assign props and attach listeners to re-assign props whose values are refs
 function assignReactiveAttributes<AssKeys extends keyof Element, Element extends HTMLElement>(
     el_: Element,
@@ -135,8 +138,8 @@ function assignReactiveAttributes<AssKeys extends keyof Element, Element extends
         if (isRef(attrValue)) {
             el.$effects.push(scheduleDOMUpdate(el, () => {
                 el[(key as AssKeys)] =  attrValue.value
-                console.log(`${el.nodeName} ${el.className}`)
-                console.log(`  ${key} = "${attrValue.value}"`)
+                console.log(`%c${el.nodeName}${prettifyClassName(el.className)}`, elementStyle)
+                console.log(`  %c${key} = "${attrValue.value}"`, attributeStyle)
             }))
             // If the attribute value is derived view state, store the effect
             // so that we can clean it up later.
@@ -171,7 +174,7 @@ function attachChildren(el: WithEffects<HTMLElement>, children: HTMLChildren): v
             // this element is removed from the DOM tree. Store the DOM update effect too.
             el.$effects.push(childGroup.effect,
                 scheduleDOMUpdate(el, () => {
-                    console.log(`|START| Updating children of ${el.nodeName} with class "${el.className}"`)
+                    console.log(`%c${el.nodeName}${prettifyClassName(el.className)}`, elementStyle)
                     for (const child of existingChildren) {
                         el.removeChild(child)
                         // We're removing the child, so destroy the child's own effects
@@ -179,11 +182,8 @@ function attachChildren(el: WithEffects<HTMLElement>, children: HTMLChildren): v
                         if (effects !== undefined && effects.length > 0) {    
                             effects.forEach(stop)
                             ;(child as any).$effects = undefined
-                            console.log(`|     | Removed and destroyed ${effects.length} effect(s) of ${child.nodeName} with class "${child.className}" and text "${child.textContent}"`)
                         }
-                        else {
-                            console.log(`|     | Removed (had no effects) ${child.nodeName} with class "${child.className}" and text "${child.textContent}"`)
-                        }
+                        console.log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
                     }
                     existingChildren.length = 0
                     // Create a sequence of nodes to add
@@ -191,10 +191,10 @@ function attachChildren(el: WithEffects<HTMLElement>, children: HTMLChildren): v
                     for (const child of childGroup.value) {
                         newChildren.appendChild(child as HTMLElement)
                         existingChildren.push(child as HTMLElement)
+                        console.log(`  %c+ ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
                     }
                     // Add the nodes to the DOM
                     el.insertBefore(newChildren, markerChild)
-                    console.log("| END |")
                 })
             )
         }
