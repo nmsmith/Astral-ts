@@ -114,7 +114,7 @@ if (   localStorage.loadLastState === "true"
 }
 
 // Expose a reference to the state for debugging
-console.log(state)
+console.log("App state: ", state)
 
 function saveState(): void {
     // TODO: Have data auto-save periodically (every 10 sec?)
@@ -169,11 +169,6 @@ function createConcept(): void {
         state.conceptInputState.selection = 0
     }
 }
-
-const x = observable({value: 2})
-const y = derivedUnmanaged(() => x.value * 2)
-effect(() => console.log(y.value))
-++x.value
 
 // ----- THE APP VIEW -----
 // WARNING: I shouldn't be using computed() anywhere in the view.

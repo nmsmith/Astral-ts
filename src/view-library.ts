@@ -1,4 +1,4 @@
-import { Ref, ref, ComputedRef, isRef, computed, effect, ReactiveEffect, stop, ReactiveEffectOptions } from "@vue/reactivity"
+import { Ref, ref, isRef, ComputedRef, effect, ReactiveEffect, ReactiveEffectOptions, stop } from "@vue/reactivity"
 
 // Styles for debug printing
 const elementStyle = "font-weight: bold"
@@ -17,19 +17,13 @@ export function app(rootNodeID: string, appHTML: HTMLElement): void {
     }
 }
 
-// Type-safe assignment to EXISTING properties of the given object
-function assignProps<AssKeys extends keyof T, T>(
-    object: T,
-    assignment: SubRecord<AssKeys, T>,
-): void {
-    for (const key in assignment) {
-        object[key] = assignment[key]
-    }
-}
-
 // Derived view state (constructed via $-prefixed functions) is considered
-// owned by the DOM, and the code in this module is responsible for cleaning up
-// the effects associated with these ComputedRefs when their parent node is removed.
+// owned by the view, and the code in this module is responsible for cleaning
+// it up when it is removed from the view.
+// Currently, there are two things to clean up: the effect() that maintains the 
+// derived state (along with the corresponding effect which applies it to the DOM)
+// and the entry in derivedSubtreeConstructionOrder which determines the order
+// in which the derived view state should be computed (top-down order).
 interface DerivedViewState<T> {
     $derived: true
     ref: ComputedRef<T>
@@ -43,25 +37,25 @@ function isDerivedViewState(value: any): value is DerivedViewState<any> {
 // All derived subtrees should be constructed (and registered) parent-first,
 // which is an optimal order to run the update jobs in.
 const derivedSubtreeConstructionOrder: Set<Ref<any>> = new Set()
+// A map from the derived view state to its (potential) update function,
+// for each piece of view state that needs to be updated.
 const derivedViewStateUpdateJobs: Map<Ref<any>, Function> = new Map()
-console.log(derivedSubtreeConstructionOrder)
+console.log("Watch this for memory leaks: ", derivedSubtreeConstructionOrder)
 
-function makeDerivedSubtreeScheduler(ref: Ref<any>): (job: Function) => void {
+function dvsUpdateScheduler(ref: Ref<any>): (job: Function) => void {
     return (job: Function): void => { derivedViewStateUpdateJobs.set(ref, job) }
 }
 
 // A reactive attribute which is OWNED by the view.
 // It will be destroyed if it is ever detached from the view tree.
 export function $derived<T>(value: () => T): DerivedViewState<T> {
-    // We have to initialize this as undefined, but it will get
-    // assigned a value immediately when the effect runs.
     const result: Ref<T | undefined> = ref(undefined)
     derivedSubtreeConstructionOrder.add(result as Ref<T>)
 
     ;(result as any).effect = effect(() => {
         console.log("%cDERIVED", elementStyle)
         result.value = value() as any
-    }, {scheduler: makeDerivedSubtreeScheduler(result as Ref<T>)})
+    }, {scheduler: dvsUpdateScheduler(result as Ref<T>)})
 
     return {$derived: true, ref: result as ComputedRef<T>}
 }
@@ -73,11 +67,10 @@ export function $if<T>(
 ): DerivedViewState<T> {
     const _then = branches._then
     const _else = branches._else
-    // We have to initialize this as undefined, but it will get
-    // assigned a value immediately when the effect runs.
+    let conditionPrevious: boolean | undefined = undefined
+    
     const result: Ref<T | undefined> = ref(undefined)
     derivedSubtreeConstructionOrder.add(result as Ref<T>)
-    let conditionPrevious: boolean | undefined = undefined
 
     ;(result as any).effect = effect(() => {
         console.log("%cIF", elementStyle)
@@ -85,7 +78,6 @@ export function $if<T>(
         if (conditionNow === true && conditionPrevious !== true) {
             console.log("  switched to first branch")
             result.value = _then() as any
-            
         }
         else if (conditionNow === false && conditionPrevious !== false) {
             console.log("  switched to second branch")
@@ -95,18 +87,16 @@ export function $if<T>(
             console.log("  no change")
         }
         conditionPrevious = conditionNow
-    }, {scheduler: makeDerivedSubtreeScheduler(result as Ref<T>)})
+    }, {scheduler: dvsUpdateScheduler(result as Ref<T>)})
 
     return {$derived: true, ref: result as ComputedRef<T>}
 }
 
-// A reactive subtree (fragment) of the view, constructed from a list of data.
+// A reactive subtree of the view, constructed from a list of data.
 export function $for<T>(
     items: T[] | Ref<T[]>,
     f: (item: T, index: number) => HTMLElement[],
 ): DerivedViewState<HTMLElement[]> {
-    // We have to initialize this as undefined, but it will get
-    // assigned a value immediately when the effect runs.
     const result: Ref<HTMLElement[] | undefined> = ref(undefined)
     derivedSubtreeConstructionOrder.add(result as Ref<HTMLElement[]>)
 
@@ -119,7 +109,7 @@ export function $for<T>(
                 array.push(...f(item as T, i))
             })
             result.value = array
-        }, {scheduler: makeDerivedSubtreeScheduler(result as Ref<HTMLElement[]>)})
+        }, {scheduler: dvsUpdateScheduler(result as Ref<HTMLElement[]>)})
         : effect(() => {
             console.log("%cFOR", elementStyle)
             console.log("  all items changed (FIX ME)")
@@ -128,36 +118,24 @@ export function $for<T>(
                 array.push(...f(item as T, i))
             })
             result.value = array
-        }, {scheduler: makeDerivedSubtreeScheduler(result as Ref<HTMLElement[]>)})
+        }, {scheduler: dvsUpdateScheduler(result as Ref<HTMLElement[]>)})
 
     return {$derived: true, ref: result as ComputedRef<HTMLElement[]>}
 }
 
-// Keep a set of all the DOM updates that need to happen.
-// Being a set, duplicate requests are ignored.
+// Keep a set of all the DOM updates that need to happen. Duplicate requests are ignored.
 const domUpdates: Set<Function> = new Set()
 
-const domUpdateScheduler: ReactiveEffectOptions =
-    { scheduler: job => domUpdates.add(job) }
-
 function scheduleDOMUpdate(el: HTMLElement, update: () => void): ReactiveEffect<void> {
-    // Create an effect that (by default) runs immediately, and registers
-    // any state that it accesses as a dependency.
-    // By default, the effect will be re-executed every time the value of a
-    // dependency changes. If a scheduler is provided, the effect will instead
-    // invoke the scheduler whenever the value of a dependency changes. The
-    // scheduler can then decide when/whether to run the effect.
     return effect(() => {
         // Don't update the node if it has just been deleted
         if ((el as WithCleanupData<HTMLElement>).$effects !== undefined) {
             update()
         }
-    }, domUpdateScheduler) 
+    }, {scheduler: job => domUpdates.add(job)}) 
 }
 
 // Update the DOM after executing the given state update function.
-// Updating the DOM synchronously prevents any race condition where (e.g.)
-// the user can click a button to alter some state that no longer exists.
 function thenUpdateDOM(stateUpdate: Function): Function {
     return (...args: unknown[]): void => {
         console.log("----- Begin DOM update (event: FIXME) -----")
@@ -177,23 +155,8 @@ function thenUpdateDOM(stateUpdate: Function): Function {
 
 type WithCleanupData<E> = E & { $effects: ReactiveEffect<void>[], $subtreeRefs: Ref<HTMLElement[]>[] }
 
-type SubRecord<Keys extends keyof Element, Element> =
-    { [K in Keys]: Element[K] }
-
 type SubRecordWithRefs<Keys extends keyof Element, Element> =
     { [K in Keys]: Element[K] | Ref<Element[K]> | DerivedViewState<Element[K]> }
-
-// Ensures that DOM events trigger DOM updates after running
-function wrapEventHandlers<Keys extends keyof Element, Element extends HTMLElement>(
-    attributes: SubRecordWithRefs<Keys, Element>
-): void {
-    for (const key in attributes) {
-        if (key.startsWith("on")) {
-            // TODO: Unsafe... we're presuming all keys starting with "on" have a value of function type
-            attributes[key] = thenUpdateDOM(attributes[key] as any) as any
-        }
-    }
-}
 
 function prettifyClassName(name: string): string {
     if (name.length > 0) {
@@ -204,14 +167,13 @@ function prettifyClassName(name: string): string {
     }
 }
 
-// Assign props and attach listeners to re-assign props whose values are refs
+// Assign attribute values and attach listeners to re-assign observable values when they change
 function assignReactiveAttributes<AssKeys extends keyof Element, Element extends HTMLElement>(
     el_: Element,
     assignment: SubRecordWithRefs<AssKeys, Element>,
 ): WithCleanupData<Element> {
-    // Create the array to store the effects that maintain the derived view state,
-    // and prepare the list of subtree refs that need to be removed
-    // from derivedSubtreeConstructionOrder later.
+    // Create the array to store the effects that maintain the derived view state, and prepare
+    // the list of subtree refs that need to be removed from derivedSubtreeConstructionOrder later.
     const el = el_ as WithCleanupData<Element>
     el.$effects = []
     el.$subtreeRefs = []
@@ -258,8 +220,8 @@ function attachChildren(el: WithCleanupData<HTMLElement>, children: HTMLChildren
             // Stores children that are already in the DOM tree,
             // so that we can remove them when the ref is updated.
             const existingChildren: HTMLElement[] = []
-            // Store the effect for this derived view state so we can clean it up if/when
-            // this element is removed from the DOM tree. Store the DOM update effect too.
+            // Store the effect for this derived view state, and the corresponding DOM update
+            // effect, so we can clean it up if/when this element is removed from the DOM tree.
             el.$effects.push(childGroup.ref.effect,
                 scheduleDOMUpdate(el, () => {
                     console.log(`%c${el.nodeName}${prettifyClassName(el.className)}`, elementStyle)
@@ -270,8 +232,7 @@ function attachChildren(el: WithCleanupData<HTMLElement>, children: HTMLChildren
                         const effects = childWithStuff.$effects
                         if (effects !== undefined) {    
                             effects.forEach(stop)
-                            // This marks the node as deleted so
-                            // pending DOM update events don't run
+                            // This marks the node as deleted so pending DOM update events don't run
                             ;(child as any).$effects = undefined
                         }
                         // Remove the child's derivedSubtrees from the list
@@ -309,7 +270,13 @@ export function element<Keys extends keyof Element, Element extends HTMLElement>
     attributes: SubRecordWithRefs<Keys, Element>,
 ): WithCleanupData<Element> {
     const el = document.createElement(name) as Element
-    wrapEventHandlers(attributes)
+    // Ensures that DOM events trigger DOM updates after running
+    for (const key in attributes) {
+        if (key.startsWith("on")) {
+            // TODO: Unsafe... we're presuming all keys starting with "on" have a value of function type
+            attributes[key] = thenUpdateDOM(attributes[key] as any) as any
+        }
+    }
     return assignReactiveAttributes(el, attributes)
 }
 
