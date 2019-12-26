@@ -1,7 +1,7 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { toRefs, reactive as observable, computed as derivedUnmanaged, ComputedRef } from "@vue/reactivity"
+import { toRefs, reactive as observable, computed as derivedUnmanaged, ComputedRef, effect } from "@vue/reactivity"
 import {$derived, $if, $for, app, div, p, br, button, input} from "./view-library"
 import Cycle from "json-cycle"
 import { merge } from "lodash"
@@ -170,7 +170,10 @@ function createConcept(): void {
     }
 }
 
-
+const x = observable({value: 2})
+const y = derivedUnmanaged(() => x.value * 2)
+effect(() => console.log(y.value))
+++x.value
 
 // ----- THE APP VIEW -----
 // WARNING: I shouldn't be using computed() anywhere in the view.
@@ -191,9 +194,9 @@ app("app",
             className: "database",
         },[
             button ("Increment", {
-                onclick: () => ++state.count,
+                onclick: () => {++state.count; ++state.count},
             }),
-            $if (() => state.count >= 3, {
+            $if (() => state.count >= 5, {
                 _then: () => [ p ("Count reached!") ],
                 _else: () => [ p ($derived(() => `Current count: ${state.count}`)) ],
             }),
