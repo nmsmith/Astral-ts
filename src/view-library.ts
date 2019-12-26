@@ -259,6 +259,10 @@ function attachChildren(el: WithCleanupData<HTMLElement>, children: HTMLChildren
         }
         // We have a non-reactive (static) element
         else {
+            const childWithStuff = childGroup as WithCleanupData<HTMLElement>
+            // Make sure we carry up effects from (static) child to parent so we can delete them
+            el.$effects.push(...childWithStuff.$effects)
+            el.$subtreeRefs.push(...childWithStuff.$subtreeRefs)
             el.appendChild(childGroup)
         }
     }
