@@ -253,17 +253,21 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
             scheduleDOMUpdate(el, () => {  
                 const conditionNow = condition()
                 if (conditionNow === true && conditionPrevious !== true) {
-                    logChangeStart(el)
+                    // remove
+                    if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(remove)
+                    // add
                     childrenAttachedHere = _then() as Effectful<HTMLElement>[]
-                    logChangeStart(el)
+                    if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => add(child, marker))
                 }
                 else if (conditionNow === false && conditionPrevious !== false) {
-                    logChangeStart(el)
+                    // remove
+                    if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(remove)
+                    // add
                     childrenAttachedHere = _else() as Effectful<HTMLElement>[]
-                    logChangeStart(el)
+                    if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => add(child, marker))
                 }
                 else logNoChangeIf()
@@ -279,12 +283,13 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
 
             scheduleDOMUpdate(el, () => {   
                 const items = isRef(itemsOrRef) ? itemsOrRef.value : itemsOrRef
-                logChangeStart(el)
+                // remove
+                if (childrenAttachedHere.length > 0) logChangeStart(el)
                 childrenAttachedHere.forEach(remove)
                 childrenAttachedHere.length = 0
+                // add
                 items.forEach((item, index) => childrenAttachedHere.push(...f(item, index)))
-                logChangeStart(el)
-                console.log(`  all ${items.length} items changed (FIX ME)`)
+                if (childrenAttachedHere.length > 0) logChangeStart(el)
                 childrenAttachedHere.forEach(child => add(child, marker))
             })
         }
