@@ -1,4 +1,4 @@
-import { Ref, isRef, effect, ReactiveEffect, stop } from "@vue/reactivity"
+import { Ref, ComputedRef, isRef, reactive as observable, effect, ReactiveEffect, stop } from "@vue/reactivity"
 
 // Styles for debug printing
 const normalStyle = ""
@@ -64,8 +64,8 @@ interface DerivedFromChoice<T> {
 
 interface DerivedFromSequence<T, I = unknown> {
     $derived: "for"
-    items: I[] | Ref<I[]>
-    f: (item: I, index: number) => T
+    items: I[] | ComputedRef<I[]> // must be "ComputedRef" instead of "Ref" or TypeScript gets confused
+    f: (item: {value: I, index: number}) => T
 }
 
 export type DerivedAttribute<T> = Derived<T> | DerivedFromChoice<T>
@@ -100,8 +100,8 @@ export function $if<T>(
 }
 
 export function $for<I>(
-    items: I[] | Ref<I[]>,
-    f: (item: I, index: number) => HTMLElement[],
+    items: I[] | ComputedRef<I[]>,
+    f: (item: {value: I, index: number}) => HTMLElement[],
 ): DerivedDocFragment<I> {
     return {$derived: "for", items: items, f: f}
 }
@@ -110,10 +110,13 @@ export function $for<I>(
 function cleanUp(node: Effectful<HTMLElement>): void {
     // Double check this HTML element is one that we need to clean up
     if (node.$effects === undefined) return
-    // Remove this node from the list of registered nodes
-    domUpdateJobs.delete(node)
-    // Destroy effects attached to the node
-    node.$effects.forEach(stop)
+
+    // If the node is reactive, clean it up
+    if (node.$effects.length > 0) {
+        domUpdateJobs.delete(node)
+        node.$effects.forEach(stop)
+    }
+
     // Clean up all children currently attached
     Array.from(node.children).forEach(node => cleanUp(node as Effectful<HTMLElement>))
 }
@@ -156,10 +159,6 @@ function assignReactiveAttributes<AssKeys extends keyof Element, Element extends
     el: Effectful<Element>,
     assignment: SubRecordWithRefs<AssKeys, Element>,
 ): Effectful<Element> {
-    function logNoChangeIf(key: string): void {
-        logChangeStart(el)
-        console.log(`  no change to %c${key}%c via %c$if%c construct`, attributeChangedStyle, normalStyle, elementStyle, normalStyle)
-    }
     function logAttributeChange(key: string, value: unknown): void {
         logChangeStart(el)
         console.log(`  %c${key} = "${value}"`, attributeChangedStyle)
@@ -198,7 +197,6 @@ function assignReactiveAttributes<AssKeys extends keyof Element, Element extends
                     el[(key as AssKeys)] = newValue as any
                     logAttributeChange(key, newValue)
                 }
-                else logNoChangeIf(key)
 
                 conditionPrevious = conditionNow
             })
@@ -224,20 +222,16 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
         el.appendChild(markerChild)
         return markerChild
     }
-    function logNoChangeIf(): void {
-        logChangeStart(el)
-        console.log("  no change to children via %c$if%c construct", elementStyle, normalStyle)
-    }
-    function add(child: Effectful<HTMLElement>, before: Element): void {
-        el.insertBefore(child, before)
-        // Log the addition of this child
+    function logAdd(child: Effectful<HTMLElement>): void {
         console.log(`  %c+ ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
+    }
+    function logRemove(child: Effectful<HTMLElement>): void {
+        console.log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
     }
     function remove(child: Effectful<HTMLElement>): void {
         el.removeChild(child)
         cleanUp(child)
-        // Log the deletion of this child
-        console.log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
+        logRemove(child)
     }
 
     children.forEach(child => {
@@ -259,7 +253,10 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     // add
                     childrenAttachedHere = _then() as Effectful<HTMLElement>[]
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
-                    childrenAttachedHere.forEach(child => add(child, marker))
+                    childrenAttachedHere.forEach(child => {
+                        el.insertBefore(child, marker) 
+                        logAdd(child)
+                    })
                 }
                 else if (conditionNow === false && conditionPrevious !== false) {
                     // remove
@@ -268,29 +265,65 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     // add
                     childrenAttachedHere = _else() as Effectful<HTMLElement>[]
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
-                    childrenAttachedHere.forEach(child => add(child, marker))
+                    childrenAttachedHere.forEach(child => {
+                        el.insertBefore(child, marker) 
+                        logAdd(child)
+                    })
                 }
-                else logNoChangeIf()
                 conditionPrevious = conditionNow
             })
         }
         else if (isDerivedFromSequence(child)) {
             const marker = putFragmentMarker()
-            const childrenAttachedHere: Effectful<HTMLElement>[] = []
+            let elementsCache: Map<unknown, {elements: Effectful<HTMLElement>[], data: {value: unknown, index: number}}> = new Map()
 
             const itemsOrRef = (child as DerivedFromSequence<Effectful<HTMLElement>[]>).items
             const f = (child as DerivedFromSequence<Effectful<HTMLElement>[]>).f
 
-            scheduleDOMUpdate(el, () => {   
+            scheduleDOMUpdate(el, () => {
+                const fragment = document.createDocumentFragment()
+                const newElementsCache: Map<unknown, {elements: Effectful<HTMLElement>[], data: {value: unknown, index: number}}> = new Map()
+                const newElementsForLogging: Effectful<HTMLElement>[] = []
+                // For each item, determine whether new or already existed
                 const items = isRef(itemsOrRef) ? itemsOrRef.value : itemsOrRef
-                // remove
-                if (childrenAttachedHere.length > 0) logChangeStart(el)
-                childrenAttachedHere.forEach(remove)
-                childrenAttachedHere.length = 0
-                // add
-                items.forEach((item, index) => childrenAttachedHere.push(...f(item, index)))
-                if (childrenAttachedHere.length > 0) logChangeStart(el)
-                childrenAttachedHere.forEach(child => add(child, marker))
+                items.forEach((item, index) => {
+                    const existingData = elementsCache.get(item)
+                    if (existingData === undefined) {
+                        // Associate the item with a reactive index (it may be moved later)
+                        const data = observable({value: item, index: index})
+                        // Item is new; create and cache its DOM elements
+                        const newElements = f(data)
+                        fragment.append(...newElements)
+                        newElementsCache.set(item, {elements: newElements, data: data})
+                        newElementsForLogging.push(...newElements)
+                    }
+                    else {
+                        // Update the item's index
+                        existingData.data.index = index
+                        // Item is old; use its existing elements
+                        fragment.append(...existingData.elements)
+                        elementsCache.delete(item)
+                        newElementsCache.set(item, existingData)
+                    }
+                })
+
+                // Log each new item that was added
+                if (newElementsForLogging.length > 0) {
+                    logChangeStart(el)
+                    newElementsForLogging.forEach(logAdd)
+                }
+
+                // Remove the elements for the items which were removed
+                if (elementsCache.size > 0) {
+                    logChangeStart(el)
+                    elementsCache.forEach(oldData => {
+                        oldData.elements.forEach(remove)
+                    })
+                }
+
+                // Attach the new nodes
+                el.insertBefore(fragment, marker)
+                elementsCache = newElementsCache
             })
         }
         // We have a non-reactive (static) child
@@ -308,6 +341,7 @@ export function element<Keys extends keyof Element, Element extends HTMLElement>
 ): Effectful<Element> {
     const el = document.createElement(name) as Effectful<Element>
     el.$effects = []
+    domUpdateJobs.set(el, new Set())
 
     // Ensure that DOM events trigger DOM updates after running
     for (const key in attributes) {
@@ -320,9 +354,10 @@ export function element<Keys extends keyof Element, Element extends HTMLElement>
     assignReactiveAttributes(el, attributes)
     attachChildren(el, children)
 
-    // If the element is reactive, add it to the list of elements that can udpate
-    if (el.$effects.length > 0) {
-        domUpdateJobs.set(el, new Set())
+    // If the element is not reactive, remove it from the list of elements that can update.
+    // We needed to insert it immediately after creation to give it update priority.
+    if (el.$effects.length === 0) {
+        domUpdateJobs.delete(el)
     }
     return el
 }

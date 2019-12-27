@@ -101,7 +101,7 @@ function initialState(): State {
 }
 
 // Set up fresh state
-const state = observable(initialState())
+const state: State = observable(initialState())
 
 // Load previous state, if applicable
 if (   localStorage.loadLastState === "true"
@@ -202,23 +202,23 @@ app("app",
                 className: "insertHere",
                 onclick: () => newRule(0),
             }),
-            $for (state.rules, (rule, index) => [
+            $for (state.rules, rule => [
                 div ({
                     className: "row",
                 },[
                     input ({
                         autocomplete: "nope",
-                        value: toRefs(rule).head,
+                        value: toRefs(rule.value).head,
                     }),
                     p ("if"),
                     input ({
                         autocomplete: "nope",
-                        value: toRefs(rule).body,
+                        value: toRefs(rule.value).body,
                     }),
                 ]),
                 div ({
                     className: "insertHere",
-                    onclick: () => newRule(index+1),
+                    onclick: () => newRule(rule.index+1),
                 }),
             ]),
             br (),
@@ -232,10 +232,10 @@ app("app",
                     else if (e.key === "Enter") createConcept()
                 },
             }),
-            $for (textForSearchMatches, (text, index) => [
-                p (text, {
+            $for (textForSearchMatches, text => [
+                p (text.value, {
                     className:
-                        $if (() => index === state.conceptInputState.selection, {
+                        $if (() => text.index === state.conceptInputState.selection, {
                             _then: () => "suggestionBox highlighted",
                             _else: () => "suggestionBox",
                         }),
