@@ -232,7 +232,7 @@ app("app",
                     else if (e.key === "Enter") createConcept()
                 },
             }),
-            $for (textForSearchMatches, (text: string, index) => [
+            $for (textForSearchMatches, (text, index) => [
                 p (text, {
                     className:
                         $if (() => index === state.conceptInputState.selection, {
@@ -244,4 +244,3 @@ app("app",
         ]),
     ])
 )
-
