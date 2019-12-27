@@ -170,6 +170,17 @@ function createConcept(): void {
     }
 }
 
+// const benchmarkList: number[] = observable([])
+// for (let i = 0; i < 10000; ++i) {
+//     benchmarkList.push(i)
+// }
+
+// let newNumber = 10000
+// function addTop() {
+//     //benchmarkList.insert(0, newNumber++)
+//     benchmarkList.push(newNumber++)
+// }
+
 // ----- THE APP VIEW -----
 // WARNING: I shouldn't be using computed() anywhere in the view.
 // If I need derived view state, use $derived() instead.
@@ -241,6 +252,15 @@ app("app",
                         }),
                 }),
             ]),
+            // $for (benchmarkList, item => [
+            //     p (item.value.toString(), {
+            //         className:
+            //             $if (() => item.index === 0 && benchmarkList.length % 2 === 0, {
+            //                 _then: () => "suggestionBox highlighted",
+            //                 _else: () => "suggestionBox",
+            //             }),
+            //     }),
+            // ]),
         ]),
     ])
 )

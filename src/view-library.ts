@@ -280,50 +280,68 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
             const itemsOrRef = (child as DerivedFromSequence<Effectful<HTMLElement>[]>).items
             const f = (child as DerivedFromSequence<Effectful<HTMLElement>[]>).f
 
+            // Temp benchmarking
+            const childrenAttachedHere: Effectful<HTMLElement>[] = []
+
             scheduleDOMUpdate(el, () => {
                 const fragment = document.createDocumentFragment()
-                const newElementsCache: Map<unknown, {elements: Effectful<HTMLElement>[], data: {value: unknown, index: number}}> = new Map()
-                const newElementsForLogging: Effectful<HTMLElement>[] = []
-                // For each item, determine whether new or already existed
                 const items = isRef(itemsOrRef) ? itemsOrRef.value : itemsOrRef
-                items.forEach((item, index) => {
-                    const existingData = elementsCache.get(item)
-                    if (existingData === undefined) {
-                        // Associate the item with a reactive index (it may be moved later)
-                        const data = observable({value: item, index: index})
-                        // Item is new; create and cache its DOM elements
-                        const newElements = f(data)
-                        fragment.append(...newElements)
-                        newElementsCache.set(item, {elements: newElements, data: data})
-                        newElementsForLogging.push(...newElements)
-                    }
-                    else {
-                        // Update the item's index
-                        existingData.data.index = index
-                        // Item is old; use its existing elements
-                        fragment.append(...existingData.elements)
-                        elementsCache.delete(item)
-                        newElementsCache.set(item, existingData)
-                    }
-                })
 
-                // Log each new item that was added
-                if (newElementsForLogging.length > 0) {
-                    logChangeStart(el)
-                    newElementsForLogging.forEach(logAdd)
+                const createAllNewChildren = false
+                if (createAllNewChildren) { // FOR BENCHMARKING ONLY
+                    // remove
+                    if (childrenAttachedHere.length > 0) logChangeStart(el)
+                    childrenAttachedHere.forEach(remove)
+                    childrenAttachedHere.length = 0
+                    // add
+                    items.forEach((item, index) => childrenAttachedHere.push(...f(observable({value: item, index: index}))))
+                    if (childrenAttachedHere.length > 0) logChangeStart(el)
+                    childrenAttachedHere.forEach(child => fragment.appendChild(child))
+                    el.insertBefore(fragment, marker)
                 }
-
-                // Remove the elements for the items which were removed
-                if (elementsCache.size > 0) {
-                    logChangeStart(el)
-                    elementsCache.forEach(oldData => {
-                        oldData.elements.forEach(remove)
+                else {
+                    const newElementsCache: Map<unknown, {elements: Effectful<HTMLElement>[], data: {value: unknown, index: number}}> = new Map()
+                    const newElementsForLogging: Effectful<HTMLElement>[] = []
+                    // For each item, determine whether new or already existed
+                    items.forEach((item, index) => {
+                        const existingData = elementsCache.get(item)
+                        if (existingData === undefined) {
+                            // Associate the item with a reactive index (it may be moved later)
+                            const data = observable({value: item, index: index})
+                            // Item is new; create and cache its DOM elements
+                            const newElements = f(data)
+                            fragment.append(...newElements)
+                            newElementsCache.set(item, {elements: newElements, data: data})
+                            newElementsForLogging.push(...newElements)
+                        }
+                        else {
+                            // Update the item's index
+                            existingData.data.index = index
+                            // Item is old; use its existing elements
+                            fragment.append(...existingData.elements)
+                            elementsCache.delete(item)
+                            newElementsCache.set(item, existingData)
+                        }
                     })
-                }
 
-                // Attach the new nodes
-                el.insertBefore(fragment, marker)
-                elementsCache = newElementsCache
+                    // Log each new item that was added
+                    if (newElementsForLogging.length > 0) {
+                        logChangeStart(el)
+                        newElementsForLogging.forEach(logAdd)
+                    }
+
+                    // Remove the elements for the items which were removed
+                    if (elementsCache.size > 0) {
+                        logChangeStart(el)
+                        elementsCache.forEach(oldData => {
+                            oldData.elements.forEach(remove)
+                        })
+                    }
+
+                    // Attach the new nodes
+                    el.insertBefore(fragment, marker)
+                    elementsCache = newElementsCache
+                }
             })
         }
         // We have a non-reactive (static) child
