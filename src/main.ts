@@ -1,7 +1,7 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { toRefs, reactive as observable, computed as derivedUnmanaged, ComputedRef, effect } from "@vue/reactivity"
+import { toRefs, reactive as observable, computed as derivedMalloc, ComputedRef } from "@vue/reactivity"
 import {$derived, $if, $for, app, div, p, br, button, input} from "./view-library"
 import Cycle from "json-cycle"
 import { merge } from "lodash"
@@ -71,9 +71,6 @@ interface RuleView {
 // & deserializability, there should be no functions or methods
 // anywhere in the state.
 type State = {
-    count: number
-    count2: number
-    count3: number
     conceptRegistry: IDRegistry.T
     ruleRegistry: IDRegistry.T
     rules: Rule[]
@@ -86,9 +83,6 @@ type State = {
 
 function initialState(): State {
     return {
-        count: 0,
-        count2: 0,
-        count3: 0,
         conceptRegistry: IDRegistry.empty(),
         ruleRegistry: IDRegistry.empty(),
         rules: [],
@@ -137,17 +131,12 @@ function newRule(i: number): void {
 }
 
 const searchMatches: ComputedRef<IDRegistry.SearchResult[]> =
-    derivedUnmanaged(() => {
+    derivedMalloc(() => {
         const text = state.conceptInputState.text
         const errorTolerance = (text.length <= 1) ? 0 : 1
         const searchResults = IDRegistry.getMatchesForPrefix(state.conceptRegistry, text, errorTolerance)
         searchResults.sort((a, b) => a.distance - b.distance)
         return searchResults
-    })
-
-const textForSearchMatches: ComputedRef<string[]> =
-    derivedUnmanaged((): string[] => {
-        return searchMatches.value.map(match => `${match.key} [${match.value}]`)
     })
 
 function selectPrevious(): void {
@@ -170,20 +159,7 @@ function createConcept(): void {
     }
 }
 
-// const benchmarkList: number[] = observable([])
-// for (let i = 0; i < 10000; ++i) {
-//     benchmarkList.push(i)
-// }
-
-// let newNumber = 10000
-// function addTop() {
-//     //benchmarkList.insert(0, newNumber++)
-//     benchmarkList.push(newNumber++)
-// }
-
 // ----- THE APP VIEW -----
-// WARNING: I shouldn't be using computed() anywhere in the view.
-// If I need derived view state, use $derived() instead.
 
 app("app",
     div ({
@@ -199,16 +175,6 @@ app("app",
         div ({
             className: "database",
         },[
-            button ("Increment", {
-                onclick: () => {++state.count; ++state.count},
-            }),
-            $if (() => state.count >= 5, {
-                _then: () => [ p ("Count reached!") ],
-                _else: () => [ p ($derived(() => `Current count: ${state.count}`)) ],
-            }),
-            br (),
-            br (),
-            // Real stuff begins here
             div ({
                 className: "insertHere",
                 onclick: () => newRule(0),
@@ -219,17 +185,17 @@ app("app",
                 },[
                     input ({
                         autocomplete: "nope",
-                        value: toRefs(rule.value).head,
+                        value: toRefs(rule).head,
                     }),
                     p ("if"),
                     input ({
                         autocomplete: "nope",
-                        value: toRefs(rule.value).body,
+                        value: toRefs(rule).body,
                     }),
                 ]),
                 div ({
                     className: "insertHere",
-                    onclick: () => newRule(rule.index+1),
+                    onclick: () => newRule(rule.$index+1),
                 }),
             ]),
             br (),
@@ -243,24 +209,15 @@ app("app",
                     else if (e.key === "Enter") createConcept()
                 },
             }),
-            $for (textForSearchMatches, text => [
-                p (text.value, {
+            $for (searchMatches, match => [
+                p ($derived(() => `${match.key} [${match.value}]`), {
                     className:
-                        $if (() => text.index === state.conceptInputState.selection, {
+                        $if (() => match.$index === state.conceptInputState.selection, {
                             _then: () => "suggestionBox highlighted",
                             _else: () => "suggestionBox",
                         }),
                 }),
             ]),
-            // $for (benchmarkList, item => [
-            //     p (item.value.toString(), {
-            //         className:
-            //             $if (() => item.index === 0 && benchmarkList.length % 2 === 0, {
-            //                 _then: () => "suggestionBox highlighted",
-            //                 _else: () => "suggestionBox",
-            //             }),
-            //     }),
-            // ]),
         ]),
     ])
 )

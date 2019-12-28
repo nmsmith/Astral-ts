@@ -1,8 +1,7 @@
-import { Ref, ComputedRef, isRef, reactive as observable, effect, ReactiveEffect, stop } from "@vue/reactivity"
+import { Ref, ComputedRef, isRef, effect, ReactiveEffect, stop } from "@vue/reactivity"
 
 // Styles for debug printing
-const normalStyle = ""
-const updateMsgStyle = "font-size: 120%; font-weight: bold; color: blue"
+const updateMsgStyle = "font-size: 110%; font-weight: bold; color: blue; padding-top: 12px"
 const elementStyle = "font-weight: bold"
 const attributeChangedStyle = "color: #7700ff"
 const textContentStyle = "color: #007700"
@@ -62,15 +61,17 @@ interface DerivedFromChoice<T> {
     branches: {_then: () => T, _else: () => T}
 }
 
-interface DerivedFromSequence<T, I = unknown> {
+export type WithIndex<T extends object> = T & {$index: number}
+
+interface DerivedFromSequence<T, I extends object> {
     $derived: "for"
     items: I[] | ComputedRef<I[]> // must be "ComputedRef" instead of "Ref" or TypeScript gets confused
-    f: (item: {value: I, index: number}) => T
+    f: (item: WithIndex<I>) => T
 }
 
 export type DerivedAttribute<T> = Derived<T> | DerivedFromChoice<T>
 
-export type DerivedDocFragment<I> =
+export type DerivedDocFragment<I extends object> =
       DerivedFromChoice<HTMLElement[]>
     | DerivedFromSequence<HTMLElement[], I>
 
@@ -82,8 +83,8 @@ function isDerivedFromChoice(value: unknown): value is DerivedFromChoice<unknown
     return (value as DerivedFromChoice<unknown>).$derived === "if"
 }
 
-function isDerivedFromSequence(value: unknown): value is DerivedFromSequence<unknown> {
-    return (value as DerivedFromSequence<unknown>).$derived === "for"
+function isDerivedFromSequence(value: unknown): value is DerivedFromSequence<unknown, any> {
+    return (value as DerivedFromSequence<unknown, any>).$derived === "for"
 }
 
 // Behaves identically to computed(), but is automatically cleaned up,
@@ -99,9 +100,14 @@ export function $if<T>(
     return {$derived: "if", condition: condition, branches: branches}
 }
 
-export function $for<I>(
+/**
+ * WARNING: The elements of the array MUST be unique object references.
+ * The DOM update code hashes the elements by their identity in order to
+ * determine which elements have changed when the array is updated.
+ */
+export function $for<I extends object>(
     items: I[] | ComputedRef<I[]>,
-    f: (item: {value: I, index: number}) => HTMLElement[],
+    f: (item: WithIndex<I>) => HTMLElement[],
 ): DerivedDocFragment<I> {
     return {$derived: "for", items: items, f: f}
 }
@@ -219,7 +225,6 @@ function assignReactiveAttributes<AssKeys extends keyof Element, Element extends
 export type HTMLChildren =
     (HTMLElement | DerivedDocFragment<any>)[]
 
-// TODO: Figure out how to properly move children around when the array changes.
 function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): void {
     function putFragmentMarker(): Element {
         // Create a marker child so that when the $if or $for fragment
@@ -283,10 +288,10 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
         }
         else if (isDerivedFromSequence(child)) {
             const marker = putFragmentMarker()
-            let elementsCache: Map<unknown, {elements: Effectful<HTMLElement>[], data: {value: unknown, index: number}}> = new Map()
+            let elementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
 
-            const itemsOrRef = (child as DerivedFromSequence<Effectful<HTMLElement>[]>).items
-            const f = (child as DerivedFromSequence<Effectful<HTMLElement>[]>).f
+            const itemsOrRef = (child as DerivedFromSequence<Effectful<HTMLElement>[], any>).items
+            const f = (child as DerivedFromSequence<Effectful<HTMLElement>[], any>).f
 
             // Temp benchmarking
             const childrenAttachedHere: Effectful<HTMLElement>[] = []
@@ -302,33 +307,38 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     childrenAttachedHere.forEach(remove)
                     childrenAttachedHere.length = 0
                     // add
-                    items.forEach((item, index) => childrenAttachedHere.push(...f(observable({value: item, index: index}))))
+                    items.forEach((item, index) => {
+                        const itemWithIndex = item as WithIndex<object>
+                        itemWithIndex.$index = index
+                        childrenAttachedHere.push(...f(itemWithIndex))
+                    })
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => fragment.appendChild(child))
                     el.insertBefore(fragment, marker)
                 }
                 else {
-                    const newElementsCache: Map<unknown, {elements: Effectful<HTMLElement>[], data: {value: unknown, index: number}}> = new Map()
+                    const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
                     const newElementsForLogging: Effectful<HTMLElement>[] = []
                     // For each item, determine whether new or already existed
                     items.forEach((item, index) => {
-                        const existingData = elementsCache.get(item)
-                        if (existingData === undefined) {
+                        const existingElements = elementsCache.get(item)
+                        if (existingElements === undefined) {
                             // Associate the item with a reactive index (it may be moved later)
-                            const data = observable({value: item, index: index})
+                            const itemWithIndex = item as WithIndex<object>
+                            itemWithIndex.$index = index
                             // Item is new; create and cache its DOM elements
-                            const newElements = f(data)
+                            const newElements = f(itemWithIndex)
                             fragment.append(...newElements)
-                            newElementsCache.set(item, {elements: newElements, data: data})
+                            newElementsCache.set(item, newElements)
                             newElementsForLogging.push(...newElements)
                         }
                         else {
                             // Update the item's index
-                            existingData.data.index = index
+                            (item as WithIndex<object>).$index = index
                             // Item is old; use its existing elements
-                            fragment.append(...existingData.elements)
+                            fragment.append(...existingElements)
                             elementsCache.delete(item)
-                            newElementsCache.set(item, existingData)
+                            newElementsCache.set(item, existingElements)
                         }
                     })
 
@@ -341,8 +351,8 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     // Remove the elements for the items which were removed
                     if (elementsCache.size > 0) {
                         logChangeStart(el)
-                        elementsCache.forEach(oldData => {
-                            oldData.elements.forEach(remove)
+                        elementsCache.forEach(oldElements => {
+                            oldElements.forEach(remove)
                         })
                     }
 
