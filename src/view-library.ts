@@ -138,8 +138,16 @@ function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
     }
 }
 
-type SubRecordWithRefs<Keys extends keyof Element, Element> =
-    { [K in Keys]: Element[K] | Ref<Element[K]> | DerivedAttribute<Element[K]> }
+// I may want to flesh out this list of event handlers eventually.
+// Currently, I just need to ensure oninput is a plain old function
+// so that I can hijack it for two-way binding.
+type EventHandler = "oninput"
+
+// Defines a record of properties that can be assigned to Element.
+// If the property is an EventHandler, then it must be a function.
+// Otherwise, the property can be dynamically computed via Ref etc...
+export type SubRecordWithRefs<Keys extends keyof Element, Element> =
+    { [K in Keys]: K extends EventHandler ? Element[K] : (Element[K] | Ref<Element[K]> | DerivedAttribute<Element[K]>) }
 
 function prettifyClassName(name: string): string {
     if (name.length > 0) {
@@ -364,7 +372,8 @@ export function element<Keys extends keyof Element, Element extends HTMLElement>
     // Ensure that DOM events trigger DOM updates after running
     for (const key in attributes) {
         if (key.startsWith("on")) {
-            // TODO: Unsafe... we're presuming all keys starting with "on" have a value of function type
+            // Technically unsafe... we're presuming all keys starting with "on" have a value
+            // of function type. I checked all the types in lib.dom.d.ts and it seems safe.
             attributes[key] = thenUpdateDOM(key, attributes[key] as any) as any
         }
     }
@@ -412,37 +421,26 @@ export function button<Keys extends keyof HTMLButtonElement>(
 export function input<Keys extends keyof HTMLInputElement>(
     attributes: SubRecordWithRefs<Keys, HTMLInputElement> = {} as any,
 ): HTMLInputElement { 
-    // Create the element
-    const el = element("input", attributes, [])
-
+    const attrs = attributes as SubRecordWithRefs<Keys | "value" | "oninput", HTMLInputElement>
+    const valueRef: string | Ref<string> | DerivedAttribute<string> | undefined = attrs.value
     // If the "value" attribute exists and is a Ref, then set up two-way binding
-    const attrsWithValue = attributes as SubRecordWithRefs<Keys | "value", HTMLInputElement>
-    const valueRef: string | Ref<string> | DerivedAttribute<string> | undefined = attrsWithValue.value
     if (valueRef !== undefined && isRef(valueRef)) {
-        const existingOnInput = el.oninput as
-                  ((this: GlobalEventHandlers, ev: Event) => any) | null
-            | Ref<((this: GlobalEventHandlers, ev: Event) => any) | null>
+        const existingOnInput = attrs.oninput
         // If there is no existing oninput function
-        if (existingOnInput === null) {
-            // On input, update "value" and then update the DOM
-            el.oninput = thenUpdateDOM("oninput", function (event: Event): any {
+        if (existingOnInput === undefined || existingOnInput === null) {
+            // On input, update the ref bound to "value"
+            attrs.oninput = function (event: Event): any {
                 valueRef.value = (event.target as HTMLInputElement).value
-            }) as any
+            }
         }
         else {
-            // On input, update "value" and then call the existing (pre-wrapped) oninput function
-            el.oninput = function (event: Event): any {
+            // On input, update the ref bound to "value" and then call the existing oninput function
+            attrs.oninput = function (event: Event): any {
                 valueRef.value = (event.target as HTMLInputElement).value
-
-                if (typeof existingOnInput === "function") {
-                    return existingOnInput.call(this, event)
-                }
-                else if (existingOnInput.value !== null) {
-                    return existingOnInput.value.call(this, event)
-                }
+                return existingOnInput.call(this, event)
             }
         }
     }
 
-    return el
+    return element("input", attributes, [])
 }
