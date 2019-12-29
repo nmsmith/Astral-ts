@@ -2,18 +2,21 @@ import "./reset.css"
 import "./style.scss"
 import "./globals"
 import { toRefs, reactive as observable, computed as derivedMalloc, ComputedRef } from "@vue/reactivity"
-import { $derived, $if, $for, app, div, p, br, button, input } from "./view-library"
+import { $derived, $if, $for, app, div, p, br, button, input } from "./lib-view"
+import "./lib-derived-state"
 import Cycle from "json-cycle"
 import { mergeWith } from "lodash"
 
 import * as IDRegistry from "./id-registry"
 
-//#region  --- Essential state ---
+//#region  --- Essential & derived state ---
 
-// A concept points to the registry that it belongs to. Concepts
-// referenced within rules may be constants (from the global registry)
-// or variables (from the rule's own registry).
-type Concept = {id: IDRegistry.ID, registry: IDRegistry.T}
+// Concepts referenced within rules may be constants (from the
+// global registry) or variables (from the rule's own registry).
+interface Concept {
+    id: IDRegistry.ID
+    registry: IDRegistry.T // the registry to which the concept is registered
+}
 
 // State of a concept search (for constants or variables)
 interface Search {
@@ -33,26 +36,17 @@ function search(registries: IDRegistry.T[]): Search {
     }
 }
 
-// TWO WAYS TO INTERPRET "TAGS" (THE PAIRING OF TWO VALUES):
-// Related to some topic:    tag / label / class / category
-// Part of some collection:  group / collection / set
-// Can't this binary relation just be implemented by an EAV with A = "is"?
-// Just make sure we have a really concise shorthand for this.
-
-// relation (instance, not class) / connection / edge / link / coupling / pairing / bond
 interface Link {
     subject: { concept: Concept, search: Search }
     relation: { concept: Concept, search: Search }
     object: { concept: Concept, search: Search }
 }
-// out-links, in-links
 
 function link(varRegistry: IDRegistry.T, subject: Concept, relation: Concept, object: Concept): Link {
-    /* eslint-disable */// Complains about use of "state" before initialization
-    return {
-        subject: { concept: subject, search: search([state.conceptRegistry, varRegistry]) },
-        relation: { concept: relation, search: search([state.conceptRegistry, varRegistry]) },
-        object: { concept: object, search: search([state.conceptRegistry, varRegistry]) },
+    return { // ESLint complains about use of "state" before initialization
+        subject: { concept: subject, search: search([state.conceptRegistry, varRegistry]) }, // eslint-disable-line
+        relation: { concept: relation, search: search([state.conceptRegistry, varRegistry]) }, // eslint-disable-line
+        object: { concept: object, search: search([state.conceptRegistry, varRegistry]) }, // eslint-disable-line
     }
 }
 
@@ -63,40 +57,46 @@ interface Rule {
     body: Link[]
 }
 
-interface RuleView {
-    rules: Rule[]
+interface $Rule extends Rule { // with derived state
+    magic: number
 }
 
-// N.B. The State should be pure data. To ensure serializability
-// & deserializability, there should be no functions or methods
-// anywhere in the state.
-type State = {
+interface RuleView {
+    rules: $Rule[]
+}
+
+interface State {
     conceptRegistry: IDRegistry.T
     conceptCreatorSearch: Search
     ruleRegistry: IDRegistry.T // for naming and searching for specific rules
-    rules: Rule[]
+    rules: $Rule[]
     currentView: RuleView
     currentSearch: undefined | Search
 }
 
-function initialState(): State {
+function createState(existingState?: State): State {
     const conceptRegistry = IDRegistry.empty()
-    return {
+    const initialState: State = observable({
         conceptRegistry,
         conceptCreatorSearch: search([conceptRegistry]),
         ruleRegistry: IDRegistry.empty(),
-        rules: [],
+        rules: Array.withDerivedProps<Rule, "magic", {magic: (obj: Rule) => any}>({
+            magic: rule => rule.id * 10,
+        }),
         currentView: {rules: []},
         currentSearch: undefined,
+    })
+
+    if (existingState !== undefined) {
+        // Deeply replace each property of the state with that of the existing state.
+        // This ensures that important structure (e.g. Proxies) are kept intact.
+        mergeWith(initialState, existingState, (existingValue, assignedValue) =>
+            // Returning undefined means "merge recursively as normal"
+            typeof existingValue === typeof assignedValue ? undefined : existingValue
+        )
     }
+    return observable(initialState)
 }
-
-// Set up fresh state
-const state: State = observable(initialState())
-console.log("App state: ", state) // for debugging
-
-//#endregion
-//#region  --- Derived state ---
 
 const currentSearchMatches: ComputedRef<IDRegistry.SearchResult[]> =
     derivedMalloc(() => {
@@ -118,31 +118,27 @@ const currentSearchMatches: ComputedRef<IDRegistry.SearchResult[]> =
     })
 
 //#endregion
-//#region  --- Save and load ---
+//#region  --- State initialization, saving and loading ---
+
+const state: State =
+    // Load previous state, if applicable
+    (   localStorage.loadLastState === "true"
+     && localStorage.state !== undefined
+     && localStorage.state !== "undefined"
+    )
+    ? createState(Cycle.retrocycle(JSON.parse(localStorage.state)))
+    : createState()
+
+console.log("App state: ", state) // for debugging
 
 function saveState(): void {
     // TODO: Have data auto-save periodically (every 10 sec?)
     localStorage.state = JSON.stringify(Cycle.decycle(state))
-    localStorage.loadLastState = true
 }
 
 // Save on quit, and load on start
 window.addEventListener("beforeunload", saveState)
-
-// Load previous state, if applicable
-if (   localStorage.loadLastState === "true"
-&& localStorage.state !== undefined
-&& localStorage.state !== "undefined"
-) {
-    // Deeply replace each property of the state with those loaded from storage.
-    // Note: if we need to customize the merging behaviour then Lodash also has a "mergeWith" fn.
-    mergeWith(
-        state,
-        Cycle.retrocycle(JSON.parse(localStorage.state)),
-        (existingValue, assignedValue) =>
-            typeof existingValue === typeof assignedValue ? assignedValue : existingValue,
-    )
-}
+localStorage.loadLastState = true
 
 function loadLastSave(): void {
     window.removeEventListener("beforeunload", saveState)
@@ -167,7 +163,7 @@ function newRule(i: number): void {
         varRegistry,
         head: link(varRegistry, c, c, c),
         body: [link(varRegistry, c, c, c)],
-    })
+    } as $Rule)
 }
 
 function selectPrevious(): void {
@@ -192,7 +188,7 @@ const linkEl = (link: Link): HTMLElement =>
     div ({
         className: "row",
     },[
-        p("LINK")
+        p("LINK"),
     ])
 
 app("app",
@@ -210,9 +206,12 @@ app("app",
                 }),
                 $for (state.rules, rule => [
                     div ({className: "rule"}, [
-                        $if (() => rule.head !== undefined, {
-                            _then: () => [linkEl (rule.head!)],
-                            _else: () => [],
+                        p ($derived(() => rule.magic.toString() + rule.id), {
+                            onclick: () => rule.id += 1,
+                        }),
+                        $if (() => rule.head === undefined, {
+                            _then: () => [],
+                            _else: () => [linkEl (rule.head!)],
                         }),
                         $for (rule.body, link => [p (" -- "), linkEl (link)]),
                     ]),
