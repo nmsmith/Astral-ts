@@ -2,41 +2,36 @@ import "./reset.css"
 import "./style.scss"
 import "./globals"
 import { toRefs, reactive as observable, computed as derivedMalloc, ComputedRef } from "@vue/reactivity"
-import {$derived, $if, $for, app, div, p, br, button, input} from "./view-library"
+import { $derived, $if, $for, app, div, p, br, button, input } from "./view-library"
 import Cycle from "json-cycle"
-import { merge } from "lodash"
+import { mergeWith } from "lodash"
 
 import * as IDRegistry from "./id-registry"
 
-// Disable right-click menu
-window.oncontextmenu = (e: Event): void => {
-    e.preventDefault()
+//#region  --- Essential state ---
+
+// A concept points to the registry that it belongs to. Concepts
+// referenced within rules may be constants (from the global registry)
+// or variables (from the rule's own registry).
+type Concept = {id: IDRegistry.ID, registry: IDRegistry.T}
+
+// State of a concept search (for constants or variables)
+interface Search {
+    active: boolean
+    text: ""
+    registries: IDRegistry.T[]
+    selection: number
 }
 
-// eslint-disable-next-line
-function copyTree(x: any): any {
-    return JSON.parse(JSON.stringify(x))
+// Empty search state
+function search(registries: IDRegistry.T[]): Search {
+    return {
+        active: false,
+        text: "",
+        registries: registries,
+        selection: 0,
+    }
 }
-
-interface ConstRef {
-    type: "Const"
-    ref: IDRegistry.ID
-}
-
-function constRef(ref: IDRegistry.ID): ConstRef {
-    return {type: "Const", ref: ref}
-}
-
-interface VarRef {
-    type: "Var"
-    ref: IDRegistry.ID
-}
-
-function varRef(ref: IDRegistry.ID): VarRef {
-    return {type: "Var", ref: ref}
-}
-
-type ConceptRef = ConstRef | VarRef
 
 // TWO WAYS TO INTERPRET "TAGS" (THE PAIRING OF TWO VALUES):
 // Related to some topic:    tag / label / class / category
@@ -46,21 +41,26 @@ type ConceptRef = ConstRef | VarRef
 
 // relation (instance, not class) / connection / edge / link / coupling / pairing / bond
 interface Link {
-    subject: ConceptRef
-    relation: ConceptRef
-    object: ConceptRef
+    subject: { concept: Concept, search: Search }
+    relation: { concept: Concept, search: Search }
+    object: { concept: Concept, search: Search }
 }
 // out-links, in-links
 
-function link(subject: ConceptRef, relation: ConceptRef, object: ConceptRef): Link {
-    return {subject: subject, relation: relation, object: object}
+function link(varRegistry: IDRegistry.T, subject: Concept, relation: Concept, object: Concept): Link {
+    /* eslint-disable */// Complains about use of "state" before initialization
+    return {
+        subject: { concept: subject, search: search([state.conceptRegistry, varRegistry]) },
+        relation: { concept: relation, search: search([state.conceptRegistry, varRegistry]) },
+        object: { concept: object, search: search([state.conceptRegistry, varRegistry]) },
+    }
 }
 
 interface Rule {
-    //idRegistry: IDRegistry<VarID>  for local variables
     id: number
-    head: string //head?: Link
-    body: string //Link[]
+    varRegistry: IDRegistry.T // for local variables
+    head?: Link
+    body: Link[]
 }
 
 interface RuleView {
@@ -72,47 +72,81 @@ interface RuleView {
 // anywhere in the state.
 type State = {
     conceptRegistry: IDRegistry.T
-    ruleRegistry: IDRegistry.T
+    conceptCreatorSearch: Search
+    ruleRegistry: IDRegistry.T // for naming and searching for specific rules
     rules: Rule[]
     currentView: RuleView
-    conceptInputState: {
-        text: string
-        selection: number
-    }
+    currentSearch: undefined | Search
 }
 
 function initialState(): State {
+    const conceptRegistry = IDRegistry.empty()
     return {
-        conceptRegistry: IDRegistry.empty(),
+        conceptRegistry,
+        conceptCreatorSearch: search([conceptRegistry]),
         ruleRegistry: IDRegistry.empty(),
         rules: [],
         currentView: {rules: []},
-        conceptInputState: {
-            text: "",
-            selection: 0,
-        },
+        currentSearch: undefined,
     }
 }
 
 // Set up fresh state
 const state: State = observable(initialState())
+console.log("App state: ", state) // for debugging
 
-// Load previous state, if applicable
-if (   localStorage.loadLastState === "true"
-    && localStorage.state !== undefined
-    && localStorage.state !== "undefined"
-) {
-    // Deeply replace each property of the state with those loaded from storage.
-    // Note: if we need to customize the merging behaviour then Lodash also has a "mergeWith" fn.
-    merge(state, Cycle.retrocycle(JSON.parse(localStorage.state)))
-}
+//#endregion
+//#region  --- Derived state ---
 
-// Expose a reference to the state for debugging
-console.log("App state: ", state)
+const currentSearchMatches: ComputedRef<IDRegistry.SearchResult[]> =
+    derivedMalloc(() => {
+        if (state.currentSearch === undefined) {
+            return []
+        }
+        else {
+            const text = state.currentSearch.text
+            const errorTolerance = (text.length <= 1) ? 0 : 1
+            // Search all given registries
+            const searchResults: IDRegistry.SearchResult[] = []
+            state.currentSearch.registries.forEach(
+                r => searchResults.push(...IDRegistry.getMatchesForPrefix(r, text, errorTolerance))
+            )
+            // Sort the results by closeness
+            searchResults.sort((a, b) => a.distance - b.distance)
+            return searchResults
+        }
+    })
+
+//#endregion
+//#region  --- Save and load ---
 
 function saveState(): void {
     // TODO: Have data auto-save periodically (every 10 sec?)
     localStorage.state = JSON.stringify(Cycle.decycle(state))
+    localStorage.loadLastState = true
+}
+
+// Save on quit, and load on start
+window.addEventListener("beforeunload", saveState)
+
+// Load previous state, if applicable
+if (   localStorage.loadLastState === "true"
+&& localStorage.state !== undefined
+&& localStorage.state !== "undefined"
+) {
+    // Deeply replace each property of the state with those loaded from storage.
+    // Note: if we need to customize the merging behaviour then Lodash also has a "mergeWith" fn.
+    mergeWith(
+        state,
+        Cycle.retrocycle(JSON.parse(localStorage.state)),
+        (existingValue, assignedValue) =>
+            typeof existingValue === typeof assignedValue ? assignedValue : existingValue,
+    )
+}
+
+function loadLastSave(): void {
+    window.removeEventListener("beforeunload", saveState)
+    location.reload()
 }
 
 function resetState(): void {
@@ -120,99 +154,98 @@ function resetState(): void {
     location.reload()
 }
 
-// Save on quit, and load on start
-window.addEventListener("beforeunload", saveState)
-localStorage.loadLastState = true
+//#endregion
+//#region  --- The view & transition logic ----
 
 function newRule(i: number): void {
-    const id = IDRegistry.newID(state.ruleRegistry, state.conceptInputState.text)
-    //state.rules.insert(i, {id: id, body: []})
-    state.rules.insert(i, {id: id, head: id.toString(), body: ""})
+    const id = IDRegistry.newID(state.ruleRegistry, "Unnamed rule")
+    const varRegistry = IDRegistry.empty()
+    const c: Concept = {id: 0, registry: state.conceptRegistry} // placeholder concept
+
+    state.rules.insert(i, {
+        id: id,
+        varRegistry,
+        head: link(varRegistry, c, c, c),
+        body: [link(varRegistry, c, c, c)],
+    })
 }
 
-const searchMatches: ComputedRef<IDRegistry.SearchResult[]> =
-    derivedMalloc(() => {
-        const text = state.conceptInputState.text
-        const errorTolerance = (text.length <= 1) ? 0 : 1
-        const searchResults = IDRegistry.getMatchesForPrefix(state.conceptRegistry, text, errorTolerance)
-        searchResults.sort((a, b) => a.distance - b.distance)
-        return searchResults
-    })
-
 function selectPrevious(): void {
-    if (state.conceptInputState.selection > 0) {
-        --state.conceptInputState.selection
+    if (state.currentSearch !== undefined && state.currentSearch.selection > 0) {
+        --state.currentSearch.selection
     }
 }
 
 function selectNext(): void {
-    if (state.conceptInputState.selection < searchMatches.value.length - 1) {
-        ++state.conceptInputState.selection
+    if (state.currentSearch !== undefined && state.currentSearch.selection < currentSearchMatches.value.length - 1) {
+        ++state.currentSearch.selection
     }
 }
 
-function createConcept(): void {
-    if (state.conceptInputState.text.length > 0) {
-        IDRegistry.newID(state.conceptRegistry, state.conceptInputState.text)
-        state.conceptInputState.text = ""
-        state.conceptInputState.selection = 0
+function createConcept(label: string): void {
+    if (label.length > 0) {
+        IDRegistry.newID(state.conceptRegistry, label)
     }
 }
 
-// ----- THE APP VIEW -----
+const linkEl = (link: Link): HTMLElement =>
+    div ({
+        className: "row",
+    },[
+        p("LINK")
+    ])
 
 app("app",
-    div ({
-        className: "matchParentSize col",
-    },[
-        div ({
-            className: "toolbar",
-        },[
+    div ({className: "matchParentSize col"}, [
+        div ({className: "toolbar"}, [
             button ("Reset state", {
                 onclick: resetState,
             }),
         ]),
-        div ({
-            className: "database",
-        },[
-            div ({
-                className: "insertHere",
-                onclick: () => newRule(0),
-            }),
-            $for (state.rules, rule => [
-                div ({
-                    className: "row",
-                },[
-                    input ({
-                        autocomplete: "nope",
-                        value: toRefs(rule).head,
-                    }),
-                    p ("if"),
-                    input ({
-                        autocomplete: "nope",
-                        value: toRefs(rule).body,
-                    }),
-                ]),
+        div ({className: "database"}, [
+            div ({className: "ruleView"}, [
                 div ({
                     className: "insertHere",
-                    onclick: () => newRule(rule.$index+1),
+                    onclick: () => newRule(0),
                 }),
+                $for (state.rules, rule => [
+                    div ({className: "rule"}, [
+                        $if (() => rule.head !== undefined, {
+                            _then: () => [linkEl (rule.head!)],
+                            _else: () => [],
+                        }),
+                        $for (rule.body, link => [p (" -- "), linkEl (link)]),
+                    ]),
+                    div ({
+                        className: "insertHere",
+                        onclick: () => newRule(rule.$index+1),
+                    }),
+                ]),
             ]),
+            br (),
             br (),
             p ("Create a new concept:"),
             input ({
                 autocomplete: "nope",
-                value: toRefs(state.conceptInputState).text,
+                value: toRefs(state.conceptCreatorSearch).text,
                 onkeydown: (e: KeyboardEvent) => {
                     if (e.key === "ArrowDown") selectNext()
                     else if (e.key === "ArrowUp") selectPrevious()
-                    else if (e.key === "Enter") createConcept()
+                    else if (e.key === "Enter") createConcept(state.conceptCreatorSearch.text)
+                },
+                onfocus: () => {
+                    state.currentSearch = state.conceptCreatorSearch
+                    state.conceptCreatorSearch.active = true
+                },
+                onblur: () => {
+                    state.currentSearch = undefined
+                    state.conceptCreatorSearch.active = false
                 },
             }),
-            $for (searchMatches, match => [
+            $for (currentSearchMatches, match => [
                 p ($derived(() => `${match.key} [${match.value}]`), {
                     className:
-                        $if (() => match.$index === state.conceptInputState.selection, {
+                        $if (() => match.$index === state.conceptCreatorSearch.selection, {
                             _then: () => "suggestionBox highlighted",
                             _else: () => "suggestionBox",
                         }),
@@ -221,3 +254,10 @@ app("app",
         ]),
     ])
 )
+
+// Disable right-click menu
+window.oncontextmenu = (e: Event): void => {
+    e.preventDefault()
+}
+
+//#endregion

@@ -1,11 +1,3 @@
 {
-    "[jade]": {
-        //"editor.lineHeight": 30
-    },
-
     "typescript.tsdk": "./node_modules/typescript/lib",
-
-    // Vetur supports type-checking in templates, but not with Pug syntax.
-    // Also, the type-checking seems buggy. It doesn't handle v-for loop variables!
-    //"vetur.experimental.templateInterpolationService": true,
 }

@@ -108,7 +108,7 @@ export function $if<T>(
 export function $for<I extends object>(
     items: I[] | ComputedRef<I[]>,
     f: (item: WithIndex<I>) => HTMLElement[],
-): DerivedDocFragment<I> {
+): DerivedFromSequence<HTMLElement[], I> {
     return {$derived: "for", items: items, f: f}
 }
 
@@ -290,8 +290,8 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
             const marker = putFragmentMarker()
             let elementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
 
-            const itemsOrRef = (child as DerivedFromSequence<Effectful<HTMLElement>[], any>).items
-            const f = (child as DerivedFromSequence<Effectful<HTMLElement>[], any>).f
+            const itemsOrRef = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).items
+            const f = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).f
 
             // Temp benchmarking
             const childrenAttachedHere: Effectful<HTMLElement>[] = []

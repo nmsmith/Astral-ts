@@ -62,7 +62,6 @@ $main-pad: 10px;
     @extend .row;
     height: 30px;
     padding: $main-pad;
-    background-color: #ffefbc;
 }
 
 .database {
@@ -71,14 +70,25 @@ $main-pad: 10px;
     background-color: #ffffff;
 }
 
+.ruleView {
+    @extend .col;
+    box-shadow: 1px 1px 4px 3px #979797;
+}
+
 .insertHere {
-    height: 12px;
+    height: 18px;
     //transition: height 0.2s;
 }
 
 .insertHere:hover {
     background-color: #ffefbc;
     //height: $standard-font-size + 8px;
+}
+
+.rule {
+    @extend .row;
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
 .greyedText {
