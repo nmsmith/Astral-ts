@@ -149,11 +149,11 @@ function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
 // so that I can hijack it for two-way binding.
 type EventHandler = "oninput"
 
-// Defines a record of properties that can be assigned to Element.
+// Defines a record of properties that can be assigned to El.
 // If the property is an EventHandler, then it must be a function.
 // Otherwise, the property can be dynamically computed via Ref etc...
-export type SubRecordWithRefs<Keys extends keyof Element, Element> =
-    { [K in Keys]: K extends EventHandler ? Element[K] : (Element[K] | Ref<Element[K]> | DerivedAttribute<Element[K]>) }
+export type SubRecordWithRefs<Keys extends keyof El, El> =
+    { [K in Keys]: K extends EventHandler ? El[K] : (El[K] | Ref<El[K]> | DerivedAttribute<El[K]>) }
 
 function prettifyClassName(name: string): string {
     if (name.length > 0) {
@@ -169,10 +169,10 @@ function logChangeStart(el: HTMLElement): void {
 }
 
 // Assign attribute values and attach listeners to re-assign observable values when they change
-function assignReactiveAttributes<AssKeys extends keyof Element, Element extends HTMLElement>(
-    el: Effectful<Element>,
-    assignment: SubRecordWithRefs<AssKeys, Element>,
-): Effectful<Element> {
+function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLElement>(
+    el: Effectful<El>,
+    assignment: SubRecordWithRefs<AssKeys, El>,
+): Effectful<El> {
     function logAttributeChange(key: string, value: unknown): void {
         logChangeStart(el)
         console.log(`  %c${key} = "${value}"`, attributeChangedStyle)
@@ -370,12 +370,12 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
 }
 
 // Create a HTML element with the given name and attributes. 
-export function element<Keys extends keyof Element, Element extends HTMLElement>(
+export function element<Keys extends keyof El, El extends HTMLElement>(
     name: string,
-    attributes: SubRecordWithRefs<Keys, Element>,
+    attributes: SubRecordWithRefs<Keys, El>,
     children: HTMLChildren,
-): Effectful<Element> {
-    const el = document.createElement(name) as Effectful<Element>
+): Effectful<El> {
+    const el = document.createElement(name) as Effectful<El>
     el.$effects = []
     domUpdateJobs.set(el, new Set())
 
