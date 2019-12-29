@@ -1,25 +1,26 @@
 import { reactive as observable, ReactiveEffect, computed, stop } from "@vue/reactivity"
 
-type Disjoint <T1, T2> = Extract<keyof T1, keyof T2> extends never ? T2 : never
-
 declare global {
     interface ArrayConstructor {
-        withDerivedProps: <
-            Obj extends object,
-            DerivedProps extends string,
-            T extends Disjoint<Obj, Record<DerivedProps, (obj: Obj) => any>>
-        >(
-            derivedProps: T,
-        ) => (Obj & {[K in keyof T]: ReturnType<T[K]>})[]
+        /**
+         * Creates an array that automatically assigns the given set of computed properties
+         * to the objects it holds. The last-computed values of these properties are cached
+         * and updates to them are observable (via @vue/reactivity). If an object is removed
+         * from the array, then its computed properties are deleted via a finalizer. This
+         * is necessary because @vue/reactivity requires manual memory management of effects.
+         * 
+         * The provided properties can depend on each other, as long as the dependency isn't
+         * cyclic.
+         */
+        withDerivedProps: <Obj extends object>(
+            derivedProps: Record<string, (obj: Obj) => any>,
+        ) => Obj[]
     }
 }
 
-Array.withDerivedProps = function<
-    Obj extends object,
-    T extends Record<string, (obj: Obj) => any>
->(
-    derivedProps: T,
-): ( Obj & {[K in keyof T]: ReturnType<T[K]>} )[] {
+Array.withDerivedProps = function<Obj extends object>(
+    derivedProps: Record<string, (obj: Obj) => any>,
+): Obj[] {
     // Must put an observable Proxy around the items first, so that
     // the proxy can make its way inside the computed() lambda.
     const items: Obj[] = observable([])
@@ -67,9 +68,6 @@ Array.withDerivedProps = function<
             data.copies += 1
         }
     }
-
-    // Start by adding the derived properties for all the items already in the array.
-    items.forEach(added)
 
     // Set up a proxy to maintain the number of copies of each object in the array,
     // and remove the derived property when the object is removed from the array.
@@ -142,7 +140,7 @@ Array.withDerivedProps = function<
             }
         },
     })
-    return proxy as ( Obj & {[K in keyof T]: ReturnType<T[K]>} )[]
+    return proxy as Obj[]
 }
 
 export {}

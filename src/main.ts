@@ -59,6 +59,7 @@ interface Rule {
 
 interface $Rule extends Rule { // with derived state
     magic: number
+    doubleMagic: number
 }
 
 interface RuleView {
@@ -80,8 +81,9 @@ function createState(existingState?: State): State {
         conceptRegistry,
         conceptCreatorSearch: search([conceptRegistry]),
         ruleRegistry: IDRegistry.empty(),
-        rules: Array.withDerivedProps<Rule, "magic", {magic: (obj: Rule) => any}>({
-            magic: rule => rule.id * 10,
+        rules: Array.withDerivedProps({
+            magic: rule => rule.doubleMagic * 10,
+            doubleMagic: rule => rule.id * 100,
         }),
         currentView: {rules: []},
         currentSearch: undefined,
@@ -206,7 +208,7 @@ app("app",
                 }),
                 $for (state.rules, rule => [
                     div ({className: "rule"}, [
-                        p ($derived(() => rule.magic.toString() + rule.id), {
+                        p ($derived(() => rule.magic.toString() + " " + rule.doubleMagic.toString()), {
                             onclick: () => rule.id += 1,
                         }),
                         $if (() => rule.head === undefined, {
