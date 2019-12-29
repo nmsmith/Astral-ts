@@ -32,7 +32,6 @@ Array.withDerivedProps = function<Key extends string, Obj extends Record<Key, un
     
     function removed(obj: Obj): void {
         if (obj === undefined) return
-        console.log(obj)
         const data = derivedData.get(obj)!
         if (data.copies === 1) {
             // Clean up the object if it will no longer be in the array
@@ -56,8 +55,10 @@ Array.withDerivedProps = function<Key extends string, Obj extends Record<Key, un
                 copies: 1,
                 effects: Object.entries(derivedProps).map(([propName, propValue]) => {
                     const c = computed(() => {
-                        console.log(`Updating derived property "${propName}"`)
-                        return (propValue as (obj: Obj) => unknown)(obj)
+                        const currentValue = (propValue as (obj: Obj) => unknown)(obj)
+                        console.log("%cObject", "font-weight: bold")
+                        console.log(`  %c${propName} = ${currentValue}`, "color: #7700ff")
+                        return currentValue
                     })
                     ;(obj as any)[propName] = c
                     return c.effect
