@@ -190,28 +190,28 @@ function createConcept(label: string): void {
 
 const linkEl = (link: Link): HTMLElement =>
     div ({
-        className: "row",
+        class: "row",
     },[
         p("LINK"),
     ])
 
 app("app",
-    div ({className: "matchParentSize col"}, [
-        div ({className: "toolbar"}, [
+    div ({class: "matchParentSize col"}, [
+        div ({class: "toolbar"}, [
             button ("Reset state", {
                 onclick: resetState,
             }),
         ]),
-        div ({className: "database"}, [
-            div ({className: "ruleView"}, [
+        div ({class: "database"}, [
+            div ({class: "ruleView"}, [
                 div ({
-                    className: "insertHere",
+                    class: "insertHere",
                     onclick: () => newRule(0),
                 }),
                 $for (state.rules, rule => [
-                    div ({className: "rule"}, [
+                    div ({class: "rule"}, [
                         p ($derived(() => rule.magic.toString() + " " + rule.doubleMagic.toString()), {
-                            className: "noSelect",
+                            class: "noSelect",
                             onclick: () => rule.id += 1,
                         }),
                         $if (() => rule.head === undefined, {
@@ -221,7 +221,7 @@ app("app",
                         $for (rule.body, link => [p (" -- "), linkEl (link)]),
                     ]),
                     div ({
-                        className: "insertHere",
+                        class: "insertHere",
                         onclick: () => newRule(rule.$index+1),
                     }),
                 ]),
@@ -248,7 +248,7 @@ app("app",
             }),
             $for (currentSearchMatches, match => [
                 p ($derived(() => `${match.key} [${match.value}]`), {
-                    className:
+                    class:
                         $if (() => match.$index === state.conceptCreatorSearch.selection, {
                             _then: () => "suggestionBox highlighted",
                             _else: () => "suggestionBox",

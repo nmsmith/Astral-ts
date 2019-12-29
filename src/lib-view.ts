@@ -144,6 +144,13 @@ function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
     }
 }
 
+// Hack a "class" attribute onto Elements for readability's sake
+declare global {
+    interface Element {
+        "class": string
+    }
+}
+
 // I may want to flesh out this list of event handlers eventually.
 // Currently, I just need to ensure oninput is a plain old function
 // so that I can hijack it for two-way binding.
@@ -177,9 +184,13 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
         logChangeStart(el)
         console.log(`  %c${key} = "${value}"`, attributeChangedStyle)
     }
-    for (const key in assignment) {
+    for (let key in assignment) {
         const attrValue: unknown | Ref<unknown> | DerivedAttribute<unknown> = assignment[key]
-            
+        // We hacked a "class" attribute onto Elements; now we need to fix it
+        if (key === "class") {
+            key = "className" as Extract<AssKeys, string>
+        }
+
         if (isRef(attrValue)) {
             scheduleDOMUpdate(el, () => {
                 el[(key as AssKeys)] = attrValue.value
