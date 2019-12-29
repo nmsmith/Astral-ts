@@ -5,21 +5,22 @@ declare global {
         /**
          * Creates an array that automatically assigns the given set of computed properties
          * to the objects it holds. The last-computed values of these properties are cached
-         * and updates to them are observable (via @vue/reactivity). If an object is removed
-         * from the array, then its computed properties are deleted via a finalizer. This
-         * is necessary because @vue/reactivity requires manual memory management of effects.
+         * and updates to them are observable (via @vue/reactivity).
          * 
-         * The provided properties can depend on each other, as long as the dependency isn't
-         * cyclic.
+         * It is best to treat objects held in this array as OWNED by the array. If an object
+         * is removed from the array, then its computed properties are deleted via a finalizer.
+         * This is necessary because @vue/reactivity requires manual memory management for effects.
+         * 
+         * Computed properties can depend on each other, as long as the dependency isn't cyclic.
          */
-        withDerivedProps: <Obj extends object>(
-            derivedProps: Record<string, (obj: Obj) => any>,
+        withDerivedProps: <Key extends string, Obj extends Record<Key, unknown>>(
+            derivedProps: {[K in Key]: (obj: Obj) => Obj[Key]},
         ) => Obj[]
     }
 }
 
-Array.withDerivedProps = function<Obj extends object>(
-    derivedProps: Record<string, (obj: Obj) => any>,
+Array.withDerivedProps = function<Key extends string, Obj extends Record<Key, unknown>>(
+    derivedProps: {[K in Key]: (obj: Obj) => Obj[Key]},
 ): Obj[] {
     // Must put an observable Proxy around the items first, so that
     // the proxy can make its way inside the computed() lambda.
@@ -56,7 +57,7 @@ Array.withDerivedProps = function<Obj extends object>(
                 effects: Object.entries(derivedProps).map(([propName, propValue]) => {
                     const c = computed(() => {
                         console.log(`Updating derived property "${propName}"`)
-                        return propValue(obj)
+                        return (propValue as (obj: Obj) => unknown)(obj)
                     })
                     ;(obj as any)[propName] = c
                     return c.effect

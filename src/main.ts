@@ -62,6 +62,8 @@ interface $Rule extends Rule { // with derived state
     doubleMagic: number
 }
 
+const $Rule = (rule: Rule): $Rule => rule as $Rule
+
 interface RuleView {
     rules: $Rule[]
 }
@@ -160,12 +162,12 @@ function newRule(i: number): void {
     const varRegistry = IDRegistry.empty()
     const c: Concept = {id: 0, registry: state.conceptRegistry} // placeholder concept
 
-    state.rules.insert(i, {
+    state.rules.insert(i, $Rule({
         id: id,
         varRegistry,
         head: link(varRegistry, c, c, c),
         body: [link(varRegistry, c, c, c)],
-    } as $Rule)
+    }))
 }
 
 function selectPrevious(): void {
@@ -209,6 +211,7 @@ app("app",
                 $for (state.rules, rule => [
                     div ({className: "rule"}, [
                         p ($derived(() => rule.magic.toString() + " " + rule.doubleMagic.toString()), {
+                            className: "noSelect",
                             onclick: () => rule.id += 1,
                         }),
                         $if (() => rule.head === undefined, {
