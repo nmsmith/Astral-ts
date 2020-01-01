@@ -7,38 +7,44 @@ import "./lib-derived-state"
 import Cycle from "json-cycle"
 import { mergeWith } from "lodash"
 
-import * as IDRegistry from "./id-registry"
+import * as Registry from "./concept-registry"
+type Concept = Registry.Concept
 import { WithDerivedProps, DerivedProps, withDerivedProps } from "./lib-derived-state"
 
 //#region  --- Essential & derived state ---
 
-// Concepts referenced within rules may be constants (from the
-// global registry) or variables (from the rule's own registry).
-interface Concept {
-    readonly id: IDRegistry.ID
-    readonly registry: IDRegistry.T // the registry to which the concept is registered
-}
-
 // State of a concept search (for constants or variables)
 interface Search {
+//essential
     active: boolean
     text: ""
-    readonly registries: IDRegistry.T[]
+    readonly registries: Registry.T[]
     selection: number
+//derived
+    readonly results: Registry.SearchResult[]
 }
 
-interface $Search extends Search {
-    readonly results: IDRegistry.SearchResult[]
-}
-
-// Empty search state
-function search(registries: IDRegistry.T[]): Search {
+function Search(registries: Registry.T[]): Search {
     return {
         active: false,
         text: "",
         registries: registries,
         selection: 0,
-    }
+    } as Search
+}
+
+function searchResults(search: Search): Registry.SearchResult[] {
+    const errorTolerance = (search.text.length <= 1) ? 0 : 1
+    // Search all given registries
+    const searchResults: Registry.SearchResult[] = []
+    search.registries.forEach(r =>
+        searchResults.push(
+            ...Registry.findConceptsWithLabelPrefix(r, search.text, errorTolerance)
+        )
+    )
+    // Sort the results by closeness
+    searchResults.sort((a, b) => a.distance - b.distance)
+    return searchResults
 }
 
 interface Link {
@@ -47,90 +53,49 @@ interface Link {
     readonly object: { concept: Concept, search: Search }
 }
 
-interface $Link {
-    readonly subject: { concept: Concept, search: $Search }
-    readonly relation: { concept: Concept, search: $Search }
-    readonly object: { concept: Concept, search: $Search }
-}
-
-function link(conceptRegistry: IDRegistry.T, varRegistry: IDRegistry.T, subject: Concept, relation: Concept, object: Concept): Link {
+function Link(conceptRegistry: Registry.T, varRegistry: Registry.T, subject: Concept, relation: Concept, object: Concept): Link {
     return {
-        subject: { concept: subject, search: search([conceptRegistry, varRegistry]) },
-        relation: { concept: relation, search: search([conceptRegistry, varRegistry]) },
-        object: { concept: object, search: search([conceptRegistry, varRegistry]) },
+        subject: { concept: subject, search: Search([conceptRegistry, varRegistry]) },
+        relation: { concept: relation, search: Search([conceptRegistry, varRegistry]) },
+        object: { concept: object, search: Search([conceptRegistry, varRegistry]) },
     }
 }
 
+const linkDerivedProps: DerivedProps<Link> = {
+    subject: { search: { results: searchResults } },
+    relation: { search: { results: searchResults } },
+    object: { search: { results: searchResults } },
+}
+
 interface Rule {
-    readonly id: number
-    readonly varRegistry: IDRegistry.T // for local variables
+    readonly ruleConcept: Concept // rules are themselves concepts to make them searchable
+    readonly varRegistry: Registry.T // for local variables
     readonly head: Link
     readonly body: Link[]
 }
 
-interface $Rule extends Rule { // with derived state
-    readonly magic: number
-    readonly doubleMagic: number
-    readonly head: $Link
-    readonly body: $Link[]
-}
-
-const $Rule = (rule: Rule): $Rule => rule as $Rule
-
 interface RuleView {
-    readonly rules: $Rule[]
+    readonly rules: Rule[]
 }
 
 interface State {
-    readonly conceptRegistry: IDRegistry.T // the database Domain
-    readonly conceptCreatorSearch: $Search
-    readonly ruleRegistry: IDRegistry.T // for naming and searching for specific rules
-    readonly rules: $Rule[]
+    readonly conceptRegistry: Registry.T // the database Domain
+    readonly conceptCreatorSearch: Search
+    readonly ruleRegistry: Registry.T // for naming and searching for specific rules
+    readonly rules: Rule[]
     currentView: RuleView
 }
 
-function searchResults(search: Search): IDRegistry.SearchResult[] {
-    const errorTolerance = (search.text.length <= 1) ? 0 : 1
-    // Search all given registries
-    const searchResults: IDRegistry.SearchResult[] = []
-    search.registries.forEach(r =>
-        searchResults.push(
-            ...IDRegistry.getMatchesForPrefix(r, search.text, errorTolerance)
-        )
-    )
-    // Sort the results by closeness
-    searchResults.sort((a, b) => a.distance - b.distance)
-    return searchResults
-}
-
 function createState(existingState?: State): WithDerivedProps<State> {
-    /* eslint-disable @typescript-eslint/explicit-function-return-type */
-    const linkDerivedProps: DerivedProps<$Link> = {
-        subject: {
-            search: {
-                results: searchResults,
-            },
-        },
-        relation: {
-            search: {
-                results: searchResults,
-            },
-        },
-        object: {
-            search: {
-                results: searchResults,
-            },
-        },
-    }
-    const conceptRegistry = IDRegistry.empty()
+    const conceptRegistry = Registry.empty("concept")
     const initialState: WithDerivedProps<State> = withDerivedProps({
         conceptRegistry,
         conceptCreatorSearch:
-            search([conceptRegistry]) as $Search,
+            Search([conceptRegistry]),
         ruleRegistry:
-            IDRegistry.empty(),
+            Registry.empty("rule"),
         rules:
-            [] as $Rule[],
+            [] as Rule[],
         currentView:
             {rules: []},
     }, {
@@ -138,8 +103,6 @@ function createState(existingState?: State): WithDerivedProps<State> {
             results: searchResults,
         },
         rules: {
-            magic: rule => rule.doubleMagic * 10,
-            doubleMagic: rule => rule.id * 100,
             head: linkDerivedProps,
             body: linkDerivedProps,
         },
@@ -192,25 +155,25 @@ function resetState(): void {
 //#region  --- The view & transition logic ----
 
 function newRule(i: number): void {
-    const id = IDRegistry.newID(state.ruleRegistry, "Unnamed rule")
-    const varRegistry = IDRegistry.empty()
-    const c: Concept = {id: 0, registry: state.conceptRegistry} // placeholder concept
+    const ruleConcept = Registry.newConcept(state.ruleRegistry)
+    const varRegistry = Registry.empty("var")
+    const c: Concept = Registry.newConcept(state.conceptRegistry) // placeholder concept
 
-    state.rules.insert(i, $Rule({
-        id: id,
+    state.rules.insert(i, {
+        ruleConcept,
         varRegistry,
-        head: link(state.conceptRegistry, varRegistry, c, c, c),
-        body: [link(state.conceptRegistry, varRegistry, c, c, c)],
-    }))
+        head: Link(state.conceptRegistry, varRegistry, c, c, c),
+        body: [Link(state.conceptRegistry, varRegistry, c, c, c)],
+    })
 }
 
-function selectPrevious(search: $Search): void {
+function selectPrevious(search: Search): void {
     if (search.selection > 0) {
         --search.selection
     }
 }
 
-function selectNext(search: $Search): void {
+function selectNext(search: Search): void {
     if (search.selection < search.results.length - 1) {
         ++search.selection
     }
@@ -219,8 +182,10 @@ function selectNext(search: $Search): void {
 function createConcept(): void {
     const label = state.conceptCreatorSearch.text
     if (label.length > 0) {
-        IDRegistry.newID(state.conceptRegistry, label)
-        state.conceptCreatorSearch.text = ""
+        const outcome = Registry.newConcept(state.conceptRegistry, label)
+        if (outcome !== "invalidLabel" && outcome !== "labelInUse") {
+            state.conceptCreatorSearch.text = ""
+        }
     }
 }
 
@@ -246,11 +211,8 @@ app("app",
                     onclick: () => newRule(0),
                 }),
                 $for (() => state.rules, rule => [
+                    p (rule.ruleConcept.label),
                     div ({class: "rule"}, [
-                        p (() => rule.magic.toString() + " " + rule.doubleMagic.toString(), {
-                            class: "noSelect",
-                            onclick: () => (rule as any).id += 1,
-                        }),
                         linkEl (rule.head),
                         $for (() => rule.body, link => [p (" -- "), linkEl (link)]), 
                     ]),

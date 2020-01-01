@@ -50,11 +50,14 @@ function differIndex(x: string, y: string): number {
     return differIndex
 }
 
-/// Insert a key/value pair into the tree. If the key already
-/// exists, its corresponding value will be overwritten.
-/// (N.B. we can modify the behaviour to allow bag semantics, if
-/// we want multiple identifiers to be mappable to the same name).
-export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value): void {
+/**
+ * Insert a key/value pair into the tree. If the key already exists, its value
+ * will not be changed. Returns whether the insertion was successful.
+ * 
+ * (N.B. we can modify the behaviour to allow bag semantics, if
+ * we want multiple identifiers to be mappable to the same name).
+ */
+export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value): boolean {
     const children = tree.next
     for (let childIndex = 0; childIndex < children.length; ++childIndex) {
         const child = children[childIndex]
@@ -65,14 +68,12 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
         if (cutIndex === child.prefix.length && child.type === "Interior") {
             // Go deeper
             const disagreedSuffixKey = key.slice(cutIndex)
-            insert(child, disagreedSuffixKey, value)
-            return
+            return insert(child, disagreedSuffixKey, value)
         }
         // If the strings are identical, and the child is a leaf
         else if (cutIndex === child.prefix.length && cutIndex === key.length && child.type === "Leaf") {
-            // Overwrite the existing value
-            child.value = value
-            return
+            // Don't change the existing value
+            return false
         }
         // If the keys are completely different, look at the next child
         else if (cutIndex === 0) {
@@ -99,22 +100,40 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
             }
             children[childIndex] = newInteriorNode
             // Job done
-            return
+            return true
         }
     }
     // If we've reached here, then none of the children partially
     // matched our key, so we should insert the key as a new child.
     tree.next.push({prefix: key, type: "Leaf", value: value})
+    return true
 }
 
 export interface SearchResult<Value> {
-    key: string
-    value: Value
-    distance: number
+    readonly key: string
+    readonly value: Value
+    readonly distance: number
 }
 
 export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTolerance: number): SearchResult<Value>[] {
     const matches: SearchResult<Value>[] = []
+
+    // Collect all the key/value pairs for the given subtree.
+    // This key/value pairs differ from the search key by the given distance.
+    function collectStrings(node: FuzzyDictNode<Value>, currentPath: string, distance: number): void {
+        const newPath = currentPath + node.prefix
+        if (node.type === "Leaf") {
+            matches.push({
+                key: newPath,
+                value: node.value,
+                distance: distance,
+            })
+        }
+        else {
+            node.next.forEach(child => collectStrings(child, newPath, distance))
+        }
+    }
+
     // Special case for when the key is length zero (don't need a memo table)
     if (key.length === 0) {
         tree.next.forEach(child => collectStrings(child, "", 0))
@@ -161,7 +180,7 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
 
         // Assume the code that uses this setter is iterating over the diagonal
         // correctly: i.e. it will not try to set outside the valid range.
-        set(row: number, column: number, value: number) {
+        set(row: number, column: number, value: number): void {
             this.table[this.tableIndex(row, column)] = value
         }
     }
@@ -266,22 +285,6 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
                 })
             }
             return // Move onto the next sibling node
-        }
-    }
-
-    // Collect all the key/value pairs for the given subtree.
-    // This key/value pairs differ from the search key by the given distance.
-    function collectStrings(node: FuzzyDictNode<Value>, currentPath: string, distance: number) {
-        const newPath = currentPath + node.prefix
-        if (node.type === "Leaf") {
-            matches.push({
-                key: newPath,
-                value: node.value,
-                distance: distance,
-            })
-        }
-        else {
-            node.next.forEach(child => collectStrings(child, newPath, distance))
         }
     }
 
