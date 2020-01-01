@@ -34,13 +34,13 @@ export function empty(autoLabel: string): ConceptRegistry {
  * Attempts to create a new concept with the given label.
  * Returns "undefined" if a concept already exists with that label.
  */
-export function newConcept(registry: ConceptRegistry, label: string): Concept | "labelInUse" | "invalidLabel"
+export function newConcept(registry: ConceptRegistry, label: string): Concept | "labelInUse" | "labelReserved"
 /**
  * Creates a concept with an auto-generated label.
  */
 export function newConcept(registry: ConceptRegistry): Concept
 
-export function newConcept(registry: ConceptRegistry, label?: string): Concept | "labelInUse" | "invalidLabel" {
+export function newConcept(registry: ConceptRegistry, label?: string): Concept | "labelInUse" | "labelReserved" {
     let myLabel: string
     if (label === undefined) {
         // Choose an automatic label name that is guaranteed to work (starts with reserved prefix)
@@ -48,7 +48,7 @@ export function newConcept(registry: ConceptRegistry, label?: string): Concept |
     }
     else {
         if (label.startsWith(registry.autoLabelPrefix)) {
-            return "invalidLabel"
+            return "labelReserved"
         }
         else {
             myLabel = label
@@ -68,13 +68,13 @@ export function newConcept(registry: ConceptRegistry, label?: string): Concept |
         : "labelInUse"
 }
 
-export function setLabel(concept: Concept, newLabel: string): "success" | "labelInUse" | "invalidLabel" {
+export function setConceptLabel(concept: Concept, newLabel: string): "success" | "labelInUse" | "labelReserved" {
     if (newLabel.startsWith(concept.registry.autoLabelPrefix)) {
-        return "invalidLabel"
+        return "labelReserved"
     }
     else {
         if (FuzzyDict.insert(concept.registry.namesDict, newLabel, concept)) {
-            //FuzzyDict.remove(concept.registry.namesDict, concept.label)
+            FuzzyDict.remove(concept.registry.namesDict, concept.label)
             ;(concept as {label: string}).label = newLabel // remove readonly qualifier
             return "success"
         }
@@ -82,6 +82,14 @@ export function setLabel(concept: Concept, newLabel: string): "success" | "label
             return "labelInUse"
         }
     }
+}
+
+/**
+ * Delete the concept from its registry.
+ * Returns whether the concept was found in the registry (and thus deleted).
+ */
+export function deleteConcept(concept: Concept): boolean {
+    return FuzzyDict.remove(concept.registry.namesDict, concept.label) !== undefined
 }
 
 /**

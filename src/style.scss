@@ -109,12 +109,18 @@ $main-pad: 10px;
 
 .suggestionBox {
     @extend .searchBox;
+    @extend .row;
     background-color: #e5e5e5;
     margin-top: -1px;
 }
 
 .highlighted {
     background-color: #ffff22;
+}
+
+.deleteButton {
+    @extend .noSelect;
+    color: red;
 }
 
 // .inputForSearchBox {

@@ -183,7 +183,7 @@ function createConcept(): void {
     const label = state.conceptCreatorSearch.text
     if (label.length > 0) {
         const outcome = Registry.newConcept(state.conceptRegistry, label)
-        if (outcome !== "invalidLabel" && outcome !== "labelInUse") {
+        if (typeof outcome === "object") {
             state.conceptCreatorSearch.text = ""
         }
     }
@@ -241,13 +241,21 @@ app("app",
                 },
             }),
             $for (() => state.conceptCreatorSearch.results, match => [
-                p (() => `${match.key} [${match.value}]`, {
+                div ({
                     class:
                         $if (() => match.$index === state.conceptCreatorSearch.selection, {
                             _then: () => "suggestionBox highlighted",
                             _else: () => "suggestionBox",
                         }),
-                }),
+                }, [
+                    p (() => match.key),
+                    div ({class: "grow"}),
+                    p ("X", {
+                        class: "deleteButton",
+                        onclick: () => Registry.deleteConcept(match.value),
+                    }),
+                ]),
+
             ]),
         ]),
     ])

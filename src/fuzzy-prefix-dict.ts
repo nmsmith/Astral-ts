@@ -11,13 +11,16 @@
  * Since k, d, and t are all small, this should be very fast.
  */
 
+type FuzzyDict<Value> = FuzzyDictRoot<Value> | FuzzyDictInterior<Value>
+
 type FuzzyDictNode<Value> = FuzzyDictInterior<Value> | FuzzyDictLeaf<Value>
 
-interface FuzzyDict<Value> {
+export type T<Value> = FuzzyDictRoot<Value>
+
+interface FuzzyDictRoot<Value> {
+    type: "Root"
     next: FuzzyDictNode<Value>[]
 }
-
-export type T<Value> = FuzzyDict<Value>
 
 interface FuzzyDictInterior<Value> {
     prefix: string // consider this an edge label
@@ -31,8 +34,11 @@ interface FuzzyDictLeaf<Value> {
     value: Value
 }
 
-export function empty<Value>(): FuzzyDict<Value> {
-    return {next: []}
+export function empty<Value>(): FuzzyDictRoot<Value> {
+    return {
+        type: "Root",
+        next: [],
+    }
 }
 
 // Returns the index at which the two strings differ.
@@ -107,6 +113,51 @@ export function insert<Value>(tree: FuzzyDict<Value>, key: string, value: Value)
     // matched our key, so we should insert the key as a new child.
     tree.next.push({prefix: key, type: "Leaf", value: value})
     return true
+}
+
+export function remove<Value>(tree: FuzzyDict<Value>, key: string): Value | undefined {
+    const children = tree.next
+    for (let childIndex = 0; childIndex < children.length; ++childIndex) {
+        const child = children[childIndex]
+        const cutIndex = differIndex(key, child.prefix)
+        
+        // If the strings match over the whole child prefix (including the possibility
+        // of the strings being identical), and there's more tree to explore
+        if (cutIndex === child.prefix.length && child.type === "Interior") {
+            // Go deeper
+            const disagreedSuffixKey = key.slice(cutIndex)
+            return remove(child, disagreedSuffixKey)
+        }
+        // If the strings are identical, and the child is a leaf
+        else if (cutIndex === child.prefix.length && cutIndex === key.length && child.type === "Leaf") {
+            // Remove this child
+            children.removeAt(childIndex)
+            // If this subtree only has one child remaining, merge it
+            if (children.length === 1 && tree.type === "Interior") {
+                const remainingChild = children[0]
+                tree.prefix += remainingChild.prefix
+                if (remainingChild.type === "Interior") {
+                    tree.next = remainingChild.next
+                }
+                else { // make the subtree a leaf
+                    const treeAsLeaf = tree as unknown as FuzzyDictLeaf<Value>
+                    delete tree.next
+                    treeAsLeaf.type = "Leaf"
+                    treeAsLeaf.value = remainingChild.value
+                }
+            }
+            // Return removed value
+            return child.value
+        }
+        // If the keys are completely different, look at the next child
+        else if (cutIndex === 0) {
+            continue
+        }
+        // The key is not in the tree
+        else return undefined
+    }
+    // If we've reached here, then none of the children partially matched the key
+    return undefined
 }
 
 export interface SearchResult<Value> {
