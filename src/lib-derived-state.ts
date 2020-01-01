@@ -1,43 +1,147 @@
 import { reactive as observable, ReactiveEffect, computed, stop } from "@vue/reactivity"
 
-declare global {
-    interface ArrayConstructor {
-        /**
-         * Creates an array that automatically assigns the given set of computed properties
-         * to the objects it holds. The last-computed values of these properties are cached
-         * and updates to them are observable (via @vue/reactivity).
-         * 
-         * It is best to treat objects held in this array as OWNED by the array. If an object
-         * is removed from the array, then its computed properties are deleted via a finalizer.
-         * This is necessary because @vue/reactivity requires manual memory management for effects.
-         * 
-         * Computed properties can depend on each other, as long as the dependency isn't cyclic.
-         */
-        withDerivedProps: <Key extends string, Obj extends Record<Key, unknown>>(
-            derivedProps: {[K in Key]: (obj: Obj) => Obj[Key]},
-        ) => Obj[]
-    }
+/* eslint-disable @typescript-eslint/no-use-before-define */
+
+export type WithDerivedProps<T> = T & {
+    destroyDerivedProps: () => void
 }
 
-Array.withDerivedProps = function<Key extends string, Obj extends Record<Key, unknown>>(
-    derivedProps: {[K in Key]: (obj: Obj) => Obj[Key]},
-): Obj[] {
-    // Must put an observable Proxy around the items first, so that
-    // the proxy can make its way inside the computed() lambda.
-    const items: Obj[] = observable([])
+export type DerivedProps<Obj extends object> =
+    { [K1 in keyof Obj]?: (
+            // This prop can be derived
+            (obj: Obj) => Obj[K1]
+        ) | (
+            // If this prop is an object, props of this prop can be derived
+            Obj[K1] extends object
+                // Exclude arrays here
+                ? Obj[K1] extends object[]
+                    ? never
+                    : DerivedProps<Obj[K1]>
+                : never
+        ) | (
+            // If this prop is an array, props of its elements can be derived
+            Obj[K1] extends object[]
+                ? DerivedProps<Obj[K1][0]>
+                : never
+        )
+    }
 
-    // For each Obj in the array, stores the number of copies of it in the array,
-    // along with the effect handlers for maintaining its derived properties.
-    const derivedData: WeakMap<Obj, {copies: number, effects: ReactiveEffect[]}> = new WeakMap()
+type PropMaintainers = (ReactiveEffect | WithDerivedProps<unknown[]>)[]
+
+function constructDerivedProperties<T extends object>(
+    currObj: T,
+    spec: DerivedProps<T>,
+    maintainers: PropMaintainers,
+): void {
+    Object.entries(spec).forEach(([propName, propSpec]) => {
+        if (typeof propSpec === "function") {
+            // This is a derived property
+            const c = computed(() => {
+                const currentValue = (propSpec as (obj: T) => unknown)(currObj)
+                console.log("%cObject", "font-weight: bold")
+                console.log(`  %c${propName} = ${currentValue}`, "color: #7700ff")
+                return currentValue
+            })
+            // Attach the derived property to this object
+            ;(currObj as any)[propName] = c
+            maintainers.push(c.effect)
+        }
+        else if (typeof propSpec === "object") {
+            // This is specification for derived sub-properties
+            const targetObj: object = (currObj as any)[propName]
+            if (Array.isArray(targetObj)) {
+                // Wrap the existing array to make it reactive
+                const arrayMaintainer: WithDerivedProps<T[]> =
+                    arrayWithDerivedProps(targetObj, propSpec as DerivedProps<object>)
+                ;(currObj as any)[propName] = arrayMaintainer
+                maintainers.push(arrayMaintainer)
+            }
+            else {
+                constructDerivedProperties(targetObj, propSpec as DerivedProps<object>, maintainers)
+            }
+        }
+    })
+}
+
+function removeDerivedProperties<T extends object>(
+    currObj: T,
+    spec: DerivedProps<T>,
+): void {
+    Object.entries(spec).forEach(([propName, propSpec]) => {
+        if (typeof propSpec === "function") {
+            delete (currObj as any)[propName]
+        }
+        else if (typeof propSpec === "object") {
+            const targetObj: object = (currObj as any)[propName]
+            if (Array.isArray(targetObj)) {
+                // No work to do; array will be cleaned up through the maintainers list
+            }
+            else {
+                removeDerivedProperties(targetObj, propSpec as DerivedProps<object>)
+            }
+        }
+    })
+}
+
+function cleanUpObject<T extends object>(
+    obj: T,
+    derivedProps: DerivedProps<T>,
+    maintainers: PropMaintainers
+): void {
+    // Clean up effects and nested containers
+    maintainers.forEach(maintainer => {
+        if (Array.isArray(maintainer)) {
+            // Clean up recursively
+            maintainer.destroyDerivedProps()
+        }
+        else {
+            stop(maintainer)
+        }
+    })
+    // Delete the derived properties on this object and sub-objects
+    removeDerivedProperties(obj, derivedProps)
+}
+
+/**
+ * Attaches computed properties to the object (including to sub-objects) as specified by
+ * derivedProps. The last-computed values of these properties are cached and updates to
+ * them are observable (via @vue/reactivity).
+ * 
+ * Because this function depends on @vue/reactivity it requires manual memory management
+ * for effects. The user must either ensure the object lives for the entire duration of
+ * the program (as a top-level const binding or readonly prop thereof), or call
+ * destroyDerivedProps() before losing the last reference to it.
+ * 
+ * Computed properties can depend on each other, as long as the dependency isn't cyclic.
+ */
+export function withDerivedProps<Obj extends object>(
+    sourceObject: Obj,
+    derivedProps: DerivedProps<Obj>,
+): WithDerivedProps<Obj> {
+    const observableObject = observable(sourceObject) as Obj
+    const maintainers: PropMaintainers = []      
+    constructDerivedProperties(observableObject, derivedProps, maintainers)
+    ;(observableObject as WithDerivedProps<Obj>).destroyDerivedProps =
+        (): void => cleanUpObject(observableObject, derivedProps, maintainers)
+    return observableObject as WithDerivedProps<Obj>
+}
+
+
+function arrayWithDerivedProps<Obj extends object>(
+    sourceArray: Obj[],
+    derivedProps: DerivedProps<Obj>,
+): WithDerivedProps<Obj[]> {
+    // For each Obj in the source array, stores the number of copies of it in the array,
+    // along with the maintainers for its derived properties.
+    const derivedData: WeakMap<Obj, {copies: number, maintainers: PropMaintainers}> = new WeakMap()
     
     function removed(obj: Obj): void {
         if (obj === undefined) return
         const data = derivedData.get(obj)!
         if (data.copies === 1) {
-            // Clean up the object if it will no longer be in the array
+            // All references to the object have been removed from the array
             derivedData.delete(obj)
-            data.effects.forEach(stop)
-            Object.keys(derivedProps).map(propName => delete (obj as any)[propName])
+            cleanUpObject(obj, derivedProps, data.maintainers)
             console.log("Removed derived props from", obj)
         }
         else {
@@ -45,36 +149,30 @@ Array.withDerivedProps = function<Key extends string, Obj extends Record<Key, un
         }
     }
 
-    // WARNING: Objects passed as arguments must have been freshly grabbed out of the array,
+    // WARNING: Objects passed as arguments must be already in (and grabbed from) the array,
     // since observable() objects inserted into the array are wrapped in a Vue proxy.
     function added(obj: Obj): void {
         if (obj === undefined) return
         const data = derivedData.get(obj)
         if (data === undefined) {
+            const maintainers: PropMaintainers = []      
+            constructDerivedProperties(obj, derivedProps, maintainers)
+            console.log("Added derived props to", obj)
             derivedData.set(obj, {
                 copies: 1,
-                effects: Object.entries(derivedProps).map(([propName, propValue]) => {
-                    const c = computed(() => {
-                        const currentValue = (propValue as (obj: Obj) => unknown)(obj)
-                        console.log("%cObject", "font-weight: bold")
-                        console.log(`  %c${propName} = ${currentValue}`, "color: #7700ff")
-                        return currentValue
-                    })
-                    ;(obj as any)[propName] = c
-                    return c.effect
-                }),
+                maintainers,
             })
-            console.log("Added derived props to", obj)
         }
         else {
             data.copies += 1
         }
     }
 
+    // Track these initial elements
+    sourceArray.forEach(added)
     // Set up a proxy to maintain the number of copies of each object in the array,
-    // and remove the derived property when the object is removed from the array.
-    const proxy = new Proxy(items, {
-        // Array elements are fundamentally added and removed via indexing
+    // and remove the derived properties when the object is removed from the array.
+    const proxy = new Proxy(sourceArray, {
         set: (rawArray, prop, newValue): boolean => {
             const index = Number(prop) // returns NaN if the property is not a number
             if (index === index) { // Test if index is a number
@@ -142,7 +240,10 @@ Array.withDerivedProps = function<Key extends string, Obj extends Record<Key, un
             }
         },
     })
-    return proxy as Obj[]
+    
+    ;(proxy as WithDerivedProps<Obj[]>).destroyDerivedProps = (): Obj[] => {
+        sourceArray.forEach(removed)
+        return sourceArray
+    }
+    return proxy as WithDerivedProps<Obj[]>
 }
-
-export {}

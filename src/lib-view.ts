@@ -1,4 +1,4 @@
-import { Ref, ComputedRef, isRef, effect, ReactiveEffect, stop } from "@vue/reactivity"
+import { Ref, isRef, effect, ReactiveEffect, stop } from "@vue/reactivity"
 
 // Styles for debug printing
 const updateMsgStyle = "font-size: 110%; font-weight: bold; color: blue; padding-top: 12px"
@@ -65,7 +65,7 @@ export type WithIndex<T extends object> = T & {$index: number}
 
 interface DerivedFromSequence<T, I extends object> {
     $derived: "for"
-    items: I[] | ComputedRef<I[]> // must be "ComputedRef" instead of "Ref" or TypeScript gets confused
+    items: readonly I[] | Ref<readonly I[]> // must be "ComputedRef" instead of "Ref" or TypeScript gets confused
     f: (item: WithIndex<I>) => T
 }
 
@@ -106,7 +106,7 @@ export function $if<T>(
  * determine which elements have changed when the array is updated.
  */
 export function $for<I extends object>(
-    items: I[] | ComputedRef<I[]>,
+    items: readonly I[] | Ref<readonly I[]>,
     f: (item: WithIndex<I>) => HTMLElement[],
 ): DerivedFromSequence<HTMLElement[], I> {
     return {$derived: "for", items: items, f: f}

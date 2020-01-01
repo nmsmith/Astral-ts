@@ -1,13 +1,14 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { toRefs, reactive as observable, computed as derivedMalloc, ComputedRef } from "@vue/reactivity"
+import { toRefs, reactive as observable } from "@vue/reactivity"
 import { $derived, $if, $for, app, div, p, br, button, input } from "./lib-view"
 import "./lib-derived-state"
 import Cycle from "json-cycle"
 import { mergeWith } from "lodash"
 
 import * as IDRegistry from "./id-registry"
+import { WithDerivedProps, DerivedProps, withDerivedProps } from "./lib-derived-state"
 
 //#region  --- Essential & derived state ---
 
@@ -26,6 +27,10 @@ interface Search {
     selection: number
 }
 
+interface $Search extends Search {
+    results: IDRegistry.SearchResult[]
+}
+
 // Empty search state
 function search(registries: IDRegistry.T[]): Search {
     return {
@@ -42,24 +47,32 @@ interface Link {
     object: { concept: Concept, search: Search }
 }
 
-function link(varRegistry: IDRegistry.T, subject: Concept, relation: Concept, object: Concept): Link {
-    return { // ESLint complains about use of "state" before initialization
-        subject: { concept: subject, search: search([state.conceptRegistry, varRegistry]) }, // eslint-disable-line
-        relation: { concept: relation, search: search([state.conceptRegistry, varRegistry]) }, // eslint-disable-line
-        object: { concept: object, search: search([state.conceptRegistry, varRegistry]) }, // eslint-disable-line
+interface $Link {
+    subject: { concept: Concept, search: $Search }
+    relation: { concept: Concept, search: $Search }
+    object: { concept: Concept, search: $Search }
+}
+
+function link(conceptRegistry: IDRegistry.T, varRegistry: IDRegistry.T, subject: Concept, relation: Concept, object: Concept): Link {
+    return {
+        subject: { concept: subject, search: search([conceptRegistry, varRegistry]) },
+        relation: { concept: relation, search: search([conceptRegistry, varRegistry]) },
+        object: { concept: object, search: search([conceptRegistry, varRegistry]) },
     }
 }
 
 interface Rule {
     id: number
     varRegistry: IDRegistry.T // for local variables
-    head?: Link
+    head: Link
     body: Link[]
 }
 
 interface $Rule extends Rule { // with derived state
-    magic: number
-    doubleMagic: number
+    readonly magic: number
+    readonly doubleMagic: number
+    head: $Link
+    body: $Link[]
 }
 
 const $Rule = (rule: Rule): $Rule => rule as $Rule
@@ -69,26 +82,67 @@ interface RuleView {
 }
 
 interface State {
-    conceptRegistry: IDRegistry.T
-    conceptCreatorSearch: Search
+    conceptRegistry: IDRegistry.T // the database Domain
+    conceptCreatorSearch: $Search
     ruleRegistry: IDRegistry.T // for naming and searching for specific rules
-    rules: $Rule[]
+    readonly rules: $Rule[]
     currentView: RuleView
-    currentSearch: undefined | Search
 }
 
-function createState(existingState?: State): State {
+function searchResults(search: Search): IDRegistry.SearchResult[] {
+    const errorTolerance = (search.text.length <= 1) ? 0 : 1
+    // Search all given registries
+    const searchResults: IDRegistry.SearchResult[] = []
+    search.registries.forEach(r =>
+        searchResults.push(
+            ...IDRegistry.getMatchesForPrefix(r, search.text, errorTolerance)
+        )
+    )
+    // Sort the results by closeness
+    searchResults.sort((a, b) => a.distance - b.distance)
+    return searchResults
+}
+
+function createState(existingState?: State): WithDerivedProps<State> {
+    /* eslint-disable @typescript-eslint/explicit-function-return-type */
+    const linkDerivedProps: DerivedProps<$Link> = {
+        subject: {
+            search: {
+                results: searchResults,
+            },
+        },
+        relation: {
+            search: {
+                results: searchResults,
+            },
+        },
+        object: {
+            search: {
+                results: searchResults,
+            },
+        },
+    }
     const conceptRegistry = IDRegistry.empty()
-    const initialState: State = observable({
+    const initialState: WithDerivedProps<State> = withDerivedProps({
         conceptRegistry,
-        conceptCreatorSearch: search([conceptRegistry]),
-        ruleRegistry: IDRegistry.empty(),
-        rules: Array.withDerivedProps({
+        conceptCreatorSearch:
+            search([conceptRegistry]) as $Search,
+        ruleRegistry:
+            IDRegistry.empty(),
+        rules:
+            [] as $Rule[],
+        currentView:
+            {rules: []},
+    }, {
+        conceptCreatorSearch: {
+            results: searchResults,
+        },
+        rules: {
             magic: rule => rule.doubleMagic * 10,
             doubleMagic: rule => rule.id * 100,
-        }),
-        currentView: {rules: []},
-        currentSearch: undefined,
+            head: linkDerivedProps,
+            body: linkDerivedProps,
+        },
     })
 
     if (existingState !== undefined) {
@@ -99,32 +153,13 @@ function createState(existingState?: State): State {
             typeof existingValue === typeof assignedValue ? undefined : existingValue
         )
     }
-    return observable(initialState)
+    return initialState
 }
-
-const currentSearchMatches: ComputedRef<IDRegistry.SearchResult[]> =
-    derivedMalloc(() => {
-        if (state.currentSearch === undefined) {
-            return []
-        }
-        else {
-            const text = state.currentSearch.text
-            const errorTolerance = (text.length <= 1) ? 0 : 1
-            // Search all given registries
-            const searchResults: IDRegistry.SearchResult[] = []
-            state.currentSearch.registries.forEach(
-                r => searchResults.push(...IDRegistry.getMatchesForPrefix(r, text, errorTolerance))
-            )
-            // Sort the results by closeness
-            searchResults.sort((a, b) => a.distance - b.distance)
-            return searchResults
-        }
-    })
 
 //#endregion
 //#region  --- State initialization, saving and loading ---
 
-const state: State =
+const state: WithDerivedProps<State> =
     // Load previous state, if applicable
     (   localStorage.loadLastState === "true"
      && localStorage.state !== undefined
@@ -135,17 +170,22 @@ const state: State =
 
 console.log("App state: ", state) // for debugging
 
-function saveState(): void {
-    // TODO: Have data auto-save periodically (every 10 sec?)
+function destroyPropsAndSaveState(): void {
+    // TODO: Figure out how to save essential state in a way that doesn't destroy
+    // the derived state! I think this would be possible by switching the props
+    // from "real" props to getters, so that the serializer ignores them.
+    // If we can do this, then we can get rid of the destroyDerivedProps() methos
+    // and the WithDerivedProps<> type.
+    state.destroyDerivedProps()
     localStorage.state = JSON.stringify(Cycle.decycle(state))
 }
 
 // Save on quit, and load on start
-window.addEventListener("beforeunload", saveState)
+window.addEventListener("beforeunload", destroyPropsAndSaveState)
 localStorage.loadLastState = true
 
 function loadLastSave(): void {
-    window.removeEventListener("beforeunload", saveState)
+    window.removeEventListener("beforeunload", destroyPropsAndSaveState)
     location.reload()
 }
 
@@ -165,26 +205,28 @@ function newRule(i: number): void {
     state.rules.insert(i, $Rule({
         id: id,
         varRegistry,
-        head: link(varRegistry, c, c, c),
-        body: [link(varRegistry, c, c, c)],
+        head: link(state.conceptRegistry, varRegistry, c, c, c),
+        body: [link(state.conceptRegistry, varRegistry, c, c, c)],
     }))
 }
 
-function selectPrevious(): void {
-    if (state.currentSearch !== undefined && state.currentSearch.selection > 0) {
-        --state.currentSearch.selection
+function selectPrevious(search: $Search): void {
+    if (search.selection > 0) {
+        --search.selection
     }
 }
 
-function selectNext(): void {
-    if (state.currentSearch !== undefined && state.currentSearch.selection < currentSearchMatches.value.length - 1) {
-        ++state.currentSearch.selection
+function selectNext(search: $Search): void {
+    if (search.selection < search.results.length - 1) {
+        ++search.selection
     }
 }
 
-function createConcept(label: string): void {
+function createConcept(): void {
+    const label = state.conceptCreatorSearch.text
     if (label.length > 0) {
         IDRegistry.newID(state.conceptRegistry, label)
+        state.conceptCreatorSearch.text = ""
     }
 }
 
@@ -192,7 +234,8 @@ const linkEl = (link: Link): HTMLElement =>
     div ({
         class: "row",
     },[
-        p("LINK"),
+        p("("),
+        p(link.subject.concept.toString()),
     ])
 
 app("app",
@@ -214,11 +257,8 @@ app("app",
                             class: "noSelect",
                             onclick: () => rule.id += 1,
                         }),
-                        $if (() => rule.head === undefined, {
-                            _then: () => [],
-                            _else: () => [linkEl (rule.head!)],
-                        }),
-                        $for (rule.body, link => [p (" -- "), linkEl (link)]),
+                        linkEl (rule.head),
+                        $for (rule.body, link => [p (" -- "), linkEl (link)]), 
                     ]),
                     div ({
                         class: "insertHere",
@@ -233,20 +273,18 @@ app("app",
                 autocomplete: "nope",
                 value: toRefs(state.conceptCreatorSearch).text,
                 onkeydown: (e: KeyboardEvent) => {
-                    if (e.key === "ArrowDown") selectNext()
-                    else if (e.key === "ArrowUp") selectPrevious()
-                    else if (e.key === "Enter") createConcept(state.conceptCreatorSearch.text)
+                    if (e.key === "ArrowDown") selectNext(state.conceptCreatorSearch)
+                    else if (e.key === "ArrowUp") selectPrevious(state.conceptCreatorSearch)
+                    else if (e.key === "Enter") createConcept()
                 },
                 onfocus: () => {
-                    state.currentSearch = state.conceptCreatorSearch
                     state.conceptCreatorSearch.active = true
                 },
                 onblur: () => {
-                    state.currentSearch = undefined
                     state.conceptCreatorSearch.active = false
                 },
             }),
-            $for (currentSearchMatches, match => [
+            $for (toRefs(state.conceptCreatorSearch).results, match => [
                 p ($derived(() => `${match.key} [${match.value}]`), {
                     class:
                         $if (() => match.$index === state.conceptCreatorSearch.selection, {
