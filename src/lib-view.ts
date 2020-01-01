@@ -829,9 +829,7 @@ export function element<Keys extends keyof El, El extends HTMLElement>(
 
     // Ensure that DOM events trigger DOM updates after running
     for (const key in attributes) {
-        if (key.startsWith("on")) {
-            // Technically unsafe... we're presuming all keys starting with "on" have a value
-            // of function type. I checked all the types in lib.dom.d.ts and it seems safe.
+        if (eventHandlerNames.has(key)) {
             attributes[key] = thenUpdateDOM(key, attributes[key] as any) as any
         }
     }

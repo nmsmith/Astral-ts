@@ -15,20 +15,20 @@ import { WithDerivedProps, DerivedProps, withDerivedProps } from "./lib-derived-
 // Concepts referenced within rules may be constants (from the
 // global registry) or variables (from the rule's own registry).
 interface Concept {
-    id: IDRegistry.ID
-    registry: IDRegistry.T // the registry to which the concept is registered
+    readonly id: IDRegistry.ID
+    readonly registry: IDRegistry.T // the registry to which the concept is registered
 }
 
 // State of a concept search (for constants or variables)
 interface Search {
     active: boolean
     text: ""
-    registries: IDRegistry.T[]
+    readonly registries: IDRegistry.T[]
     selection: number
 }
 
 interface $Search extends Search {
-    results: IDRegistry.SearchResult[]
+    readonly results: IDRegistry.SearchResult[]
 }
 
 // Empty search state
@@ -42,15 +42,15 @@ function search(registries: IDRegistry.T[]): Search {
 }
 
 interface Link {
-    subject: { concept: Concept, search: Search }
-    relation: { concept: Concept, search: Search }
-    object: { concept: Concept, search: Search }
+    readonly subject: { concept: Concept, search: Search }
+    readonly relation: { concept: Concept, search: Search }
+    readonly object: { concept: Concept, search: Search }
 }
 
 interface $Link {
-    subject: { concept: Concept, search: $Search }
-    relation: { concept: Concept, search: $Search }
-    object: { concept: Concept, search: $Search }
+    readonly subject: { concept: Concept, search: $Search }
+    readonly relation: { concept: Concept, search: $Search }
+    readonly object: { concept: Concept, search: $Search }
 }
 
 function link(conceptRegistry: IDRegistry.T, varRegistry: IDRegistry.T, subject: Concept, relation: Concept, object: Concept): Link {
@@ -62,29 +62,29 @@ function link(conceptRegistry: IDRegistry.T, varRegistry: IDRegistry.T, subject:
 }
 
 interface Rule {
-    id: number
-    varRegistry: IDRegistry.T // for local variables
-    head: Link
-    body: Link[]
+    readonly id: number
+    readonly varRegistry: IDRegistry.T // for local variables
+    readonly head: Link
+    readonly body: Link[]
 }
 
 interface $Rule extends Rule { // with derived state
     readonly magic: number
     readonly doubleMagic: number
-    head: $Link
-    body: $Link[]
+    readonly head: $Link
+    readonly body: $Link[]
 }
 
 const $Rule = (rule: Rule): $Rule => rule as $Rule
 
 interface RuleView {
-    rules: $Rule[]
+    readonly rules: $Rule[]
 }
 
 interface State {
-    conceptRegistry: IDRegistry.T // the database Domain
-    conceptCreatorSearch: $Search
-    ruleRegistry: IDRegistry.T // for naming and searching for specific rules
+    readonly conceptRegistry: IDRegistry.T // the database Domain
+    readonly conceptCreatorSearch: $Search
+    readonly ruleRegistry: IDRegistry.T // for naming and searching for specific rules
     readonly rules: $Rule[]
     currentView: RuleView
 }
@@ -170,22 +170,16 @@ const state: WithDerivedProps<State> =
 
 console.log("App state: ", state) // for debugging
 
-function destroyPropsAndSaveState(): void {
-    // TODO: Figure out how to save essential state in a way that doesn't destroy
-    // the derived state! I think this would be possible by switching the props
-    // from "real" props to getters, so that the serializer ignores them.
-    // If we can do this, then we can get rid of the destroyDerivedProps() methos
-    // and the WithDerivedProps<> type.
-    state.destroyDerivedProps()
+function saveState(): void {
     localStorage.state = JSON.stringify(Cycle.decycle(state))
 }
 
 // Save on quit, and load on start
-window.addEventListener("beforeunload", destroyPropsAndSaveState)
+window.addEventListener("beforeunload", saveState)
 localStorage.loadLastState = true
 
 function loadLastSave(): void {
-    window.removeEventListener("beforeunload", destroyPropsAndSaveState)
+    window.removeEventListener("beforeunload", saveState)
     location.reload()
 }
 
@@ -255,7 +249,7 @@ app("app",
                     div ({class: "rule"}, [
                         p (() => rule.magic.toString() + " " + rule.doubleMagic.toString(), {
                             class: "noSelect",
-                            onclick: () => rule.id += 1,
+                            onclick: () => (rule as any).id += 1,
                         }),
                         linkEl (rule.head),
                         $for (() => rule.body, link => [p (" -- "), linkEl (link)]), 

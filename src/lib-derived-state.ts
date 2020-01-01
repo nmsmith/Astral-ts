@@ -3,7 +3,11 @@ import { reactive as observable, ReactiveEffect, computed, stop } from "@vue/rea
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
 export type WithDerivedProps<T> = T & {
-    destroyDerivedProps: () => void
+    /**
+     * Makes the object ready for garbage collection. Call this before
+     * losing the last reference to the object.
+     */
+    destroy: () => void
 }
 
 export type DerivedProps<Obj extends object> =
@@ -34,6 +38,7 @@ function constructDerivedProperties<T extends object>(
     maintainers: PropMaintainers,
 ): void {
     Object.entries(spec).forEach(([propName, propSpec]) => {
+        let derivedValue: object
         if (typeof propSpec === "function") {
             // This is a derived property
             const c = computed(() => {
@@ -42,9 +47,8 @@ function constructDerivedProperties<T extends object>(
                 console.log(`  %c${propName} = ${currentValue}`, "color: #7700ff")
                 return currentValue
             })
-            // Attach the derived property to this object
-            ;(currObj as any)[propName] = c
             maintainers.push(c.effect)
+            derivedValue = c
         }
         else if (typeof propSpec === "object") {
             // This is specification for derived sub-properties
@@ -53,37 +57,24 @@ function constructDerivedProperties<T extends object>(
                 // Wrap the existing array to make it reactive
                 const arrayMaintainer: WithDerivedProps<T[]> =
                     arrayWithDerivedProps(targetObj, propSpec as DerivedProps<object>)
-                ;(currObj as any)[propName] = arrayMaintainer
                 maintainers.push(arrayMaintainer)
+                derivedValue = arrayMaintainer
             }
             else {
                 constructDerivedProperties(targetObj, propSpec as DerivedProps<object>, maintainers)
+                derivedValue = targetObj
             }
         }
+
+        // Make the derived property (or property with derived sub-properties) readonly
+        Object.defineProperty(currObj, propName, {
+            get() {return derivedValue},
+            set() {throw `Can't assign to the (readonly) derived property "${propName}".`},
+        })
     })
 }
 
-function removeDerivedProperties<T extends object>(
-    currObj: T,
-    spec: DerivedProps<T>,
-): void {
-    Object.entries(spec).forEach(([propName, propSpec]) => {
-        if (typeof propSpec === "function") {
-            delete (currObj as any)[propName]
-        }
-        else if (typeof propSpec === "object") {
-            const targetObj: object = (currObj as any)[propName]
-            if (Array.isArray(targetObj)) {
-                // No work to do; array will be cleaned up through the maintainers list
-            }
-            else {
-                removeDerivedProperties(targetObj, propSpec as DerivedProps<object>)
-            }
-        }
-    })
-}
-
-function cleanUpObject<T extends object>(
+function destroyMaintainedObject<T extends object>(
     obj: T,
     derivedProps: DerivedProps<T>,
     maintainers: PropMaintainers
@@ -92,14 +83,16 @@ function cleanUpObject<T extends object>(
     maintainers.forEach(maintainer => {
         if (Array.isArray(maintainer)) {
             // Clean up recursively
-            maintainer.destroyDerivedProps()
+            maintainer.destroy()
         }
         else {
             stop(maintainer)
         }
     })
-    // Delete the derived properties on this object and sub-objects
-    removeDerivedProperties(obj, derivedProps)
+    // Delete the derived properties on this object so they can't be abused
+    Object.keys(derivedProps).forEach(propName => {
+        delete (obj as any)[propName]
+    })
 }
 
 /**
@@ -109,8 +102,8 @@ function cleanUpObject<T extends object>(
  * 
  * Because this function depends on @vue/reactivity it requires manual memory management
  * for effects. The user must either ensure the object lives for the entire duration of
- * the program (as a top-level const binding or readonly prop thereof), or call
- * destroyDerivedProps() before losing the last reference to it.
+ * the program (as a top-level const binding or readonly prop thereof), or call destroy()
+ * before losing the last reference to it.
  * 
  * Computed properties can depend on each other, as long as the dependency isn't cyclic.
  */
@@ -121,11 +114,10 @@ export function withDerivedProps<Obj extends object>(
     const observableObject = observable(sourceObject) as Obj
     const maintainers: PropMaintainers = []      
     constructDerivedProperties(observableObject, derivedProps, maintainers)
-    ;(observableObject as WithDerivedProps<Obj>).destroyDerivedProps =
-        (): void => cleanUpObject(observableObject, derivedProps, maintainers)
+    ;(observableObject as WithDerivedProps<Obj>).destroy =
+        (): void => destroyMaintainedObject(observableObject, derivedProps, maintainers)
     return observableObject as WithDerivedProps<Obj>
 }
-
 
 function arrayWithDerivedProps<Obj extends object>(
     sourceArray: Obj[],
@@ -141,7 +133,7 @@ function arrayWithDerivedProps<Obj extends object>(
         if (data.copies === 1) {
             // All references to the object have been removed from the array
             derivedData.delete(obj)
-            cleanUpObject(obj, derivedProps, data.maintainers)
+            destroyMaintainedObject(obj, derivedProps, data.maintainers)
             console.log("Removed derived props from", obj)
         }
         else {
@@ -241,7 +233,7 @@ function arrayWithDerivedProps<Obj extends object>(
         },
     })
     
-    ;(proxy as WithDerivedProps<Obj[]>).destroyDerivedProps = (): Obj[] => {
+    ;(proxy as WithDerivedProps<Obj[]>).destroy = (): Obj[] => {
         sourceArray.forEach(removed)
         return sourceArray
     }
