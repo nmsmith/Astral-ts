@@ -500,12 +500,6 @@ function scheduleDOMUpdate(el: Effectful<HTMLElement>, update: () => void): void
     }}))
 }
 
-// Derived attributes and doc fragments (constructed via $-prefixed functions) are
-// VIRTUAL DOM NODES that produce concrete HTML. They are attached to a concrete
-// DOM node. They cannot be directly nested.
-
-type Derived<T> = () => T
-
 interface DerivedFromChoice<T> {
     condition: () => boolean
     branches: {_then: () => T, _else: () => T}
@@ -518,13 +512,13 @@ interface DerivedFromSequence<T, I extends object> {
     f: (item: WithIndex<I>) => T
 }
 
-export type DerivedAttribute<T> = Derived<T> | DerivedFromChoice<T>
+export type DerivedAttribute<T> = (() => T) | DerivedFromChoice<T>
 
 export type DerivedDocFragment<I extends object> =
       DerivedFromChoice<HTMLElement[]>
     | DerivedFromSequence<HTMLElement[], I>
 
-function isFunction(value: unknown): value is Derived<unknown> {
+function isFunction(value: unknown): value is Function {
     return typeof value === "function"
 }
 
