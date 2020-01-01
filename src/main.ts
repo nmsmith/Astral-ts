@@ -1,8 +1,8 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-import { toRefs, reactive as observable } from "@vue/reactivity"
-import { $derived, $if, $for, app, div, p, br, button, input } from "./lib-view"
+import { toRefs } from "@vue/reactivity"
+import { $if, $for, app, div, p, br, button, input } from "./lib-view"
 import "./lib-derived-state"
 import Cycle from "json-cycle"
 import { mergeWith } from "lodash"
@@ -251,14 +251,14 @@ app("app",
                     class: "insertHere",
                     onclick: () => newRule(0),
                 }),
-                $for (state.rules, rule => [
+                $for (() => state.rules, rule => [
                     div ({class: "rule"}, [
-                        p ($derived(() => rule.magic.toString() + " " + rule.doubleMagic.toString()), {
+                        p (() => rule.magic.toString() + " " + rule.doubleMagic.toString(), {
                             class: "noSelect",
                             onclick: () => rule.id += 1,
                         }),
                         linkEl (rule.head),
-                        $for (rule.body, link => [p (" -- "), linkEl (link)]), 
+                        $for (() => rule.body, link => [p (" -- "), linkEl (link)]), 
                     ]),
                     div ({
                         class: "insertHere",
@@ -284,8 +284,8 @@ app("app",
                     state.conceptCreatorSearch.active = false
                 },
             }),
-            $for (toRefs(state.conceptCreatorSearch).results, match => [
-                p ($derived(() => `${match.key} [${match.value}]`), {
+            $for (() => state.conceptCreatorSearch.results, match => [
+                p (() => `${match.key} [${match.value}]`, {
                     class:
                         $if (() => match.$index === state.conceptCreatorSearch.selection, {
                             _then: () => "suggestionBox highlighted",

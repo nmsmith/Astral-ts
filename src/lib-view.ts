@@ -6,6 +6,459 @@ const elementStyle = "font-weight: bold"
 const attributeChangedStyle = "color: #7700ff"
 const textContentStyle = "color: #007700"
 
+type EventHandler =
+    | "oncut"
+    | "onend"
+    | "onLine"
+    | "onblur"
+    | "oncopy"
+    | "ondrag"
+    | "ondrop"
+    | "onexit"
+    | "onload"
+    | "onmark"
+    | "onmute"
+    | "onopen"
+    | "onplay"
+    | "onshow"
+    | "onzoom"
+    | "onabort"
+    | "onclick"
+    | "onclose"
+    | "onended"
+    | "onenter"
+    | "onerror"
+    | "onfocus"
+    | "oninput"
+    | "onkeyup"
+    | "onpaste"
+    | "onpause"
+    | "onreset"
+    | "onstart"
+    | "ontrack"
+    | "onwheel"
+    | "onbounce"
+    | "oncached"
+    | "oncancel"
+    | "onchange"
+    | "onfinish"
+    | "ononline"
+    | "onresize"
+    | "onresult"
+    | "onresume"
+    | "onscroll"
+    | "onseeked"
+    | "onselect"
+    | "onsubmit"
+    | "ontoggle"
+    | "onunload"
+    | "onunmute"
+    | "onupdate"
+    | "onblocked"
+    | "oncanplay"
+    | "ondragend"
+    | "onemptied"
+    | "oninvalid"
+    | "onkeydown"
+    | "onloadend"
+    | "onmessage"
+    | "onmouseup"
+    | "onnomatch"
+    | "onoffline"
+    | "onplaying"
+    | "onseeking"
+    | "onstalled"
+    | "onstorage"
+    | "onsuccess"
+    | "onsuspend"
+    | "ontimeout"
+    | "onwaiting"
+    | "onaddtrack"
+    | "onaudioend"
+    | "onauxclick"
+    | "onboundary"
+    | "onchecking"
+    | "oncomplete"
+    | "ondblclick"
+    | "ondragexit"
+    | "ondragover"
+    | "onkeypress"
+    | "onmouseout"
+    | "onnoupdate"
+    | "onobsolete"
+    | "onpagehide"
+    | "onpageshow"
+    | "onpopstate"
+    | "onprogress"
+    | "onsoundend"
+    | "ontouchend"
+    | "oncuechange"
+    | "ondragenter"
+    | "ondragleave"
+    | "ondragstart"
+    | "onencrypted"
+    | "onloadstart"
+    | "onmousedown"
+    | "onmousemove"
+    | "onmouseover"
+    | "onmsneedkey"
+    | "onpointerup"
+    | "onspeechend"
+    | "ontouchmove"
+    | "onupdateend"
+    | "onafterprint"
+    | "onaudiostart"
+    | "onhashchange"
+    | "onloadeddata"
+    | "onmouseenter"
+    | "onmouseleave"
+    | "onmousewheel"
+    | "onpointerout"
+    | "onratechange"
+    | "onsoundstart"
+    | "onsourceopen"
+    | "onstatsended"
+    | "ontimeupdate"
+    | "ontonechange"
+    | "ontouchstart"
+    | "onbeforeprint"
+    | "oncontextmenu"
+    | "ondatachannel"
+    | "ondevicelight"
+    | "ondownloading"
+    | "onmspointerup"
+    | "onpointerdown"
+    | "onpointermove"
+    | "onpointerover"
+    | "onremovetrack"
+    | "onselectstart"
+    | "onsourceclose"
+    | "onsourceended"
+    | "onspeechstart"
+    | "onstatechange"
+    | "ontouchcancel"
+    | "onupdatefound"
+    | "onupdateready"
+    | "onupdatestart"
+    | "onanimationend"
+    | "onaudioprocess"
+    | "onbeforeunload"
+    | "ondevicechange"
+    | "ondevicemotion"
+    | "onicecandidate"
+    | "onmessageerror"
+    | "onmsgestureend"
+    | "onmsgesturetap"
+    | "onmspointerout"
+    | "onpointerenter"
+    | "onpointerleave"
+    | "onvolumechange"
+    | "one-dimensional"
+    | "onmsgesturehold"
+    | "onmspointerdown"
+    | "onmspointermove"
+    | "onmspointerover"
+    | "onpointercancel"
+    | "ontransitionend"
+    | "ontransitionrun"
+    | "onupgradeneeded"
+    | "onversionchange"
+    | "onvoiceschanged"
+    | "onvrdisplayblur"
+    | "onwaitingforkey"
+    | "onanimationstart"
+    | "oncanplaythrough"
+    | "ondurationchange"
+    | "onlanguagechange"
+    | "onloadedmetadata"
+    | "onlocalcandidate"
+    | "onmsgesturestart"
+    | "onmsinertiastart"
+    | "onmspointerenter"
+    | "onmspointerleave"
+    | "onprocessorerror"
+    | "onvrdisplayfocus"
+    | "onaddsourcebuffer"
+    | "onanimationcancel"
+    | "onfullscreenerror"
+    | "onisolationchange"
+    | "onmsgesturechange"
+    | "onmspointercancel"
+    | "onselectionchange"
+    | "ontransitionstart"
+    | "oncontrollerchange"
+    | "onfullscreenchange"
+    | "onpointerlockerror"
+    | "onreadystatechange"
+    | "onrejectionhandled"
+    | "ontransitioncancel"
+    | "onvisibilitychange"
+    | "onvrdisplayconnect"
+    | "onbufferedamountlow"
+    | "ondeviceorientation"
+    | "ongotpointercapture"
+    | "onicecandidateerror"
+    | "onkeystatuseschange"
+    | "onnegotiationneeded"
+    | "onorientationchange"
+    | "onpointerlockchange"
+    | "onvrdisplayactivate"
+    | "onanimationiteration"
+    | "onlostpointercapture"
+    | "onmsgesturedoubletap"
+    | "onremovesourcebuffer"
+    | "onunhandledrejection"
+    | "oncandidatewindowhide"
+    | "oncandidatewindowshow"
+    | "onvrdisplaydeactivate"
+    | "onvrdisplaydisconnect"
+    | "onMSVideoFormatChanged"
+    | "ongatheringstatechange"
+    | "onshippingoptionchange"
+    | "onsignalingstatechange"
+    | "oncandidatewindowupdate"
+    | "onconnectionstatechange"
+    | "onshippingaddresschange"
+    | "onvrdisplaypresentchange"
+    | "oncompassneedscalibration"
+    | "onicegatheringstatechange"
+    | "onsecuritypolicyviolation"
+    | "oniceconnectionstatechange"
+    | "onresourcetimingbufferfull"
+    | "onMSVideoFrameStepCompleted"
+    | "ondeviceorientationabsolute"
+    | "onvrdisplaypointerrestricted"
+    | "onMSVideoOptimalLayoutChanged"
+    | "onselectedcandidatepairchange"
+    | "onvrdisplaypointerunrestricted"
+
+const eventHandlerNames = new Set([
+    "oncut",
+    "onend",
+    "onLine",
+    "onblur",
+    "oncopy",
+    "ondrag",
+    "ondrop",
+    "onexit",
+    "onload",
+    "onmark",
+    "onmute",
+    "onopen",
+    "onplay",
+    "onshow",
+    "onzoom",
+    "onabort",
+    "onclick",
+    "onclose",
+    "onended",
+    "onenter",
+    "onerror",
+    "onfocus",
+    "oninput",
+    "onkeyup",
+    "onpaste",
+    "onpause",
+    "onreset",
+    "onstart",
+    "ontrack",
+    "onwheel",
+    "onbounce",
+    "oncached",
+    "oncancel",
+    "onchange",
+    "onfinish",
+    "ononline",
+    "onresize",
+    "onresult",
+    "onresume",
+    "onscroll",
+    "onseeked",
+    "onselect",
+    "onsubmit",
+    "ontoggle",
+    "onunload",
+    "onunmute",
+    "onupdate",
+    "onblocked",
+    "oncanplay",
+    "ondragend",
+    "onemptied",
+    "oninvalid",
+    "onkeydown",
+    "onloadend",
+    "onmessage",
+    "onmouseup",
+    "onnomatch",
+    "onoffline",
+    "onplaying",
+    "onseeking",
+    "onstalled",
+    "onstorage",
+    "onsuccess",
+    "onsuspend",
+    "ontimeout",
+    "onwaiting",
+    "onaddtrack",
+    "onaudioend",
+    "onauxclick",
+    "onboundary",
+    "onchecking",
+    "oncomplete",
+    "ondblclick",
+    "ondragexit",
+    "ondragover",
+    "onkeypress",
+    "onmouseout",
+    "onnoupdate",
+    "onobsolete",
+    "onpagehide",
+    "onpageshow",
+    "onpopstate",
+    "onprogress",
+    "onsoundend",
+    "ontouchend",
+    "oncuechange",
+    "ondragenter",
+    "ondragleave",
+    "ondragstart",
+    "onencrypted",
+    "onloadstart",
+    "onmousedown",
+    "onmousemove",
+    "onmouseover",
+    "onmsneedkey",
+    "onpointerup",
+    "onspeechend",
+    "ontouchmove",
+    "onupdateend",
+    "onafterprint",
+    "onaudiostart",
+    "onhashchange",
+    "onloadeddata",
+    "onmouseenter",
+    "onmouseleave",
+    "onmousewheel",
+    "onpointerout",
+    "onratechange",
+    "onsoundstart",
+    "onsourceopen",
+    "onstatsended",
+    "ontimeupdate",
+    "ontonechange",
+    "ontouchstart",
+    "onbeforeprint",
+    "oncontextmenu",
+    "ondatachannel",
+    "ondevicelight",
+    "ondownloading",
+    "onmspointerup",
+    "onpointerdown",
+    "onpointermove",
+    "onpointerover",
+    "onremovetrack",
+    "onselectstart",
+    "onsourceclose",
+    "onsourceended",
+    "onspeechstart",
+    "onstatechange",
+    "ontouchcancel",
+    "onupdatefound",
+    "onupdateready",
+    "onupdatestart",
+    "onanimationend",
+    "onaudioprocess",
+    "onbeforeunload",
+    "ondevicechange",
+    "ondevicemotion",
+    "onicecandidate",
+    "onmessageerror",
+    "onmsgestureend",
+    "onmsgesturetap",
+    "onmspointerout",
+    "onpointerenter",
+    "onpointerleave",
+    "onvolumechange",
+    "one-dimensional",
+    "onmsgesturehold",
+    "onmspointerdown",
+    "onmspointermove",
+    "onmspointerover",
+    "onpointercancel",
+    "ontransitionend",
+    "ontransitionrun",
+    "onupgradeneeded",
+    "onversionchange",
+    "onvoiceschanged",
+    "onvrdisplayblur",
+    "onwaitingforkey",
+    "onanimationstart",
+    "oncanplaythrough",
+    "ondurationchange",
+    "onlanguagechange",
+    "onloadedmetadata",
+    "onlocalcandidate",
+    "onmsgesturestart",
+    "onmsinertiastart",
+    "onmspointerenter",
+    "onmspointerleave",
+    "onprocessorerror",
+    "onvrdisplayfocus",
+    "onaddsourcebuffer",
+    "onanimationcancel",
+    "onfullscreenerror",
+    "onisolationchange",
+    "onmsgesturechange",
+    "onmspointercancel",
+    "onselectionchange",
+    "ontransitionstart",
+    "oncontrollerchange",
+    "onfullscreenchange",
+    "onpointerlockerror",
+    "onreadystatechange",
+    "onrejectionhandled",
+    "ontransitioncancel",
+    "onvisibilitychange",
+    "onvrdisplayconnect",
+    "onbufferedamountlow",
+    "ondeviceorientation",
+    "ongotpointercapture",
+    "onicecandidateerror",
+    "onkeystatuseschange",
+    "onnegotiationneeded",
+    "onorientationchange",
+    "onpointerlockchange",
+    "onvrdisplayactivate",
+    "onanimationiteration",
+    "onlostpointercapture",
+    "onmsgesturedoubletap",
+    "onremovesourcebuffer",
+    "onunhandledrejection",
+    "oncandidatewindowhide",
+    "oncandidatewindowshow",
+    "onvrdisplaydeactivate",
+    "onvrdisplaydisconnect",
+    "onMSVideoFormatChanged",
+    "ongatheringstatechange",
+    "onshippingoptionchange",
+    "onsignalingstatechange",
+    "oncandidatewindowupdate",
+    "onconnectionstatechange",
+    "onshippingaddresschange",
+    "onvrdisplaypresentchange",
+    "oncompassneedscalibration",
+    "onicegatheringstatechange",
+    "onsecuritypolicyviolation",
+    "oniceconnectionstatechange",
+    "onresourcetimingbufferfull",
+    "onMSVideoFrameStepCompleted",
+    "ondeviceorientationabsolute",
+    "onvrdisplaypointerrestricted",
+    "onMSVideoOptimalLayoutChanged",
+    "onselectedcandidatepairchange",
+    "onvrdisplaypointerunrestricted",
+])
+
 /// Find the node with the given ID and replace it with the app's HTML.
 /// Also organises clean-up code.
 export function app(rootNodeID: string, appHTML: HTMLElement): void {
@@ -51,12 +504,9 @@ function scheduleDOMUpdate(el: Effectful<HTMLElement>, update: () => void): void
 // VIRTUAL DOM NODES that produce concrete HTML. They are attached to a concrete
 // DOM node. They cannot be directly nested.
 
-interface Derived<T> {
-    $derived: "derived"
-    value: () => T
-}
+type Derived<T> = () => T
+
 interface DerivedFromChoice<T> {
-    $derived: "if"
     condition: () => boolean
     branches: {_then: () => T, _else: () => T}
 }
@@ -64,8 +514,7 @@ interface DerivedFromChoice<T> {
 export type WithIndex<T extends object> = T & {$index: number}
 
 interface DerivedFromSequence<T, I extends object> {
-    $derived: "for"
-    items: readonly I[] | Ref<readonly I[]> // must be "ComputedRef" instead of "Ref" or TypeScript gets confused
+    items: () => readonly I[]
     f: (item: WithIndex<I>) => T
 }
 
@@ -75,29 +524,23 @@ export type DerivedDocFragment<I extends object> =
       DerivedFromChoice<HTMLElement[]>
     | DerivedFromSequence<HTMLElement[], I>
 
-function isDerived(value: unknown): value is Derived<unknown> {
-    return (value as Derived<unknown>).$derived === "derived"
+function isFunction(value: unknown): value is Derived<unknown> {
+    return typeof value === "function"
 }
 
 function isDerivedFromChoice(value: unknown): value is DerivedFromChoice<unknown> {
-    return (value as DerivedFromChoice<unknown>).$derived === "if"
+    return typeof (value as DerivedFromChoice<unknown>).condition !== "undefined"
 }
 
 function isDerivedFromSequence(value: unknown): value is DerivedFromSequence<unknown, any> {
-    return (value as DerivedFromSequence<unknown, any>).$derived === "for"
-}
-
-// Behaves identically to computed(), but is automatically cleaned up,
-// and has different performance characteristics.
-export function $derived<T>(value: () => T): Derived<T> {
-    return {$derived: "derived", value: value}
+    return typeof (value as DerivedFromSequence<unknown, any>).items !== "undefined"
 }
 
 export function $if<T>(
     condition: () => boolean,
     branches: {_then: () => T, _else: () => T},
 ): DerivedFromChoice<T> {
-    return {$derived: "if", condition: condition, branches: branches}
+    return {condition: condition, branches: branches}
 }
 
 /**
@@ -106,10 +549,10 @@ export function $if<T>(
  * determine which elements have changed when the array is updated.
  */
 export function $for<I extends object>(
-    items: readonly I[] | Ref<readonly I[]>,
+    items: () => readonly I[],
     f: (item: WithIndex<I>) => HTMLElement[],
 ): DerivedFromSequence<HTMLElement[], I> {
-    return {$derived: "for", items: items, f: f}
+    return {items: items, f: f}
 }
 
 // Every node that is permanently removed from the DOM must be cleaned up via this function
@@ -151,16 +594,17 @@ declare global {
     }
 }
 
-// I may want to flesh out this list of event handlers eventually.
-// Currently, I just need to ensure oninput is a plain old function
-// so that I can hijack it for two-way binding.
-type EventHandler = "oninput"
-
-// Defines a record of properties that can be assigned to El.
-// If the property is an EventHandler, then it must be a function.
-// Otherwise, the property can be dynamically computed via Ref etc...
-export type SubRecordWithRefs<Keys extends keyof El, El> =
-    { [K in Keys]: K extends EventHandler ? El[K] : (El[K] | Ref<El[K]> | DerivedAttribute<El[K]>) }
+// Defines a record of properties that can be assigned to an Element. If the property
+// is an EventHandler, then it must be a plain old function. Otherwise, the property
+// can be dynamically computed. If the property is something that can be made a
+// two-way binding, (e.g. "value"), then if it is dynamic, it must be a Ref.
+export type AttributeSpec<Keys extends keyof El, El extends Element> =
+    { [K in Keys]: K extends EventHandler
+        ? El[K]
+        : K extends "value"
+            ? (El[K] | Ref<El[K]>)
+            : (El[K] | DerivedAttribute<El[K]>)
+    }
 
 function prettifyClassName(name: string): string {
     if (name.length > 0) {
@@ -178,7 +622,7 @@ function logChangeStart(el: HTMLElement): void {
 // Assign attribute values and attach listeners to re-assign observable values when they change
 function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLElement>(
     el: Effectful<El>,
-    assignment: SubRecordWithRefs<AssKeys, El>,
+    assignment: AttributeSpec<AssKeys, El>,
 ): Effectful<El> {
     function logAttributeChange(key: string, value: unknown): void {
         logChangeStart(el)
@@ -197,9 +641,9 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
                 logAttributeChange(key, attrValue.value)
             })
         }
-        else if (isDerived(attrValue)) {
+        else if (!eventHandlerNames.has(key) && isFunction(attrValue)) { // is derived value
             scheduleDOMUpdate(el, () => {
-                const newValue = attrValue.value()
+                const newValue = attrValue()
                 el[(key as AssKeys)] = newValue as any
                 logAttributeChange(key, newValue)
             })
@@ -301,7 +745,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
             const marker = putFragmentMarker()
             let elementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
 
-            const itemsOrRef = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).items
+            const items = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).items
             const f = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).f
 
             // Temp benchmarking
@@ -309,7 +753,6 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
 
             scheduleDOMUpdate(el, () => {
                 const fragment = document.createDocumentFragment()
-                const items = isRef(itemsOrRef) ? itemsOrRef.value : itemsOrRef
 
                 const createAllNewChildren = false
                 if (createAllNewChildren) { // FOR BENCHMARKING ONLY
@@ -318,7 +761,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     childrenAttachedHere.forEach(remove)
                     childrenAttachedHere.length = 0
                     // add
-                    items.forEach((item, index) => {
+                    items().forEach((item, index) => {
                         const itemWithIndex = item as WithIndex<object>
                         itemWithIndex.$index = index
                         childrenAttachedHere.push(...f(itemWithIndex))
@@ -331,7 +774,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
                     const newElementsForLogging: Effectful<HTMLElement>[] = []
                     // For each item, determine whether new or already existed
-                    items.forEach((item, index) => {
+                    items().forEach((item, index) => {
                         const existingElements = elementsCache.get(item)
                         if (existingElements === undefined) {
                             // Associate the item with a reactive index (it may be moved later)
@@ -383,7 +826,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
 // Create a HTML element with the given name and attributes. 
 export function element<Keys extends keyof El, El extends HTMLElement>(
     name: string,
-    attributes: SubRecordWithRefs<Keys, El>,
+    attributes: AttributeSpec<Keys, El>,
     children: HTMLChildren,
 ): Effectful<El> {
     const el = document.createElement(name) as Effectful<El>
@@ -411,38 +854,38 @@ export function element<Keys extends keyof El, El extends HTMLElement>(
 }
 
 export function div<Keys extends keyof HTMLDivElement>(
-    attributes: SubRecordWithRefs<Keys, HTMLDivElement>,
+    attributes: AttributeSpec<Keys, HTMLDivElement>,
     children: HTMLChildren = [],
 ): HTMLDivElement {
     return element("div", attributes, children)
 }
 
 export function br<Keys extends keyof HTMLBRElement>(
-    attributes: SubRecordWithRefs<Keys, HTMLBRElement> = {} as any,
+    attributes: AttributeSpec<Keys, HTMLBRElement> = {} as any,
 ): HTMLBRElement {
     return element("br", attributes, [])
 }
 
 export function p<Keys extends keyof HTMLParagraphElement>(
-    textContent: string | Ref<string> | DerivedAttribute<string>,
-    attributes: SubRecordWithRefs<Keys, HTMLParagraphElement> = {} as any,
+    textContent: string | DerivedAttribute<string>,
+    attributes: AttributeSpec<Keys, HTMLParagraphElement> = {} as any,
 ): HTMLParagraphElement {
     Object.assign(attributes, {textContent: textContent})
     return element("p", attributes, [])
 }
 
 export function button<Keys extends keyof HTMLButtonElement>(
-    textContent: string | Ref<string> | DerivedAttribute<string>,
-    attributes: SubRecordWithRefs<Keys, HTMLButtonElement> = {} as any,
+    textContent: string | DerivedAttribute<string>,
+    attributes: AttributeSpec<Keys, HTMLButtonElement> = {} as any,
 ): HTMLButtonElement {
     Object.assign(attributes, {textContent: textContent})
     return element("button", attributes, [])
 }
 
 export function input<Keys extends keyof HTMLInputElement>(
-    attributes: SubRecordWithRefs<Keys, HTMLInputElement> = {} as any,
+    attributes: AttributeSpec<Keys, HTMLInputElement> = {} as any,
 ): HTMLInputElement { 
-    const attrs = attributes as SubRecordWithRefs<Keys | "value" | "oninput", HTMLInputElement>
+    const attrs = attributes as AttributeSpec<Keys | "value" | "oninput", HTMLInputElement>
     const valueRef: string | Ref<string> | DerivedAttribute<string> | undefined = attrs.value
     // If the "value" attribute exists and is a Ref, then set up two-way binding
     if (valueRef !== undefined && isRef(valueRef)) {
