@@ -144,30 +144,56 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     padding-top: 8px;
 }
 
-.linkSpacer {
-    width: 8px;
-}
-
 .relation {
     color: rgb(153, 0, 255);
 }
 
-.smallYSpacer {
-    height: 4px;
-}
-
-.greyedText {
-    color: #666666;
-}
-
-.zeroSize {
-    width: 0;
-    height: 0;
-    overflow: visible;
-}
-
 .searchBox {
     @extend .col;
+}
+
+.searchBoxInputPadding {
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.searchBoxInput {
+// create a stacking context
+    position: relative;
+    z-index: 0;
+}
+
+.searchBorder {
+    outline-style: solid;
+    outline-width: 1px;
+    outline-color: $standard-border-color;
+}
+
+.searchBorderOnHover:hover {
+    @extend .searchBorder;
+}
+
+.searchBoxHiddenInputText {
+    @extend .searchBoxInputPadding;
+    // match the width of my sibling, but don't consume space myself
+    position: absolute;
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit; // Important: needs to match the font of the overlaid text   
+    border-style: none;
+    // only caret is visible
+    color: #00000000;
+    background-color: #00000000;
+    caret-color: #000000ff;
+    // these weird adjustments are needed to align input text with regular p text
+    margin-top: -1px;
+    margin-left: 1px;
+}
+
+.searchBoxText {
+    @extend .searchBoxInputPadding;
 }
 
 .searchResultsLocation {
@@ -183,6 +209,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 
 .searchResult {
     @extend .row;
+    @extend .noSelect;
     padding: 4px;
     background-color: #e5e5e5;
 }
@@ -196,16 +223,6 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 
 .deleteButton {
-    @extend .noSelect;
     color: red;
 }
 
-// .inputForSearchBox {
-//     font: inherit; // Important: needs to match the font of the overlaid label
-//     width: 1000px; // Long enough to cover all use-cases
-//     padding: 0px;
-//     margin-top: -2px;
-//     border-style: none;
-//     color: #00000000;
-//     caret-color: #000000ff;
-// }

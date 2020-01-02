@@ -2,7 +2,7 @@ import "./reset.css"
 import "./style.scss"
 import "./globals"
 import { toRefs } from "@vue/reactivity"
-import { $if, $for, app, div, p, br, button, input } from "./lib-view"
+import { DerivedDocFragment, $if, $for, app, div, p, br, button, input, span } from "./lib-view"
 import "./lib-derived-state"
 import Cycle from "json-cycle"
 
@@ -16,9 +16,10 @@ import { WithDerivedProps, DerivedProps, withDerivedProps } from "./lib-derived-
 interface Search {
 //essential
     active: boolean
-    text: ""
+    text: string
+    textOnBlur: string // the text that the search box should be set to on blur
     readonly registries: Registry.T[]
-    selection: number
+    selection: number | undefined
 //derived
     readonly results: Registry.SearchResult[]
 }
@@ -27,8 +28,9 @@ function Search(registries: Registry.T[]): Search {
     return {
         active: false,
         text: "",
+        textOnBlur: "",
         registries: registries,
-        selection: 0,
+        selection: undefined,
     } as Search
 }
 
@@ -43,13 +45,20 @@ function searchResults(search: Search): Registry.SearchResult[] {
     )
     // Sort the results by closeness
     searchResults.sort((a, b) => a.distance - b.distance)
+    // Reset the selected result
+    search.selection = (searchResults.length > 0) ? 0 : undefined
     return searchResults
 }
 
+interface LinkItem {
+    concept: Concept | undefined
+    readonly search: Search
+}
+
 interface Link {
-    readonly subject: { concept: Concept | undefined, search: Search }
-    readonly relation: { concept: Concept | undefined, search: Search }
-    readonly object: { concept: Concept | undefined, search: Search }
+    readonly subject: LinkItem
+    readonly relation: LinkItem
+    readonly object: LinkItem
 }
 
 function Link(conceptRegistry: Registry.T, varRegistry: Registry.T, subject?: Concept, relation?: Concept, object?: Concept): Link {
@@ -151,16 +160,12 @@ function resetState(): void {
 function newRule(i: number): void {
     const ruleConcept = Registry.newConcept(state.ruleRegistry)
     const varRegistry = Registry.empty("var")
-    const c: Concept = Registry.newConcept(state.conceptRegistry) // placeholder concept
 
     state.rules.insert(i, {
         ruleConcept,
         varRegistry,
-        head: Link(state.conceptRegistry, varRegistry, c, c, c),
-        body: [
-            Link(state.conceptRegistry, varRegistry, c, c, c),
-            Link(state.conceptRegistry, varRegistry, c, c, c),
-        ],
+        head: Link(state.conceptRegistry, varRegistry),
+        body: [],
     })
 }
 
@@ -168,27 +173,58 @@ function newPremise(rule: Rule): void {
     rule.body.push(Link(state.conceptRegistry, rule.varRegistry))
 }
 
-const searchBox = (search: Search, onSelect: () => void): HTMLElement =>
-    div({class: "searchBox"}, [
-        input ({
-            autocomplete: "nope",
-            value: toRefs(search).text,
-            onkeydown: (e: KeyboardEvent) => {
-                if (e.key === "ArrowDown" && search.selection < search.results.length - 1) {
-                    ++search.selection
-                }
-                else if (e.key === "ArrowUp" && search.selection > 0) {
-                    --search.selection
-                }
-                else if (e.key === "Enter") onSelect()
-            },
-            onfocus: () => search.active = true,
-            onblur: () => search.active = false,
-        }),
-        div({class: "searchResultsLocation"}, [ // searchResults div is positioned relative to here
-            $if (() => search.active, {
+const searchBox = (
+    search: Search,
+    options: {
+        borderAlwaysVisible?: boolean // default: true
+        searchTextClass?: string
+        onActive?: () => void
+        onSelect?: () => void
+    }
+): HTMLElement =>
+    div ({class: "searchBox"}, [
+        div({
+            class: () => "searchBoxInput " + (
+                options.borderAlwaysVisible === false && !search.active && search.text.length > 0
+                    ? "searchBorderOnHover"
+                    : "searchBorder"
+            ),
+        },[
+            input ({
+                class: "searchBoxHiddenInputText",
+                autocomplete: "nope",
+                value: toRefs(search).text,
+                onkeydown: (e: KeyboardEvent) => {
+                    if (e.key === "ArrowDown" && search.selection !== undefined && search.selection < search.results.length - 1) {
+                        ++search.selection
+                    }
+                    else if (e.key === "ArrowUp" && search.selection !== undefined && search.selection > 0) {
+                        --search.selection
+                    }
+                    else if (e.key === "Enter" && options.onSelect !== undefined) {
+                        options.onSelect()
+                    }
+                },
+                onfocus: () => {
+                    search.active = true
+                    if (options.onActive !== undefined) options.onActive()
+                },
+                onblur: () => {
+                    search.text = search.textOnBlur
+                    search.active = false
+                },
+            }),
+            p (() => (search.text.length > 0) ? search.text.replace(" ", "\xa0") : "\xa0\xa0", { //nbsp chars
+                class: "searchBoxText " + (options.searchTextClass === undefined
+                    ? ""
+                    : options.searchTextClass
+                ),
+            }),
+        ]),
+        div ({class: "searchResultsLocation"}, [ // searchResults div is positioned relative to here
+            $if (() => search.active && search.results.length > 0, {
                 $then: () => [
-                    div({
+                    div ({
                         class: "searchResults",
                         // Prevent the "blur" event from occurring when the dropdown is clicked
                         onmousedown: event => event.preventDefault(),
@@ -200,6 +236,8 @@ const searchBox = (search: Search, onSelect: () => void): HTMLElement =>
                                         $then: () => "searchResult highlighted",
                                         $else: () => "searchResult",
                                     }),
+                                onmouseenter: () => search.selection = result.$index,
+                                onclick: options.onSelect === undefined ? null : options.onSelect,
                             }, [
                                 p (() => result.key),
                                 div ({class: "smallXSpacer grow"}),
@@ -217,22 +255,30 @@ const searchBox = (search: Search, onSelect: () => void): HTMLElement =>
         ]),
     ])
 
+const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
+    searchBox(item.search, {
+        borderAlwaysVisible: false,
+        searchTextClass: className,
+        onSelect() {
+            const search = item.search
+            if (search.selection !== undefined) {
+                const result = search.results[search.selection]
+                item.concept = result.value
+                // Keep search result text for display & future editing
+                search.text = result.key
+                search.textOnBlur = result.key
+                search.active = false
+            }
+        },
+    })
+
 const linkEl = (link: Link): HTMLElement =>
     div ({class: "link"}, [
         div({class: "row"}, [
-            $if (() => link.subject.concept === undefined, {
-                $then: () => [searchBox(link.subject.search, () => {
-                    // do nothing
-                })],
-                $else: () => [p(() => (link.subject.concept as Concept).label, {class: "subject"})],
-            }),
-            p(":"),
+            linkItemEl(link.subject, "subject"),
+            linkItemEl(link.relation, "relation"),
+            linkItemEl(link.object, "object"),
         ]),
-        
-        div({class: "linkSpacer"}),
-        //p(() => link.relation.concept.label, {class: "relation"}),
-        div({class: "linkSpacer"}),
-        //p(() => link.object.concept.label, {class: "object"}),
     ])
 
 app("app",
@@ -257,7 +303,6 @@ app("app",
                         linkEl (rule.head),
                         div ({class: "ruleBody"}, [
                             $for (() => rule.body, link => [
-                                div({class: "smallYSpacer"}),
                                 linkEl (link),
                             ]),
                             div({
@@ -276,14 +321,19 @@ app("app",
         div ({class: "separator"}),
         br (),
         p ("Create a new concept:"),
-        searchBox(state.conceptCreatorSearch, () => {
-            const label = state.conceptCreatorSearch.text
-            if (label.length > 0) {
-                const outcome = Registry.newConcept(state.conceptRegistry, label)
-                if (typeof outcome === "object") {
-                    state.conceptCreatorSearch.text = ""
+        searchBox(state.conceptCreatorSearch, {
+            onSelect() {
+                const label = state.conceptCreatorSearch.text
+                if (label.length > 0) {
+                    const outcome = Registry.newConcept(state.conceptRegistry, label)
+                    if (typeof outcome === "object") {
+                        state.conceptCreatorSearch.text = ""
+                    }
+                    else {
+                        // TODO: Display an error status in the search box
+                    }
                 }
-            }
+            },
         }),
     ])
 )

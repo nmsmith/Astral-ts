@@ -514,7 +514,7 @@ interface DerivedFromSequence<T, I extends object> {
 
 export type DerivedAttribute<T> = (() => T) | DerivedFromChoice<T>
 
-export type DerivedDocFragment<I extends object> =
+export type DerivedDocFragment<I extends object = object> =
       DerivedFromChoice<HTMLElement[]>
     | DerivedFromSequence<HTMLElement[], I>
 
@@ -568,7 +568,10 @@ function cleanUp(node: Effectful<HTMLElement>): void {
 let updateNumber = 0
 function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
     return (...args: unknown[]): void => {
-        console.log(`%cDOM update ${++updateNumber} (event: ${eventName})`, updateMsgStyle)
+        const event = args[0] as Event
+        console.log(`%cDOM update ${++updateNumber}`, updateMsgStyle)
+        console.log("Event:", event.type)
+        console.log("Target:", event.target)
         // Update the essential state
         stateUpdate(...args)
         // Update the DOM
@@ -864,6 +867,14 @@ export function p<Keys extends keyof HTMLParagraphElement>(
 ): HTMLParagraphElement {
     Object.assign(attributes, {textContent: textContent})
     return element("p", attributes, [])
+}
+
+export function span<Keys extends keyof HTMLParagraphElement>(
+    textContent: string | DerivedAttribute<string>,
+    attributes: AttributeSpec<Keys, HTMLParagraphElement> = {} as any,
+): HTMLParagraphElement {
+    Object.assign(attributes, {textContent: textContent})
+    return element("span", attributes, [])
 }
 
 export function button<Keys extends keyof HTMLButtonElement>(
