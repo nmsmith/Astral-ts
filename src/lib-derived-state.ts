@@ -38,7 +38,6 @@ function constructDerivedProperties<T extends object>(
     maintainers: PropMaintainers,
 ): void {
     Object.entries(spec).forEach(([propName, propSpec]) => {
-        let derivedValue: object
         if (typeof propSpec === "function") {
             // This is a derived property
             const c = computed(() => {
@@ -48,11 +47,16 @@ function constructDerivedProperties<T extends object>(
                 return currentValue
             })
             maintainers.push(c.effect)
-            derivedValue = c
+            Object.defineProperty(currObj, propName, {
+                get() {return c.value},
+                set() {throw `Can't assign to the (readonly) derived property "${propName}".`},
+                enumerable: false, // Prevent this property from being serialized
+            })
         }
         else if (typeof propSpec === "object") {
             // This is specification for derived sub-properties
             const targetObj: object = (currObj as any)[propName]
+            let derivedValue: object
             if (Array.isArray(targetObj)) {
                 // Wrap the existing array to make it reactive
                 const arrayMaintainer: WithDerivedProps<T[]> =
@@ -64,13 +68,12 @@ function constructDerivedProperties<T extends object>(
                 constructDerivedProperties(targetObj, propSpec as DerivedProps<object>, maintainers)
                 derivedValue = targetObj
             }
+            Object.defineProperty(currObj, propName, {
+                get() {return derivedValue},
+                set() {throw `Can't assign to "${propName}". Its current value has derived properties that can't be reconstructed.`},
+                enumerable: true, // This property can be serialized
+            })
         }
-
-        // Make the derived property (or property with derived sub-properties) readonly
-        Object.defineProperty(currObj, propName, {
-            get() {return derivedValue},
-            set() {throw `Can't assign to the (readonly) derived property "${propName}".`},
-        })
     })
 }
 
