@@ -17,9 +17,10 @@ interface Search {
 //essential
     active: boolean
     text: string
-    textOnBlur: string // the text that the search box should be set to on blur
+    textChanged: boolean // whether text has been edited since last selecting search result
     readonly registries: Registry.T[]
-    selection: number | undefined
+    selectionCandidate: number
+    selection: number
 //derived
     readonly results: Registry.SearchResult[]
 }
@@ -28,9 +29,9 @@ function Search(registries: Registry.T[]): Search {
     return {
         active: false,
         text: "",
-        textOnBlur: "",
+        textChanged: true,
         registries: registries,
-        selection: undefined,
+        selectionCandidate: -1,
     } as Search
 }
 
@@ -45,8 +46,6 @@ function searchResults(search: Search): Registry.SearchResult[] {
     )
     // Sort the results by closeness
     searchResults.sort((a, b) => a.distance - b.distance)
-    // Reset the selected result
-    search.selection = (searchResults.length > 0) ? 0 : undefined
     return searchResults
 }
 
@@ -173,101 +172,174 @@ function newPremise(rule: Rule): void {
     rule.body.push(Link(state.conceptRegistry, rule.varRegistry))
 }
 
+type DefaultResultOption = {optionText: string, optionTextStyle: string, inputTextStyle: string}
+
 const searchBox = (
     search: Search,
     options: {
         borderAlwaysVisible?: boolean // default: true
-        searchTextClass?: string
+        blurOnSelect?: boolean // default: true
+        defaultResult?: DefaultResultOption
+        inputTextStyle?: string
         onActive?: () => void
         onSelect?: () => void
+        onNoSelection?: () => void
     }
-): HTMLElement =>
-    div ({class: "searchBox"}, [
-        div({
-            class: () => "searchBoxInput " + (
-                options.borderAlwaysVisible === false && !search.active && search.text.length > 0
-                    ? "searchBorderOnHover"
-                    : "searchBorder"
-            ),
-        },[
-            input ({
-                class: "searchBoxHiddenInputText",
-                autocomplete: "nope",
-                value: toRefs(search).text,
-                onkeydown: (e: KeyboardEvent) => {
-                    if (e.key === "ArrowDown" && search.selection !== undefined && search.selection < search.results.length - 1) {
-                        ++search.selection
-                    }
-                    else if (e.key === "ArrowUp" && search.selection !== undefined && search.selection > 0) {
-                        --search.selection
-                    }
-                    else if (e.key === "Enter" && options.onSelect !== undefined) {
-                        options.onSelect()
-                    }
-                },
-                onfocus: () => {
-                    search.active = true
-                    if (options.onActive !== undefined) options.onActive()
-                },
-                onblur: () => {
-                    search.text = search.textOnBlur
+): HTMLElement => {
+    if (options.borderAlwaysVisible === undefined) options.borderAlwaysVisible = true
+    if (options.blurOnSelect === undefined) options.blurOnSelect = true
+    // Input text style customization as specified in options
+    function currentInputTextStyle(): string {
+        return (search.selectionCandidate === -1
+            ? options.defaultResult!.inputTextStyle as string
+            : (options.inputTextStyle === undefined
+                ? ""
+                : options.inputTextStyle
+            )   )
+    }
+    // The text of this input is hidden; it is displayed in a span instead.
+    const inputEl = input ({
+        class: () => "searchBoxInput " + currentInputTextStyle() + (
+            options.borderAlwaysVisible === false && !search.active
+                ? " searchBorderOnHover"
+                : " searchBorder"
+        ),
+        autocomplete: "nope",
+        value: toRefs(search).text,
+        onkeydown: (event: KeyboardEvent) => {
+            if (event.key === "ArrowDown") {
+                if (search.selectionCandidate < search.results.length - 1) {
+                    ++search.selectionCandidate
+                }
+                event.preventDefault() // don't move the cursor to end of input
+            }
+            else if (event.key === "ArrowUp") {
+                if (search.selectionCandidate >= (options.defaultResult === undefined ? 1 : 0)) {
+                    --search.selectionCandidate
+                }
+                event.preventDefault() // don't move the cursor to start of input
+            }
+            else if (event.key === "Enter") {
+                if (options.onSelect !== undefined) {
+                    options.onSelect()
+                }
+                if (options.blurOnSelect === true) {
                     search.active = false
-                },
-            }),
-            p (() => (search.text.length > 0) ? search.text.replace(" ", "\xa0") : "\xa0\xa0", { //nbsp chars
-                class: "searchBoxText " + (options.searchTextClass === undefined
-                    ? ""
-                    : options.searchTextClass
-                ),
+                    inputEl.blur()
+                }
+            }
+        },
+        oninput: () => {
+            search.textChanged = true
+            search.selectionCandidate = search.results.length === 0 || search.results[0].distance > 0
+                ? -1
+                : 0
+        },
+        onfocus: () => {
+            search.active = true
+            search.selectionCandidate = search.results.length === 0 || search.results[0].distance > 0
+                ? -1
+                : 0
+            if (options.onActive !== undefined) options.onActive()
+        },
+        onblur: () => {
+            // Check if the search is active, and therefore we need to clean up
+            if (search.active === true) {
+                if (options.onNoSelection !== undefined) options.onNoSelection()
+                search.active = false
+            }
+        },
+    })
+    return div ({class: "searchBox"}, [
+        div ({class: () => "searchBoxInputContext"}, [
+            inputEl,
+            // This span determines the input el's width
+            span (() => (search.text.length > 0) ? search.text : "   ", {
+                class: () => "searchBoxTextSizeMeasure " + currentInputTextStyle(),
             }),
         ]),
         div ({class: "searchResultsLocation"}, [ // searchResults div is positioned relative to here
-            $if (() => search.active && search.results.length > 0, {
-                $then: () => [
-                    div ({
-                        class: "searchResults",
-                        // Prevent the "blur" event from occurring when the dropdown is clicked
-                        onmousedown: event => event.preventDefault(),
-                    }, [
-                        $for (() => search.results, result => [
-                            div ({
-                                class:
-                                    $if (() => result.$index === search.selection, {
-                                        $then: () => "searchResult highlighted",
-                                        $else: () => "searchResult",
-                                    }),
-                                onmouseenter: () => search.selection = result.$index,
-                                onclick: options.onSelect === undefined ? null : options.onSelect,
-                            }, [
-                                p (() => result.key),
-                                div ({class: "smallXSpacer grow"}),
-                                p ("X", {
-                                    class: "deleteButton",
-                                    onclick: () => Registry.deleteConcept(result.value),
+            $if (() => search.active && (search.results.length > 0 || options.defaultResult !== undefined), {
+                $then: () => {
+                    const resultEl = (text: string, textClass: string, index: () => number): HTMLElement =>
+                        div ({
+                            class:
+                                $if (() => search.selectionCandidate === index(), {
+                                    $then: () => "searchResult highlighted",
+                                    $else: () => "searchResult",
                                 }),
+                            onmouseenter: () => search.selectionCandidate = index(),
+                            onclick: () => {
+                                if (options.onSelect !== undefined) {
+                                    options.onSelect()
+                                }
+                                if (options.blurOnSelect === true) {
+                                    search.active = false
+                                    inputEl.blur()
+                                }
+                            },
+                        }, [
+                            span (() => text, {class: textClass}),
+                        ])
+                    return [
+                        div ({
+                            class: "searchResults",
+                            // Prevent the "blur" event from occurring when the dropdown is clicked
+                            onmousedown: event => event.preventDefault(),
+                        }, [
+                            $if (() => options.defaultResult !== undefined, {
+                                $then: () => [resultEl(
+                                    (options.defaultResult as DefaultResultOption).optionText as string,
+                                    (options.defaultResult as DefaultResultOption).optionTextStyle as string,
+                                    () => -1,
+                                )],
+                                $else: () => [],
+                            }),
+                            $for (() => search.results, result => [
+                                resultEl(result.key, "", () => result.$index),
                             ]),
                         ]),
-                    ]),
-                ],
+                    ]
+                },
                 $else: () => [],
             }),
 
         ]),
     ])
+}
 
 const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
     searchBox(item.search, {
         borderAlwaysVisible: false,
-        searchTextClass: className,
+        defaultResult: {optionText: "nothing", optionTextStyle: "noConceptOption", inputTextStyle: "labelForNothing"},
+        inputTextStyle: className,
         onSelect() {
             const search = item.search
-            if (search.selection !== undefined) {
-                const result = search.results[search.selection]
+            let newText
+            if (search.selectionCandidate >= 0) {
+                const result = search.results[search.selectionCandidate]
                 item.concept = result.value
-                // Keep search result text for display & future editing
-                search.text = result.key
-                search.textOnBlur = result.key
-                search.active = false
+                newText = result.key
+            }
+            else {
+                item.concept = undefined
+                // We selected nothing, but keep the search text visible
+                newText = search.text
+            }
+            // Keep search result text for display & future editing
+            search.text = newText
+            search.selection = search.selectionCandidate
+            search.textChanged = false
+        },
+        onNoSelection() {
+            const search = item.search
+            // If the text was changed, unbind the last concept selected
+            if (search.textChanged === true) {
+                search.selectionCandidate = -1
+                item.concept = undefined
+            }
+            else {
+                search.selectionCandidate = search.selection
             }
         },
     })
@@ -276,13 +348,15 @@ const linkEl = (link: Link): HTMLElement =>
     div ({class: "link"}, [
         div({class: "row"}, [
             linkItemEl(link.subject, "subject"),
+            div({class: "linkSpacing"}),
             linkItemEl(link.relation, "relation"),
+            div({class: "linkSpacing"}),
             linkItemEl(link.object, "object"),
         ]),
     ])
 
 app("app",
-    div ({class: "database"}, [
+    div ({class: "view"}, [
         div ({class: "toolbar"}, [
             button ("Reset state", {
                 onclick: resetState,
@@ -320,8 +394,10 @@ app("app",
         ]),
         div ({class: "separator"}),
         br (),
-        p ("Create a new concept:"),
+        p ("Create or find a concept:"),
         searchBox(state.conceptCreatorSearch, {
+            blurOnSelect: false,
+            defaultResult: {optionText: "new", optionTextStyle: "newConceptOption", inputTextStyle: ""},
             onSelect() {
                 const label = state.conceptCreatorSearch.text
                 if (label.length > 0) {

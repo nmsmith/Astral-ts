@@ -16,6 +16,11 @@ body, button, menu {
     font-size: $standard-font-size;
 }
 
+// Chrome does this stupid thing for inputs
+input:focus {
+    outline-offset: 0;
+}
+
 h1 {
     font-size: 24px;
     font-weight: bold;
@@ -59,7 +64,10 @@ h1 {
 .view {
     @extend .matchParentSize;
     @extend .col;
-    background-color: #ffffff;
+// create a stacking context so can we render the rule view (and its dropdowns)
+// in front of other page elements
+    position: relative;
+    z-index: 0;
 }
 
 $main-pad: 10px;
@@ -80,10 +88,9 @@ $standard-border-color: #aaaaaa;
 
 .ruleView {
     @extend .col;
-// create a stacking context so can we render insertion points
-// behind rule cards but in front of the page background
+// create a stacking context so can we render insertion points behind rule cards
     position: relative;
-    z-index: 0;
+    z-index: 1;
 }
 
 .insertionPoint {
@@ -144,6 +151,10 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     padding-top: 8px;
 }
 
+.linkSpacing {
+    width: 4px;
+}
+
 .relation {
     color: rgb(153, 0, 255);
 }
@@ -152,48 +163,43 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     @extend .col;
 }
 
-.searchBoxInputPadding {
-    padding-left: 4px;
-    padding-right: 4px;
-    padding-top: 2px;
-    padding-bottom: 2px;
-}
-
-.searchBoxInput {
+.searchBoxInputContext {
+    @extend .col;
 // create a stacking context
     position: relative;
     z-index: 0;
 }
 
-.searchBorder {
-    outline-style: solid;
-    outline-width: 1px;
-    outline-color: $standard-border-color;
+.searchBoxInputPadding {
+    padding-left: 3px;
+    padding-right: 3px;
+    padding-top: 2px;
+    padding-bottom: 2px;
 }
 
-.searchBorderOnHover:hover {
-    @extend .searchBorder;
-}
-
-.searchBoxHiddenInputText {
+.searchBoxInput {
     @extend .searchBoxInputPadding;
     // match the width of my sibling, but don't consume space myself
     position: absolute;
     width: 100%;
     box-sizing: border-box;
-    font: inherit; // Important: needs to match the font of the overlaid text   
+    font: inherit; // Important: needs to match the font of the span that computes my size 
     border-style: none;
-    // only caret is visible
-    color: #00000000;
     background-color: #00000000;
-    caret-color: #000000ff;
-    // these weird adjustments are needed to align input text with regular p text
-    margin-top: -1px;
-    margin-left: 1px;
 }
 
-.searchBoxText {
-    @extend .searchBoxInputPadding;
+.outlined {
+    outline-style: solid;
+    outline-width: 1px;
+    outline-color: $standard-border-color;
+}
+
+.searchBorder {
+    @extend .outlined;
+}
+
+.searchBorderOnHover:hover {
+    @extend .outlined;
 }
 
 .searchResultsLocation {
@@ -218,6 +224,18 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     background-color: #ffff76;
 }
 
+.noConceptOption {
+    color: #9b0000;
+}
+
+.labelForNothing {
+    background-color: #ffbbbb;
+}
+
+.newConceptOption {
+    color: #036400;
+}
+
 .smallXSpacer {
     width: 8px;
 }
@@ -226,3 +244,13 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     color: red;
 }
 
+// IMPORTANT: Needs to be listed after other CSS styles so that we can override
+// colours that may be applied etc. to ensure this element is invisible.
+.searchBoxTextSizeMeasure {
+    @extend .searchBoxInputPadding;
+    white-space: pre;
+    color: #00000000;
+    background-color: #00000000;
+    // push down so height matches input element height + outline height
+    padding-top: 5px;
+}
