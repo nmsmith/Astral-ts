@@ -502,7 +502,7 @@ function scheduleDOMUpdate(el: Effectful<HTMLElement>, update: () => void): void
 
 interface DerivedFromChoice<T> {
     condition: () => boolean
-    branches: {_then: () => T, _else: () => T}
+    branches: {$then: () => T, $else: () => T}
 }
 
 export type WithIndex<T extends object> = T & {$index: number}
@@ -532,7 +532,7 @@ function isDerivedFromSequence(value: unknown): value is DerivedFromSequence<unk
 
 export function $if<T>(
     condition: () => boolean,
-    branches: {_then: () => T, _else: () => T},
+    branches: {$then: () => T, $else: () => T},
 ): DerivedFromChoice<T> {
     return {condition: condition, branches: branches}
 }
@@ -644,19 +644,19 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
         }
         else if (isDerivedFromChoice(attrValue)) {
             const condition = attrValue.condition
-            const _then = attrValue.branches._then
-            const _else = attrValue.branches._else
+            const $then = attrValue.branches.$then
+            const $else = attrValue.branches.$else
             let conditionPrevious: boolean | undefined = undefined
             
             scheduleDOMUpdate(el, () => {
                 const conditionNow = condition()
                 if (conditionNow === true && conditionPrevious !== true) {
-                    const newValue = _then()
+                    const newValue = $then()
                     el[(key as AssKeys)] = newValue as any
                     logAttributeChange(key, newValue)
                 }
                 else if (conditionNow === false && conditionPrevious !== false) {
-                    const newValue = _else()
+                    const newValue = $else()
                     el[(key as AssKeys)] = newValue as any
                     logAttributeChange(key, newValue)
                 }
@@ -702,8 +702,8 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
             let childrenAttachedHere: Effectful<HTMLElement>[] = []
 
             const condition = child.condition
-            const _then = child.branches._then
-            const _else = child.branches._else
+            const $then = child.branches.$then
+            const $else = child.branches.$else
             let conditionPrevious: boolean | undefined = undefined
         
             scheduleDOMUpdate(el, () => {  
@@ -713,7 +713,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(remove)
                     // add
-                    childrenAttachedHere = _then() as Effectful<HTMLElement>[]
+                    childrenAttachedHere = $then() as Effectful<HTMLElement>[]
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => {
                         el.insertBefore(child, marker) 
@@ -725,7 +725,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(remove)
                     // add
-                    childrenAttachedHere = _else() as Effectful<HTMLElement>[]
+                    childrenAttachedHere = $else() as Effectful<HTMLElement>[]
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => {
                         el.insertBefore(child, marker) 

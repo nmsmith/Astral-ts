@@ -56,6 +56,12 @@ h1 {
 
 /* component-specific styles */
 
+.view {
+    @extend .matchParentSize;
+    @extend .col;
+    background-color: #ffffff;
+}
+
 $main-pad: 10px;
 
 .toolbar {
@@ -64,31 +70,90 @@ $main-pad: 10px;
     padding: $main-pad;
 }
 
-.database {
-    @extend .col;
-    padding: $main-pad;
-    background-color: #ffffff;
+$standard-border-color: #aaaaaa;
+
+.separator {
+    border-bottom-style: solid;
+    border-width: 1px;
+    border-color: $standard-border-color;
 }
 
 .ruleView {
     @extend .col;
-    box-shadow: 1px 1px 4px 3px #979797;
+// create a stacking context so can we render insertion points
+// behind rule cards but in front of the page background
+    position: relative;
+    z-index: 0;
 }
 
-.insertHere {
-    height: 18px;
-    //transition: height 0.2s;
+.insertionPoint {
+    transition: background-color 0.1s;
 }
 
-.insertHere:hover {
+.insertionPoint:hover {
     background-color: #ffefbc;
     //height: $standard-font-size + 8px;
 }
 
+.ruleInsertionPoint {
+    @extend .insertionPoint;
+    height: 20px;
+// create a stacking context so can we render behind rule cards
+    position: relative;
+    z-index: -1;
+}
+
+.linkInsertionPoint {
+    @extend .insertionPoint;
+    height: 20px;
+}
+
+$box-shadow-color: #979797;
+$standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
+
 .rule {
-    @extend .row;
+    margin-left: $main-pad;
+    margin-right: $main-pad;
+    box-shadow: $standard-box-shadow;
+    align-self: flex-start;
+}
+
+.ruleLabel {
     padding-left: 8px;
     padding-right: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-bottom-style: solid;
+    border-width: 1px;
+    border-color: $standard-border-color;
+}
+
+.ruleContent {
+    @extend .col;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.ruleBody {
+    @extend .col;
+    padding-left: 16px;
+}
+
+.link {
+    @extend .row;
+    padding-top: 8px;
+}
+
+.linkSpacer {
+    width: 8px;
+}
+
+.relation {
+    color: rgb(153, 0, 255);
+}
+
+.smallYSpacer {
+    height: 4px;
 }
 
 .greyedText {
@@ -102,20 +167,32 @@ $main-pad: 10px;
 }
 
 .searchBox {
-    border-style: solid;
-    border-width: 1px;
-    padding: 4px;
+    @extend .col;
 }
 
-.suggestionBox {
-    @extend .searchBox;
+.searchResultsLocation {
+// create a stacking context so we can render in front of rule cards
+    position: relative;
+    z-index: 1;
+}
+
+.searchResults {
+    position: absolute; // relative to parent stacking context
+    box-shadow: $standard-box-shadow;
+}
+
+.searchResult {
     @extend .row;
+    padding: 4px;
     background-color: #e5e5e5;
-    margin-top: -1px;
 }
 
 .highlighted {
-    background-color: #ffff22;
+    background-color: #ffff76;
+}
+
+.smallXSpacer {
+    width: 8px;
 }
 
 .deleteButton {

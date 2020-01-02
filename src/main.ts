@@ -5,7 +5,6 @@ import { toRefs } from "@vue/reactivity"
 import { $if, $for, app, div, p, br, button, input } from "./lib-view"
 import "./lib-derived-state"
 import Cycle from "json-cycle"
-import { mergeWith } from "lodash"
 
 import * as Registry from "./concept-registry"
 type Concept = Registry.Concept
@@ -48,12 +47,12 @@ function searchResults(search: Search): Registry.SearchResult[] {
 }
 
 interface Link {
-    readonly subject: { concept: Concept, search: Search }
-    readonly relation: { concept: Concept, search: Search }
-    readonly object: { concept: Concept, search: Search }
+    readonly subject: { concept: Concept | undefined, search: Search }
+    readonly relation: { concept: Concept | undefined, search: Search }
+    readonly object: { concept: Concept | undefined, search: Search }
 }
 
-function Link(conceptRegistry: Registry.T, varRegistry: Registry.T, subject: Concept, relation: Concept, object: Concept): Link {
+function Link(conceptRegistry: Registry.T, varRegistry: Registry.T, subject?: Concept, relation?: Concept, object?: Concept): Link {
     return {
         subject: { concept: subject, search: Search([conceptRegistry, varRegistry]) },
         relation: { concept: relation, search: Search([conceptRegistry, varRegistry]) },
@@ -88,7 +87,7 @@ interface State {
 
 function createState(existingState?: State): WithDerivedProps<State> {
     const conceptRegistry = Registry.empty("concept")
-    const initialState: WithDerivedProps<State> = withDerivedProps({
+    const essentialState = existingState !== undefined ? existingState : {
         conceptRegistry,
         conceptCreatorSearch:
             Search([conceptRegistry]),
@@ -98,7 +97,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
             [] as Rule[],
         currentView:
             {rules: []},
-    }, {
+    }
+    return withDerivedProps(essentialState, {
         conceptCreatorSearch: {
             results: searchResults,
         },
@@ -107,16 +107,6 @@ function createState(existingState?: State): WithDerivedProps<State> {
             body: linkDerivedProps,
         },
     })
-
-    if (existingState !== undefined) {
-        // Deeply replace each property of the state with that of the existing state.
-        // This ensures that important structure (e.g. Proxies) are kept intact.
-        mergeWith(initialState, existingState, (existingValue, assignedValue) =>
-            // Returning undefined means "merge recursively as normal"
-            typeof existingValue === typeof assignedValue ? undefined : existingValue
-        )
-    }
-    return initialState
 }
 
 //#endregion
@@ -134,6 +124,10 @@ const state: WithDerivedProps<State> =
 console.log("App state: ", state) // for debugging
 
 function saveState(): void {
+    // If an input element is focused, trigger its blur event
+    if (document.activeElement !== null && document.activeElement.tagName === "INPUT") {
+        (document.activeElement as HTMLInputElement).blur()
+    }
     localStorage.state = JSON.stringify(Cycle.decycle(state))
 }
 
@@ -163,101 +157,134 @@ function newRule(i: number): void {
         ruleConcept,
         varRegistry,
         head: Link(state.conceptRegistry, varRegistry, c, c, c),
-        body: [Link(state.conceptRegistry, varRegistry, c, c, c)],
+        body: [
+            Link(state.conceptRegistry, varRegistry, c, c, c),
+            Link(state.conceptRegistry, varRegistry, c, c, c),
+        ],
     })
 }
 
-function selectPrevious(search: Search): void {
-    if (search.selection > 0) {
-        --search.selection
-    }
+function newPremise(rule: Rule): void {
+    rule.body.push(Link(state.conceptRegistry, rule.varRegistry))
 }
 
-function selectNext(search: Search): void {
-    if (search.selection < search.results.length - 1) {
-        ++search.selection
-    }
-}
+const searchBox = (search: Search, onSelect: () => void): HTMLElement =>
+    div({class: "searchBox"}, [
+        input ({
+            autocomplete: "nope",
+            value: toRefs(search).text,
+            onkeydown: (e: KeyboardEvent) => {
+                if (e.key === "ArrowDown" && search.selection < search.results.length - 1) {
+                    ++search.selection
+                }
+                else if (e.key === "ArrowUp" && search.selection > 0) {
+                    --search.selection
+                }
+                else if (e.key === "Enter") onSelect()
+            },
+            onfocus: () => search.active = true,
+            onblur: () => search.active = false,
+        }),
+        div({class: "searchResultsLocation"}, [ // searchResults div is positioned relative to here
+            $if (() => search.active, {
+                $then: () => [
+                    div({
+                        class: "searchResults",
+                        // Prevent the "blur" event from occurring when the dropdown is clicked
+                        onmousedown: event => event.preventDefault(),
+                    }, [
+                        $for (() => search.results, result => [
+                            div ({
+                                class:
+                                    $if (() => result.$index === search.selection, {
+                                        $then: () => "searchResult highlighted",
+                                        $else: () => "searchResult",
+                                    }),
+                            }, [
+                                p (() => result.key),
+                                div ({class: "smallXSpacer grow"}),
+                                p ("X", {
+                                    class: "deleteButton",
+                                    onclick: () => Registry.deleteConcept(result.value),
+                                }),
+                            ]),
+                        ]),
+                    ]),
+                ],
+                $else: () => [],
+            }),
 
-function createConcept(): void {
-    const label = state.conceptCreatorSearch.text
-    if (label.length > 0) {
-        const outcome = Registry.newConcept(state.conceptRegistry, label)
-        if (typeof outcome === "object") {
-            state.conceptCreatorSearch.text = ""
-        }
-    }
-}
+        ]),
+    ])
 
 const linkEl = (link: Link): HTMLElement =>
-    div ({
-        class: "row",
-    },[
-        p("("),
-        p(link.subject.concept.toString()),
+    div ({class: "link"}, [
+        div({class: "row"}, [
+            $if (() => link.subject.concept === undefined, {
+                $then: () => [searchBox(link.subject.search, () => {
+                    // do nothing
+                })],
+                $else: () => [p(() => (link.subject.concept as Concept).label, {class: "subject"})],
+            }),
+            p(":"),
+        ]),
+        
+        div({class: "linkSpacer"}),
+        //p(() => link.relation.concept.label, {class: "relation"}),
+        div({class: "linkSpacer"}),
+        //p(() => link.object.concept.label, {class: "object"}),
     ])
 
 app("app",
-    div ({class: "matchParentSize col"}, [
+    div ({class: "database"}, [
         div ({class: "toolbar"}, [
             button ("Reset state", {
                 onclick: resetState,
             }),
         ]),
-        div ({class: "database"}, [
-            div ({class: "ruleView"}, [
-                div ({
-                    class: "insertHere",
-                    onclick: () => newRule(0),
-                }),
-                $for (() => state.rules, rule => [
-                    p (rule.ruleConcept.label),
-                    div ({class: "rule"}, [
-                        linkEl (rule.head),
-                        $for (() => rule.body, link => [p (" -- "), linkEl (link)]), 
-                    ]),
-                    div ({
-                        class: "insertHere",
-                        onclick: () => newRule(rule.$index+1),
-                    }),
-                ]),
-            ]),
-            br (),
-            br (),
-            p ("Create a new concept:"),
-            input ({
-                autocomplete: "nope",
-                value: toRefs(state.conceptCreatorSearch).text,
-                onkeydown: (e: KeyboardEvent) => {
-                    if (e.key === "ArrowDown") selectNext(state.conceptCreatorSearch)
-                    else if (e.key === "ArrowUp") selectPrevious(state.conceptCreatorSearch)
-                    else if (e.key === "Enter") createConcept()
-                },
-                onfocus: () => {
-                    state.conceptCreatorSearch.active = true
-                },
-                onblur: () => {
-                    state.conceptCreatorSearch.active = false
-                },
+        div ({class: "separator"}),
+        div ({class: "ruleView"}, [
+            div ({
+                class: "ruleInsertionPoint",
+                onclick: () => newRule(0),
             }),
-            $for (() => state.conceptCreatorSearch.results, match => [
-                div ({
-                    class:
-                        $if (() => match.$index === state.conceptCreatorSearch.selection, {
-                            _then: () => "suggestionBox highlighted",
-                            _else: () => "suggestionBox",
-                        }),
-                }, [
-                    p (() => match.key),
-                    div ({class: "grow"}),
-                    p ("X", {
-                        class: "deleteButton",
-                        onclick: () => Registry.deleteConcept(match.value),
-                    }),
+            $for (() => state.rules, rule => [
+                div({class: "rule"}, [
+                    div ({class: "ruleLabel"}, [
+                        p (() => rule.ruleConcept.label),
+                    ]),
+                    div ({class: "ruleContent"}, [
+                        linkEl (rule.head),
+                        div ({class: "ruleBody"}, [
+                            $for (() => rule.body, link => [
+                                div({class: "smallYSpacer"}),
+                                linkEl (link),
+                            ]),
+                            div({
+                                class: "linkInsertionPoint",
+                                onclick: () => newPremise(rule),
+                            }),
+                        ]),
+                    ]),
                 ]),
-
+                div ({
+                    class: "ruleInsertionPoint",
+                    onclick: () => newRule(rule.$index+1),
+                }),
             ]),
         ]),
+        div ({class: "separator"}),
+        br (),
+        p ("Create a new concept:"),
+        searchBox(state.conceptCreatorSearch, () => {
+            const label = state.conceptCreatorSearch.text
+            if (label.length > 0) {
+                const outcome = Registry.newConcept(state.conceptRegistry, label)
+                if (typeof outcome === "object") {
+                    state.conceptCreatorSearch.text = ""
+                }
+            }
+        }),
     ])
 )
 
