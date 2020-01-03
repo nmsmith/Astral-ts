@@ -23,7 +23,7 @@ function Search<Location, Result>(registries: Registry.T[]): Search {
         text: "",
         textChanged: true,
         kbSelectionCandidate: -1,
-        mouseSelectionCandidate: undefined,
+        mouseSelectionCandidate: null,
         defaultSelection: -1,
         registries,
     } as Search

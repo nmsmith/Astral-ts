@@ -1,4 +1,4 @@
-import { Ref, isRef, effect, ReactiveEffect, stop } from "@vue/reactivity"
+import { Ref, isRef, effect, ReactiveEffect, stop , pauseTracking, resumeTracking} from "@vue/reactivity"
 
 // Styles for debug printing
 const updateMsgStyle = "font-size: 110%; font-weight: bold; color: blue; padding-top: 12px"
@@ -566,12 +566,19 @@ function cleanUp(node: Effectful<HTMLElement>): void {
 
 // Update the DOM after executing the given state update function.
 let updateNumber = 0
+let midUpdate = false
 function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
     return (...args: unknown[]): void => {
         const event = args[0] as Event
         console.log(`%cDOM update ${++updateNumber}`, updateMsgStyle)
         console.log("Event:", event.type)
         console.log("Target:", event.target)
+        if (midUpdate) {
+            console.error("WARNING: Something has triggered a nested DOM update.")
+        }
+        else {
+            midUpdate = true
+        }
         // Update the essential state
         stateUpdate(...args)
         // Update the DOM
@@ -581,6 +588,7 @@ function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
             })
             jobSet.clear()
         })
+        midUpdate = false
     }
 }
 
@@ -694,7 +702,9 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
         console.log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
     }
     function remove(child: Effectful<HTMLElement>): void {
+        pauseTracking()
         el.removeChild(child)
+        resumeTracking()
         cleanUp(child)
         logRemove(child)
     }
@@ -719,7 +729,9 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     childrenAttachedHere = $then() as Effectful<HTMLElement>[]
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => {
-                        el.insertBefore(child, marker) 
+                        pauseTracking()
+                        el.insertBefore(child, marker)
+                        resumeTracking()
                         logAdd(child)
                     })
                 }
@@ -731,7 +743,9 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     childrenAttachedHere = $else() as Effectful<HTMLElement>[]
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => {
-                        el.insertBefore(child, marker) 
+                        pauseTracking()
+                        el.insertBefore(child, marker)
+                        resumeTracking()
                         logAdd(child)
                     })
                 }
@@ -779,15 +793,21 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                             itemWithIndex.$index = index
                             // Item is new; create and cache its DOM elements
                             const newElements = f(itemWithIndex)
+                            pauseTracking()
                             fragment.append(...newElements)
+                            resumeTracking()
                             newElementsCache.set(item, newElements)
                             newElementsForLogging.push(...newElements)
                         }
-                        else {
+                        else { // Item is old; use its existing elements
                             // Update the item's index
                             (item as WithIndex<object>).$index = index
-                            // Item is old; use its existing elements
+                            // Need to pause tracking since moving elements can
+                            // cause onBlur() to be called.
+                            pauseTracking()
                             fragment.append(...existingElements)
+                            resumeTracking()
+                            // Put the item in the new cache
                             elementsCache.delete(item)
                             newElementsCache.set(item, existingElements)
                         }
@@ -808,14 +828,18 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     }
 
                     // Attach the new nodes
+                    pauseTracking()
                     el.insertBefore(fragment, marker)
+                    resumeTracking()
                     elementsCache = newElementsCache
                 }
             })
         }
         // We have a non-reactive (static) child
         else {
-            el.appendChild(child)  
+            pauseTracking()
+            el.appendChild(child)
+            resumeTracking()
         }
     })
 }

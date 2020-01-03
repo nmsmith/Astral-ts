@@ -11,7 +11,7 @@ export interface SearchBoxState {
     text: string
     textChanged: boolean // whether text has been edited since last selecting search result
     kbSelectionCandidate: number
-    mouseSelectionCandidate: number | undefined
+    mouseSelectionCandidate: number | null
     defaultSelection: number
     readonly results: SearchResult[]
 }
@@ -37,7 +37,7 @@ export function searchBox(
     if (options.borderAlwaysVisible === undefined) options.borderAlwaysVisible = true
     if (options.blurOnSelect === undefined) options.blurOnSelect = true
     function activeSelection(): number {
-        if (search.mouseSelectionCandidate === undefined) {
+        if (search.mouseSelectionCandidate === null) {
             return search.kbSelectionCandidate
         }
         else {
@@ -79,9 +79,9 @@ export function searchBox(
         value: toRefs(search).text,
         onkeydown: (event: KeyboardEvent) => {
             if (event.key === "ArrowDown") {
-                if (search.mouseSelectionCandidate !== undefined) {
+                if (search.mouseSelectionCandidate !== null) {
                     search.kbSelectionCandidate = search.mouseSelectionCandidate + 1
-                    search.mouseSelectionCandidate = undefined
+                    search.mouseSelectionCandidate = null
                 }
                 else {
                     ++search.kbSelectionCandidate
@@ -92,9 +92,9 @@ export function searchBox(
                 event.preventDefault() // don't move the cursor to end of input
             }
             else if (event.key === "ArrowUp") {
-                if (search.mouseSelectionCandidate !== undefined) {
+                if (search.mouseSelectionCandidate !== null) {
                     search.kbSelectionCandidate = search.mouseSelectionCandidate - 1
-                    search.mouseSelectionCandidate = undefined
+                    search.mouseSelectionCandidate = null
                 }
                 else {
                     --search.kbSelectionCandidate
@@ -125,16 +125,15 @@ export function searchBox(
             search.kbSelectionCandidate = search.results.length === 0 || search.results[0].distance > 0
                 ? -1
                 : 0
-            search.mouseSelectionCandidate = undefined
+            search.mouseSelectionCandidate = null
         },
         onfocus: () => {
             search.active = true
             search.kbSelectionCandidate = search.defaultSelection
-            search.mouseSelectionCandidate = undefined
+            search.mouseSelectionCandidate = null
             if (options.onActive !== undefined) options.onActive()
         },
-        onblur: () => {
-            search.mouseSelectionCandidate = undefined
+        onblur: () => {    
             // Check if the search is active, and therefore we need to clean up
             if (search.active === true) {
                 if (search.textChanged) {
@@ -143,6 +142,7 @@ export function searchBox(
                     search.defaultSelection = options.defaultResult === undefined ? 0 : -1
                 }
                 search.kbSelectionCandidate = search.defaultSelection
+                search.mouseSelectionCandidate = null
                 search.active = false
             }
         },
