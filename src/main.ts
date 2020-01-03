@@ -44,7 +44,7 @@ function searchResults(search: Search): Registry.SearchResult[] {
 }
 
 interface LinkItem {
-    concept: Concept | undefined
+    concept: Concept | null
     readonly search: Search
 }
 
@@ -56,9 +56,9 @@ interface Link {
 
 function Link(conceptRegistry: Registry.T, varRegistry: Registry.T, subject?: Concept, relation?: Concept, object?: Concept): Link {
     return {
-        subject: { concept: subject, search: Search([conceptRegistry, varRegistry]) },
-        relation: { concept: relation, search: Search([conceptRegistry, varRegistry]) },
-        object: { concept: object, search: Search([conceptRegistry, varRegistry]) },
+        subject: { concept: subject === undefined ? null : subject, search: Search([conceptRegistry, varRegistry]) },
+        relation: { concept: relation === undefined ? null : relation, search: Search([conceptRegistry, varRegistry]) },
+        object: { concept: object === undefined ? null : object, search: Search([conceptRegistry, varRegistry]) },
     }
 }
 
@@ -178,13 +178,13 @@ const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
                 item.concept = result.value
             }
             else {
-                item.concept = undefined
+                item.concept = null
             }
             // Accept the selection
             return true
         },
         onNoSelection() {
-            item.concept = undefined
+            item.concept = null
         },
     })
 
@@ -192,19 +192,19 @@ const linkEl = (link: Link): HTMLElement =>
     div ({class: "link"}, [
         div ({class: "row"}, [
             linkItemEl (link.subject, "subject"),
-            $if (() => link.subject.concept !== undefined, {
+            $if (() => link.subject.concept !== null, {
                 $then: () => [p("*")],
                 $else: () => [],
             }),
             div ({class: "linkSpacing"}),
             linkItemEl (link.relation, "relation"),
-            $if (() => link.relation.concept !== undefined, {
+            $if (() => link.relation.concept !== null, {
                 $then: () => [p("*")],
                 $else: () => [],
             }),
             div ({class: "linkSpacing"}),
             linkItemEl (link.object, "object"),
-            $if (() => link.object.concept !== undefined, {
+            $if (() => link.object.concept !== null, {
                 $then: () => [p("*")],
                 $else: () => [],
             }),

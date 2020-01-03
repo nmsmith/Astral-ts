@@ -11,7 +11,7 @@ export interface SearchBoxState {
     text: string
     textChanged: boolean // whether text has been edited since last selecting search result
     kbSelectionCandidate: number
-    mouseSelectionCandidate: number | null
+    mouseSelectionCandidate: number | null // needs to be null; undefined breaks toRefs() (see commit 6ed50a2)
     defaultSelection: number
     readonly results: SearchResult[]
 }
@@ -68,6 +68,13 @@ export function searchBox(
             }
         }
     }
+    function defocusInput(): void {
+        // Blur without calling the onblur event
+        const f = inputEl.onblur
+        inputEl.onblur = null
+        inputEl.blur()
+        inputEl.onblur = f
+    }
     // The text of this input is hidden; it is displayed in a span instead.
     const inputEl = input ({
         class: () => "searchBoxInput " + currentInputTextStyle() + (
@@ -110,14 +117,14 @@ export function searchBox(
                 offerSelection(search.kbSelectionCandidate)
                 if (options.blurOnSelect === true) {
                     search.active = false
-                    inputEl.blur()
+                    defocusInput()
                 }
             }
             // Consider tab-navigation to be selection
             else if (event.key === "Tab") {
                 offerSelection(search.kbSelectionCandidate)
                 search.active = false
-                inputEl.blur() // shouldn't be strictly necessary; but let's not take chances
+                defocusInput()
             }
         },
         oninput: () => {
@@ -173,7 +180,7 @@ export function searchBox(
                                 offerSelection(i)
                                 if (options.blurOnSelect === true) {
                                     search.active = false
-                                    inputEl.blur()
+                                    defocusInput()
                                 }
                             },
                         }, [

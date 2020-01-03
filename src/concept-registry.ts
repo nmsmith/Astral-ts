@@ -32,7 +32,6 @@ export function empty(autoLabel: string): ConceptRegistry {
 
 /**
  * Attempts to create a new concept with the given label.
- * Returns "undefined" if a concept already exists with that label.
  */
 export function newConcept(registry: ConceptRegistry, label: string): Concept | "labelInUse" | "labelReserved"
 /**
@@ -97,7 +96,7 @@ export function deleteConcept(concept: Concept): boolean {
  * Returns "undefined" if such a concept does not exist.
  */
 export function findConcept(registry: ConceptRegistry, label: string): Concept | undefined {
-    let firstResult = undefined
+    let firstResult: Concept | undefined = undefined
     FuzzyDict.fuzzySearch(registry.namesDict, label, 0).some(result => {
         if (result.key === label) {
             firstResult = result.value

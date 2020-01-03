@@ -574,7 +574,7 @@ function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
         console.log("Event:", event.type)
         console.log("Target:", event.target)
         if (midUpdate) {
-            console.error("WARNING: Something has triggered a nested DOM update.")
+            console.error("WARNING: Something has triggered a nested DOM update (such as the browser engine calling onblur() during child management).")
         }
         else {
             midUpdate = true
