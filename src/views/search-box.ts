@@ -1,28 +1,17 @@
-import * as Registry from "../concept-registry"
 import { toRefs } from "@vue/reactivity"
 import { $if, $for, div, input, span } from "../libs/lib-view"
 
-export interface Search {
-//essential
+interface SearchResult {
+    readonly key: string
+    readonly distance: number
+}
+
+export interface SearchBoxState {
     active: boolean
     text: string
     textChanged: boolean // whether text has been edited since last selecting search result
-    readonly registries: Registry.T[]
     selectionCandidate: number
-    selection: number
-//derived
-    readonly results: Registry.SearchResult[]
-}
-
-export function Search(registries: Registry.T[]): Search {
-    return {
-        active: false,
-        text: "",
-        textChanged: true,
-        registries: registries,
-        selectionCandidate: -1,
-        selection: -1,
-    } as Search
+    readonly results: SearchResult[]
 }
 
 export interface DefaultResultOption {
@@ -32,7 +21,7 @@ export interface DefaultResultOption {
 }
 
 export function searchBox(
-    search: Search,
+    search: SearchBoxState,
     options: {
         borderAlwaysVisible?: boolean // default: true
         blurOnSelect?: boolean // default: true
@@ -136,7 +125,7 @@ export function searchBox(
                                 }
                             },
                         }, [
-                            span (() => text, {class: textClass}),
+                            span (() => text, {class: "noWrap " + textClass}),
                         ])
                     return [
                         div ({

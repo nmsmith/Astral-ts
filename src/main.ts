@@ -1,16 +1,33 @@
 import "./reset.css"
 import "./style.scss"
 import "./globals"
-
-import { WithDerivedProps, DerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import Cycle from "json-cycle"
+import { WithDerivedProps, DerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import * as Registry from "./concept-registry"
 import { $if, $for, app, div, p, br, button, input, span } from "./libs/lib-view"
-import { Search, searchBox } from "./views/search-box"
+import { searchBox, SearchBoxState }from "./views/search-box"
+
+//#region  --- Essential & derived state ---
 
 type Concept = Registry.Concept
 
-//#region  --- Essential & derived state ---
+type Search = SearchBoxState & {
+    selection: number
+    registries: Registry.T[]
+//derived
+    readonly results: Registry.SearchResult[]
+}
+
+function Search<Location, Result>(registries: Registry.T[]): Search {
+    return {
+        active: false,
+        text: "",
+        textChanged: true,
+        selectionCandidate: -1,
+        selection: -1,
+        registries,
+    } as Search
+}
 
 function searchResults(search: Search): Registry.SearchResult[] {
     const errorTolerance = (search.text.length <= 1) ? 0 : 1
@@ -187,12 +204,24 @@ const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
 
 const linkEl = (link: Link): HTMLElement =>
     div ({class: "link"}, [
-        div({class: "row"}, [
-            linkItemEl(link.subject, "subject"),
-            div({class: "linkSpacing"}),
-            linkItemEl(link.relation, "relation"),
-            div({class: "linkSpacing"}),
-            linkItemEl(link.object, "object"),
+        div ({class: "row"}, [
+            linkItemEl (link.subject, "subject"),
+            $if (() => link.subject.concept !== undefined, {
+                $then: () => [p("*")],
+                $else: () => [],
+            }),
+            div ({class: "linkSpacing"}),
+            linkItemEl (link.relation, "relation"),
+            $if (() => link.relation.concept !== undefined, {
+                $then: () => [p("*")],
+                $else: () => [],
+            }),
+            div ({class: "linkSpacing"}),
+            linkItemEl (link.object, "object"),
+            $if (() => link.object.concept !== undefined, {
+                $then: () => [p("*")],
+                $else: () => [],
+            }),
         ]),
     ])
 

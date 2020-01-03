@@ -51,6 +51,10 @@ h1 {
                                     supported by Chrome, Opera and Firefox */
  }
 
+ .noWrap {
+     white-space: nowrap;
+ }
+
  .hiddenButAccessible {
     position: absolute !important;
     height: 1px;

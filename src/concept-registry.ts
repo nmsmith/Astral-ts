@@ -1,4 +1,4 @@
-import * as FuzzyDict from "./fuzzy-prefix-dict"
+import * as FuzzyDict from "./libs/fuzzy-prefix-dict"
 
 export interface ConceptRegistry {
     readonly namesDict: FuzzyDict.T<Concept>
