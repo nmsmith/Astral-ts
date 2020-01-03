@@ -7,6 +7,10 @@
       "moduleResolution": "node",
       "sourceMap": true,
       "outDir": "./site/build",
+      "typeRoots": [
+        "./node_modules/@types",
+        "./src/@types",
+      ]
     },
     "include": [
       "./src/**/*",
