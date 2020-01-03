@@ -12,7 +12,6 @@ import { searchBox, SearchBoxState }from "./views/search-box"
 type Concept = Registry.Concept
 
 type Search = SearchBoxState & {
-    selection: number
     registries: Registry.T[]
 //derived
     readonly results: Registry.SearchResult[]
@@ -23,8 +22,9 @@ function Search<Location, Result>(registries: Registry.T[]): Search {
         active: false,
         text: "",
         textChanged: true,
-        selectionCandidate: -1,
-        selection: -1,
+        kbSelectionCandidate: -1,
+        mouseSelectionCandidate: undefined,
+        defaultSelection: -1,
         registries,
     } as Search
 }
@@ -167,38 +167,24 @@ function newPremise(rule: Rule): void {
 }
 
 const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
-    searchBox(item.search, {
+    searchBox (item.search, {
         borderAlwaysVisible: false,
         defaultResult: {optionText: "nothing", optionTextStyle: "noConceptOption", inputTextStyle: "labelForNothing"},
         inputTextStyle: className,
-        onSelect() {
+        onSelect(selection: number) {
             const search = item.search
-            let newText
-            if (search.selectionCandidate >= 0) {
-                const result = search.results[search.selectionCandidate]
+            if (selection >= 0) {
+                const result = search.results[selection]
                 item.concept = result.value
-                newText = result.key
             }
             else {
                 item.concept = undefined
-                // We selected nothing, but keep the search text visible
-                newText = search.text
             }
-            // Keep search result text for display & future editing
-            search.text = newText
-            search.selection = search.selectionCandidate
-            search.textChanged = false
+            // Accept the selection
+            return true
         },
         onNoSelection() {
-            const search = item.search
-            // If the text was changed, unbind the last concept selected
-            if (search.textChanged === true) {
-                search.selectionCandidate = -1
-                item.concept = undefined
-            }
-            else {
-                search.selectionCandidate = search.selection
-            }
+            item.concept = undefined
         },
     })
 
@@ -249,7 +235,7 @@ app("app",
                             $for (() => rule.body, link => [
                                 linkEl (link),
                             ]),
-                            div({
+                            div ({
                                 class: "linkInsertionPoint",
                                 onclick: () => newPremise(rule),
                             }),
@@ -279,6 +265,7 @@ app("app",
                         // TODO: Display an error status in the search box
                     }
                 }
+                return false
             },
         }),
     ])
