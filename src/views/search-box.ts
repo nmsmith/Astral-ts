@@ -68,7 +68,13 @@ export function searchBox(
             }
         }
     }
+    function disableSearch(): void {
+        search.kbSelectionCandidate = search.defaultSelection
+        search.mouseSelectionCandidate = null
+        search.active = false
+    }
     function defocusInput(): void {
+        /* eslint-disable @typescript-eslint/no-use-before-define */
         // Blur without calling the onblur event
         const f = inputEl.onblur
         inputEl.onblur = null
@@ -116,14 +122,14 @@ export function searchBox(
             else if (event.key === "Enter") {
                 offerSelection(search.kbSelectionCandidate)
                 if (options.blurOnSelect === true) {
-                    search.active = false
+                    disableSearch()
                     defocusInput()
                 }
             }
             // Consider tab-navigation to be selection
             else if (event.key === "Tab") {
                 offerSelection(search.kbSelectionCandidate)
-                search.active = false
+                disableSearch()
                 defocusInput()
             }
         },
@@ -148,9 +154,7 @@ export function searchBox(
                     search.textChanged = false
                     search.defaultSelection = options.defaultResult === undefined ? 0 : -1
                 }
-                search.kbSelectionCandidate = search.defaultSelection
-                search.mouseSelectionCandidate = null
-                search.active = false
+                disableSearch()
             }
         },
     })
@@ -179,7 +183,7 @@ export function searchBox(
                                 search.mouseSelectionCandidate = i
                                 offerSelection(i)
                                 if (options.blurOnSelect === true) {
-                                    search.active = false
+                                    disableSearch()
                                     defocusInput()
                                 }
                             },
