@@ -1,0 +1,77 @@
+.searchBox {
+    @extend .col;
+}
+
+.textBoxInputContext {
+    @extend .col;
+// create a stacking context
+    position: relative;
+    z-index: 0;
+}
+
+.textBoxInputPadding {
+    padding-left: 3px;
+    padding-right: 3px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.textBoxInput {
+    @extend .textBoxInputPadding;
+    // match the width of my sibling, but don't consume space myself
+    position: absolute;
+    width: calc(100% + 1px); // requires the 1px to not scroll in Chrome
+    box-sizing: border-box;
+    border-style: none;
+}
+
+.outlined {
+    outline-style: solid;
+    outline-width: 1px;
+    outline-color: $standard-border-color;
+}
+
+.searchBorder {
+    @extend .outlined;
+}
+
+.searchBorderOnHover:hover {
+    @extend .outlined;
+}
+
+.searchResultsLocation {
+// create a stacking context so we can render in front of rule cards
+    position: relative;
+    z-index: 1;
+}
+
+.searchResults {
+    position: absolute; // relative to parent stacking context
+    box-shadow: $standard-box-shadow;
+}
+
+.searchResult {
+    @extend .row;
+    @extend .noSelect;
+    padding: 4px;
+    background-color: #e5e5e5;
+}
+
+.highlighted {
+    background-color: #ffff76;
+}
+
+.deleteButton {
+    color: red;
+}
+
+// IMPORTANT: Needs to be listed after other CSS styles so that we can override
+// colours that may be applied etc. to ensure this element is invisible.
+.textBoxTextSizeMeasure {
+    @extend .textBoxInputPadding;
+    white-space: pre;
+    color: #00000000;
+    background-color: #00000000;
+    // push down so height matches input element height + outline height
+    padding-top: 5px;
+}

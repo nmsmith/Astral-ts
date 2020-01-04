@@ -1,0 +1,117 @@
+.view {
+    @extend .matchParentSize;
+    @extend .col;
+// create a stacking context so can we render the rule view (and its dropdowns)
+// in front of other page elements
+    position: relative;
+    z-index: 0;
+}
+
+$main-pad: 10px;
+
+.toolbar {
+    @extend .row;
+    height: 30px;
+    padding: $main-pad;
+}
+
+$standard-border-color: #aaaaaa;
+
+.separator {
+    border-bottom-style: solid;
+    border-width: 1px;
+    border-color: $standard-border-color;
+}
+
+.ruleView {
+    @extend .col;
+// create a stacking context so can we render insertion points behind rule cards
+    position: relative;
+    z-index: 1;
+}
+
+.insertionPoint {
+    transition: background-color 0.1s;
+}
+
+.insertionPoint:hover {
+    background-color: #ffefbc;
+    //height: $standard-font-size + 8px;
+}
+
+.ruleInsertionPoint {
+    @extend .insertionPoint;
+    height: 20px;
+// create a stacking context so can we render behind rule cards
+    position: relative;
+    z-index: -1;
+}
+
+.linkInsertionPoint {
+    @extend .insertionPoint;
+    height: 20px;
+}
+
+$box-shadow-color: #979797;
+$standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
+
+.rule {
+    margin-left: $main-pad;
+    margin-right: $main-pad;
+    box-shadow: $standard-box-shadow;
+    align-self: flex-start;
+}
+
+.ruleLabelBox {
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-bottom-style: solid;
+    border-width: 1px;
+    border-color: $standard-border-color;
+}
+
+.ruleLabelText {
+    font-size: 115%;
+}
+
+.ruleContent {
+    @extend .col;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.ruleBody {
+    @extend .col;
+    padding-left: 16px;
+}
+
+.link {
+    @extend .row;
+    padding-top: 8px;
+}
+
+.linkSpacingNarrow {
+    width: 1px;
+}
+
+.linkSpacingMedium {
+    width: 4px;
+}
+
+.linkSpacingWide {
+    width: 7px;
+}
+
+.linkOptionNothing {
+    color: #9b0000;
+}
+
+.linkLabelForNothing {
+    background-color: #ffbfbf;
+}
+
+.linkLabelForRelation {
+    color: rgb(153, 0, 255);
+}

@@ -88,7 +88,7 @@ export function searchBox<SearchResultType extends SearchResult>(
     }
     // The text of this input is hidden; it is displayed in a span instead.
     const inputEl = input ({
-        class: () => "searchBoxInput " + currentInputTextStyle() + (
+        class: () => "textBoxInput " + currentInputTextStyle() + (
             borderAlwaysVisible === true || search.selection.isOccurring
                 ? " searchBorder"
                 : " searchBorderOnHover"
@@ -170,13 +170,12 @@ export function searchBox<SearchResultType extends SearchResult>(
             search.selection.keyboard = search.resultsToShow.length === 0 || search.nothingSelected
                     ? "nothing"
                     : 0
-            if (options.onActive !== undefined) options.onActive()
+            options.onActive?.()
         },
-        onblur: () => {    
-            // Check if the search is active, and therefore we need to clean up
+        onblur: () => {
             if (search.selection.isOccurring) {
                 if (search.selection.textChanged) {
-                    if (options.onNothingSelected !== undefined) options.onNothingSelected()
+                    options.onNothingSelected?.()
                     search.nothingSelected = true
                 }
                 disableSearch()
@@ -184,11 +183,11 @@ export function searchBox<SearchResultType extends SearchResult>(
         },
     })
     return div ({class: "searchBox"}, [
-        div ({class: () => "searchBoxInputContext"}, [
+        div ({class: () => "textBoxInputContext"}, [
             inputEl,
             // This span determines the input el's width
             span (() => (search.text.length > 0) ? search.text : "   ", {
-                class: () => "searchBoxTextSizeMeasure " + currentInputTextStyle(),
+                class: () => "textBoxTextSizeMeasure " + currentInputTextStyle(),
             }),
         ]),
         div ({class: "searchResultsLocation"}, [ // searchResults div is positioned relative to here

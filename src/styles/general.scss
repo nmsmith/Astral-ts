@@ -1,0 +1,72 @@
+html, body {
+    // We need this because input boxes need a +1px width with their absolute
+    // positioning, and this allows them to extend beyond the screen bounds.
+    overflow-x: hidden;
+}
+
+.matchParentSize {
+    // Note: don't use this in any parent with padding/multiple siblings
+    width: 100%;
+    height: 100%;
+}
+
+$standard-font-size: 16px;
+
+body, button, menu {
+    /* The font should be inherited by ALL elements (according to CSS reset),
+     * however, most browsers ignore font inheritance for things like buttons.
+     */
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: $standard-font-size;
+}
+
+input {
+    font: inherit;
+}
+
+// Chrome does this stupid thing for inputs
+input:focus {
+    outline-offset: 0;
+}
+
+h1 {
+    font-size: 24px;
+    font-weight: bold;
+    padding-bottom: 12px;
+}
+
+.row {
+    display: flex;
+    flex-direction: row;
+}
+
+.col {
+    display: flex;
+    flex-direction: column;
+}
+
+.grow {
+    flex-grow: 1;
+}
+
+.noSelect {
+    -webkit-touch-callout: none; /* iOS Safari */
+      -webkit-user-select: none; /* Safari */
+       -khtml-user-select: none; /* Konqueror HTML */
+         -moz-user-select: none; /* Old versions of Firefox */
+          -ms-user-select: none; /* Internet Explorer/Edge */
+              user-select: none; /* Non-prefixed version, currently
+                                    supported by Chrome, Opera and Firefox */
+ }
+
+ .noWrap {
+     white-space: nowrap;
+ }
+
+ .hiddenButAccessible {
+    position: absolute !important;
+    height: 1px;
+    width: 1px;
+    overflow: hidden;
+    clip: rect(1px,1px,1px,1px);
+  }

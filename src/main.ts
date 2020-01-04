@@ -1,11 +1,12 @@
 import "./reset.css"
-import "./style.scss"
+import "./styles/styles.scss"
 import "./globals"
 import Cycle from "json-cycle"
 import { WithDerivedProps, DerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import * as Registry from "./concept-registry"
 import { $if, $for, app, div, p, br, button, input, span } from "./libs/lib-view"
-import { searchBox, SearchBoxState }from "./views/search-box"
+import { textBox, TextBoxState } from "./views/text-box"
+import { searchBox, SearchBoxState } from "./views/search-box"
 import { SearchResult } from "./libs/fuzzy-prefix-dict"
 
 //#region  --- Essential & derived state ---
@@ -88,9 +89,23 @@ const linkDerivedProps: DerivedProps<Link> = {
 
 interface Rule {
     readonly ruleConcept: Concept // rules are themselves concepts to make them searchable
+    readonly labelBoxState: TextBoxState
     readonly varRegistry: Registry.T // for local variables
     readonly head: Link
     readonly body: Link[]
+}
+
+function Rule(ruleRegistry: Registry.T, conceptRegistry: Registry.T): Rule {
+    const ruleConcept = Registry.newConcept(ruleRegistry)
+    const varRegistry = Registry.empty("var")
+
+    return {
+        ruleConcept,
+        labelBoxState: {focused: false, text: ruleConcept.label} as TextBoxState,
+        varRegistry,
+        head: Link(conceptRegistry, varRegistry),
+        body: [],
+    } as Rule
 }
 
 interface RuleView {
@@ -119,10 +134,14 @@ function createState(existingState?: State): WithDerivedProps<State> {
             {rules: []},
     }
     return withDerivedProps(essentialState, {
+        /* eslint-disable @typescript-eslint/explicit-function-return-type */
         conceptCreatorSearch: {
             resultsToShow: searchResults,
         },
         rules: {
+            labelBoxState: {
+                textIsValid: state => state.text.length > 0,
+            },
             head: linkDerivedProps,
             body: linkDerivedProps,
         },
@@ -167,15 +186,7 @@ function resetState(): void {
 //#region  --- The view & transition logic ----
 
 function newRule(i: number): void {
-    const ruleConcept = Registry.newConcept(state.ruleRegistry)
-    const varRegistry = Registry.empty("var")
-
-    state.rules.insert(i, {
-        ruleConcept,
-        varRegistry,
-        head: Link(state.conceptRegistry, varRegistry),
-        body: [],
-    })
+    state.rules.insert(i, Rule(state.ruleRegistry, state.conceptRegistry))
 }
 
 function newPremise(rule: Rule): void {
@@ -186,10 +197,10 @@ const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
     searchBox (item.search, {
         borderAlwaysVisible: false,
         inputTextStyle: className,
-        unmatchingInputTextStyle: "labelForNothing",
+        unmatchingInputTextStyle: "linkLabelForNothing",
         showNothingOption: {
             text: "nothing",
-            textStyle: "noConceptOption",
+            textStyle: "linkOptionNothing",
         },
         onSelect(result: Registry.SearchResult) {
             item.concept = result.value
@@ -204,21 +215,21 @@ const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
 const linkEl = (link: Link): HTMLElement =>
     div ({class: "link"}, [
         div ({class: "row"}, [
-            linkItemEl (link.subject, "subject"),
+            linkItemEl (link.subject, "linkLabelForSubject"),
             div ({class: () => (link.subject.search.nothingSelected && link.relation.search.nothingSelected)
                     ? "linkSpacingWide"
                         : (link.subject.search.nothingSelected || link.relation.search.nothingSelected)
                             ? "linkSpacingMedium"
                             : "linkSpacingNarrow",
             }),
-            linkItemEl (link.relation, "relation"),
+            linkItemEl (link.relation, "linkLabelForRelation"),
             div ({class: () => (link.relation.search.nothingSelected && link.object.search.nothingSelected)
                 ? "linkSpacingWide"
                     : (link.relation.search.nothingSelected || link.object.search.nothingSelected)
                         ? "linkSpacingMedium"
                         : "linkSpacingNarrow",
             }),
-            linkItemEl (link.object, "object"),
+            linkItemEl (link.object, "linkLabelForObject"),
         ]),
     ])
 
@@ -237,8 +248,18 @@ app ("app", state,
             }),
             $for (() => state.rules, rule => [
                 div ({class: "rule"}, [
-                    div ({class: "ruleLabel"}, [
-                        p (() => rule.ruleConcept.label),
+                    div ({class: "ruleLabelBox"}, [
+                        textBox(rule.labelBoxState, {
+                            borderAlwaysVisible: false,
+                            inputTextStyle: "ruleLabelText",
+                            invalidInputTextStyle: "labelForNothing",
+                            onSubmit() {
+                                if (!rule.labelBoxState.textIsValid ||
+                                    Registry.setConceptLabel(rule.ruleConcept, rule.labelBoxState.text) !== "success") {
+                                        rule.labelBoxState.text = rule.ruleConcept.label
+                                }
+                            },
+                        }),
                     ]),
                     div ({class: "ruleContent"}, [
                         linkEl (rule.head),
