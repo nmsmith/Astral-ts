@@ -54,6 +54,7 @@ $standard-border-color: #aaaaaa;
 
 $box-shadow-color: #979797;
 $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
+$label-error-background: #ffbfbf;
 
 .rule {
     margin-left: $main-pad;
@@ -74,6 +75,11 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 
 .ruleLabelText {
     font-size: 115%;
+}
+
+.ruleLabelTextForNothing {
+    @extend .ruleLabelText;
+    background-color: $label-error-background;
 }
 
 .ruleContent {
@@ -97,11 +103,11 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 
 .linkSpacingMedium {
-    width: 4px;
+    width: 3px;
 }
 
 .linkSpacingWide {
-    width: 7px;
+    width: 6px;
 }
 
 .linkOptionNothing {
@@ -109,7 +115,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 
 .linkLabelForNothing {
-    background-color: #ffbfbf;
+    background-color: $label-error-background;
 }
 
 .linkLabelForRelation {

@@ -37,8 +37,8 @@ export function textBox(
     const inputEl = input ({
         class: () => "textBoxInput " + currentInputTextStyle() + (
             borderAlwaysVisible === true || state.focused
-                ? " searchBorder"
-                : " searchBorderOnHover"
+                ? " textBoxBorder"
+                : " textBoxBorderOnHover" // this will apply a border to the span, not me
         ),
         autocomplete: "nope",
         value: toRefs(state).text,
@@ -62,7 +62,7 @@ export function textBox(
     return div ({class: () => "textBoxInputContext"}, [
         inputEl,
         // This span determines the input el's width
-        span (() => (state.text.length > 0) ? state.text : "   ", {
+        span (() => (state.text.length > 0) ? state.text : " ", {
             class: () => "textBoxTextSizeMeasure " + currentInputTextStyle(),
         }),
     ])

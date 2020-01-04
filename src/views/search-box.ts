@@ -90,8 +90,8 @@ export function searchBox<SearchResultType extends SearchResult>(
     const inputEl = input ({
         class: () => "textBoxInput " + currentInputTextStyle() + (
             borderAlwaysVisible === true || search.selection.isOccurring
-                ? " searchBorder"
-                : " searchBorderOnHover"
+                ? " textBoxBorder"
+                : " textBoxBorderOnHover" // this will apply a border to the span, not me
         ),
         autocomplete: "nope",
         value: toRefs(search).text,
@@ -186,7 +186,7 @@ export function searchBox<SearchResultType extends SearchResult>(
         div ({class: () => "textBoxInputContext"}, [
             inputEl,
             // This span determines the input el's width
-            span (() => (search.text.length > 0) ? search.text : "   ", {
+            span (() => (search.text.length > 0) ? search.text : " ", {
                 class: () => "textBoxTextSizeMeasure " + currentInputTextStyle(),
             }),
         ]),

@@ -4,25 +4,32 @@
 
 .textBoxInputContext {
     @extend .col;
-// create a stacking context
+// create a stacking context for the input element to sit in
     position: relative;
     z-index: 0;
 }
 
+$text-box-vertical-padding: 2px;
+
 .textBoxInputPadding {
     padding-left: 3px;
     padding-right: 3px;
-    padding-top: 2px;
-    padding-bottom: 2px;
+    padding-top: $text-box-vertical-padding;
+    padding-bottom: $text-box-vertical-padding;
 }
+
+$text-box-min-width: 16px;
 
 .textBoxInput {
     @extend .textBoxInputPadding;
+    min-width: $text-box-min-width;
     // match the width of my sibling, but don't consume space myself
     position: absolute;
-    width: calc(100% + 1px); // requires the 1px to not scroll in Chrome
+    z-index: 1; // sit on top of the size measure span so interaction still works
+    width: calc(100% + 2px); // requires the 2px to not scroll & to show cursor in Chrome
     box-sizing: border-box;
     border-style: none;
+    background-color: #00000000; // need to hide background so doesn't stomp on span border
 }
 
 .outlined {
@@ -31,11 +38,11 @@
     outline-color: $standard-border-color;
 }
 
-.searchBorder {
+.textBoxBorder + .textBoxTextSizeMeasure {
     @extend .outlined;
 }
 
-.searchBorderOnHover:hover {
+.textBoxBorderOnHover:hover + .textBoxTextSizeMeasure {
     @extend .outlined;
 }
 
@@ -69,9 +76,13 @@
 // colours that may be applied etc. to ensure this element is invisible.
 .textBoxTextSizeMeasure {
     @extend .textBoxInputPadding;
+    // This padding is a close APPROXIMATION of the auto-magic padding
+    // that browsers give to input elements
+    padding-bottom: calc(#{$text-box-vertical-padding} + 0.15em);
+    min-width: $text-box-min-width;
     white-space: pre;
     color: #00000000;
-    background-color: #00000000;
-    // push down so height matches input element height + outline height
-    padding-top: 5px;
+// put the span underneath the input element so that we can still interact
+    position: relative;
+    z-index: 0;
 }

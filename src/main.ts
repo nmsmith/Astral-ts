@@ -252,7 +252,7 @@ app ("app", state,
                         textBox(rule.labelBoxState, {
                             borderAlwaysVisible: false,
                             inputTextStyle: "ruleLabelText",
-                            invalidInputTextStyle: "labelForNothing",
+                            invalidInputTextStyle: "ruleLabelTextForNothing",
                             onSubmit() {
                                 if (!rule.labelBoxState.textIsValid ||
                                     Registry.setConceptLabel(rule.ruleConcept, rule.labelBoxState.text) !== "success") {
