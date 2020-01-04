@@ -6,72 +6,77 @@ interface SearchResult {
     readonly distance: number
 }
 
-export interface SearchBoxState {
-    active: boolean
+export interface SearchBoxState<SearchResultType extends SearchResult> {
+    selection: {isOccurring: false} | {
+        isOccurring: true
+        keyboard: number | "nothing"
+        mouse: number | "nothing" | null // needs to be null; undefined breaks toRefs() (see commit 6ed50a2)
+        textChanged: boolean
+    }
     text: string
-    textChanged: boolean // whether text has been edited since last selecting search result
-    kbSelectionCandidate: number
-    mouseSelectionCandidate: number | null // needs to be null; undefined breaks toRefs() (see commit 6ed50a2)
-    defaultSelection: number
-    readonly results: SearchResult[]
+    nothingSelected: boolean
+    readonly resultsToShow: SearchResultType[]
 }
 
-export interface DefaultResultOption {
-    optionText: string
-    optionTextStyle: string
-    inputTextStyle: string
+export interface NothingOption {
+    text: string
+    textStyle: string
 }
 
-export function searchBox(
-    search: SearchBoxState,
+export function searchBox<SearchResultType extends SearchResult>(
+    search: SearchBoxState<SearchResultType>,
     options: {
         borderAlwaysVisible?: boolean // default: true
         blurOnSelect?: boolean // default: true
-        defaultResult?: DefaultResultOption
         inputTextStyle?: string
+        unmatchingInputTextStyle?: string
+        showNothingOption?: NothingOption // menu option for choosing no result
         onActive?: () => void
-        onSelect?: (selection: number) => boolean // return whether the selection was accepted
-        onNoSelection?: () => void
+        onSelect?: (result: SearchResultType) => boolean // return whether the selection was accepted
+        onNothingSelected?: () => boolean // return whether the non-selection was accepted
     }
 ): HTMLElement {
-    if (options.borderAlwaysVisible === undefined) options.borderAlwaysVisible = true
-    if (options.blurOnSelect === undefined) options.blurOnSelect = true
-    function activeSelection(): number {
-        if (search.mouseSelectionCandidate === null) {
-            return search.kbSelectionCandidate
+    // Fill in missing options
+    const borderAlwaysVisible = options.borderAlwaysVisible !== false
+    const blurOnSelect = options.blurOnSelect !== false
+    const inputTextStyle = (options.inputTextStyle === undefined) ? "" : options.inputTextStyle
+    const unmatchingInputTextStyle = (options.unmatchingInputTextStyle === undefined) ? "" : options.unmatchingInputTextStyle
+    
+    function activeSelection(): number | "nothing" | undefined {
+        if (search.selection.isOccurring) {
+            if (search.selection.mouse === null) {
+                return search.selection.keyboard
+            }
+            else {
+                return search.selection.mouse
+            }
         }
         else {
-            return search.mouseSelectionCandidate
+            return undefined
         }
     }
     // Input text style customization as specified in options
     function currentInputTextStyle(): string {
-        return (activeSelection() === -1
-            ? options.defaultResult!.inputTextStyle as string
-            : (options.inputTextStyle === undefined
-                ? ""
-                : options.inputTextStyle
-            )   )
+        const styleAsUnmatching = search.selection.isOccurring
+            ? activeSelection() === "nothing"
+            : search.nothingSelected
+        return styleAsUnmatching ? unmatchingInputTextStyle : inputTextStyle
     }
-    function offerSelection(selection: number): void {
-        if (options.onSelect !== undefined) {
-            if (options.onSelect(search.kbSelectionCandidate)) {
-                if (selection >= 0) {
-                    search.text = search.results[selection].key
-                    // Since we've set the text to the key, it will become the first result
-                    search.defaultSelection = 0
-                }
-                else {
-                    search.defaultSelection = -1
-                }
-                search.textChanged = false
+    function offerResult(selection: number | "nothing"): void {
+        if (selection === "nothing") {
+            if (options.onNothingSelected !== undefined && options.onNothingSelected()) {
+                search.nothingSelected = true
+            }
+        }
+        else if (options.onSelect !== undefined) {
+            if (options.onSelect(search.resultsToShow[selection])) {
+                search.text = search.resultsToShow[selection].key
+                search.nothingSelected = false
             }
         }
     }
     function disableSearch(): void {
-        search.kbSelectionCandidate = search.defaultSelection
-        search.mouseSelectionCandidate = null
-        search.active = false
+        search.selection = {isOccurring: false}
     }
     function defocusInput(): void {
         /* eslint-disable @typescript-eslint/no-use-before-define */
@@ -84,75 +89,93 @@ export function searchBox(
     // The text of this input is hidden; it is displayed in a span instead.
     const inputEl = input ({
         class: () => "searchBoxInput " + currentInputTextStyle() + (
-            options.borderAlwaysVisible === false && !search.active
-                ? " searchBorderOnHover"
-                : " searchBorder"
+            borderAlwaysVisible === true || search.selection.isOccurring
+                ? " searchBorder"
+                : " searchBorderOnHover"
         ),
         autocomplete: "nope",
         value: toRefs(search).text,
         onkeydown: (event: KeyboardEvent) => {
-            if (event.key === "ArrowDown") {
-                if (search.mouseSelectionCandidate !== null) {
-                    search.kbSelectionCandidate = search.mouseSelectionCandidate + 1
-                    search.mouseSelectionCandidate = null
+            if (search.selection.isOccurring) {
+                if (event.key === "ArrowDown") {
+                    if (search.resultsToShow.length === 0) return // can't move
+
+                    if (search.selection.mouse !== null) {
+                        search.selection.keyboard = search.selection.mouse === "nothing"
+                            ? 0
+                            : search.selection.mouse + 1
+                        search.selection.mouse = null
+                    }
+                    else if (search.selection.keyboard === "nothing") {
+                        search.selection.keyboard = 0
+                    }
+                    else {
+                        ++search.selection.keyboard
+                    }
+                    if (search.selection.keyboard >= search.resultsToShow.length) {
+                        search.selection.keyboard = search.resultsToShow.length - 1
+                    }
+                    event.preventDefault() // don't move the cursor to end of input
                 }
-                else {
-                    ++search.kbSelectionCandidate
+                else if (event.key === "ArrowUp") {
+                    if (search.selection.mouse !== null) {
+                        search.selection.keyboard = search.selection.mouse === "nothing"
+                            ? "nothing"
+                            : search.selection.mouse - 1
+                        search.selection.mouse = null
+                    }
+                    else if (search.selection.keyboard !== "nothing") {
+                        --search.selection.keyboard
+                    }
+                    if (search.selection.keyboard < 0) {
+                        search.selection.keyboard = options.showNothingOption === undefined
+                            ? 0
+                            : "nothing"
+                    }
+                    event.preventDefault() // don't move the cursor to start of input
                 }
-                if (search.kbSelectionCandidate >= search.results.length) {
-                    search.kbSelectionCandidate = search.results.length - 1
+                // Select and defocus
+                else if (event.key === "Enter") {
+                    offerResult(search.selection.keyboard)
+                    if (blurOnSelect === true) {
+                        disableSearch()
+                        defocusInput()
+                    }
                 }
-                event.preventDefault() // don't move the cursor to end of input
-            }
-            else if (event.key === "ArrowUp") {
-                if (search.mouseSelectionCandidate !== null) {
-                    search.kbSelectionCandidate = search.mouseSelectionCandidate - 1
-                    search.mouseSelectionCandidate = null
-                }
-                else {
-                    --search.kbSelectionCandidate
-                }
-                const minValue = options.defaultResult === undefined ? 0 : -1
-                if (search.kbSelectionCandidate < minValue) {
-                    search.kbSelectionCandidate = minValue
-                }
-                event.preventDefault() // don't move the cursor to start of input
-            }
-            // Select and defocus
-            else if (event.key === "Enter") {
-                offerSelection(search.kbSelectionCandidate)
-                if (options.blurOnSelect === true) {
+                // Consider tab-navigation to be selection
+                else if (event.key === "Tab") {
+                    offerResult(search.selection.keyboard)
                     disableSearch()
                     defocusInput()
                 }
             }
-            // Consider tab-navigation to be selection
-            else if (event.key === "Tab") {
-                offerSelection(search.kbSelectionCandidate)
-                disableSearch()
-                defocusInput()
-            }
         },
         oninput: () => {
-            search.textChanged = true
-            search.kbSelectionCandidate = search.results.length === 0 || search.results[0].distance > 0
-                ? -1
-                : 0
-            search.mouseSelectionCandidate = null
+            if (search.selection.isOccurring) {
+                search.selection.keyboard = search.resultsToShow.length === 0 || (search.resultsToShow[0].distance > 0 && options.showNothingOption !== undefined)
+                    ? "nothing"
+                    : 0
+                search.selection.mouse = null
+                search.selection.textChanged = true
+            }
         },
         onfocus: () => {
-            search.active = true
-            search.kbSelectionCandidate = search.defaultSelection
-            search.mouseSelectionCandidate = null
+            search.selection = {
+                isOccurring: true,
+                keyboard: search.resultsToShow.length === 0 || search.nothingSelected
+                    ? "nothing"
+                    : 0,
+                mouse: null,
+                textChanged: false,
+            }
             if (options.onActive !== undefined) options.onActive()
         },
         onblur: () => {    
             // Check if the search is active, and therefore we need to clean up
-            if (search.active === true) {
-                if (search.textChanged) {
-                    if (options.onNoSelection !== undefined) options.onNoSelection()
-                    search.textChanged = false
-                    search.defaultSelection = options.defaultResult === undefined ? 0 : -1
+            if (search.selection.isOccurring) {
+                if (search.selection.textChanged) {
+                    if (options.onNothingSelected !== undefined) options.onNothingSelected()
+                    search.nothingSelected = true
                 }
                 disableSearch()
             }
@@ -167,22 +190,24 @@ export function searchBox(
             }),
         ]),
         div ({class: "searchResultsLocation"}, [ // searchResults div is positioned relative to here
-            $if (() => search.active && (search.results.length > 0 || options.defaultResult !== undefined), {
+            $if (() => search.selection.isOccurring && (search.resultsToShow.length > 0 || options.showNothingOption !== undefined), {
                 $then: () => {
-                    const resultEl = (text: string, textClass: string, index: () => number): HTMLElement =>
+                    const resultEl = (text: string, textClass: string, index: () => number | "nothing"): HTMLElement =>
                         div ({
                             class:
                                 $if (() => activeSelection() === index(), {
                                     $then: () => "searchResult highlighted",
                                     $else: () => "searchResult",
                                 }),
-                            onmouseenter: () => search.mouseSelectionCandidate = index(),
+                            onmouseenter: () => (search.selection as {mouse: number | "nothing"}).mouse = index(),
                             onclick: () => {
                                 const i = index()
-                                search.kbSelectionCandidate = i
-                                search.mouseSelectionCandidate = i
-                                offerSelection(i)
-                                if (options.blurOnSelect === true) {
+                                if (search.selection.isOccurring) {
+                                    search.selection.keyboard = i
+                                    search.selection.mouse = i
+                                }
+                                offerResult(i)
+                                if (blurOnSelect === true) {
                                     disableSearch()
                                     defocusInput()
                                 }
@@ -195,18 +220,18 @@ export function searchBox(
                             class: "searchResults",
                             // Prevent the "blur" event from occurring when the dropdown is clicked
                             onmousedown: event => event.preventDefault(),
-                            onmouseleave: () => search.mouseSelectionCandidate = null,
+                            onmouseleave: () => (search.selection as {mouse: null}).mouse = null,
                         }, [
-                            $if (() => options.defaultResult !== undefined, {
-                                $then: () => [resultEl(
-                                    (options.defaultResult as DefaultResultOption).optionText as string,
-                                    (options.defaultResult as DefaultResultOption).optionTextStyle as string,
-                                    () => -1,
+                            $if (() => options.showNothingOption !== undefined, {
+                                $then: () => [resultEl (
+                                    (options.showNothingOption as NothingOption).text as string,
+                                    (options.showNothingOption as NothingOption).textStyle as string,
+                                    () => "nothing",
                                 )],
                                 $else: () => [],
                             }),
-                            $for (() => search.results, result => [
-                                resultEl(result.key, "", () => result.$index),
+                            $for (() => search.resultsToShow, result => [
+                                resultEl (result.key, "", () => result.$index),
                             ]),
                         ]),
                     ]

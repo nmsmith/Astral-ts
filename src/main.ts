@@ -6,40 +6,58 @@ import { WithDerivedProps, DerivedProps, withDerivedProps } from "./libs/lib-der
 import * as Registry from "./concept-registry"
 import { $if, $for, app, div, p, br, button, input, span } from "./libs/lib-view"
 import { searchBox, SearchBoxState }from "./views/search-box"
+import { SearchResult } from "./libs/fuzzy-prefix-dict"
 
 //#region  --- Essential & derived state ---
 
 type Concept = Registry.Concept
 
-type Search = SearchBoxState & {
+type Search = SearchBoxState<Registry.SearchResult> & {
     registries: Registry.T[]
-//derived
-    readonly results: Registry.SearchResult[]
 }
 
 function Search<Location, Result>(registries: Registry.T[]): Search {
     return {
-        active: false,
+        selection: {isOccurring: false},
         text: "",
-        textChanged: true,
-        kbSelectionCandidate: -1,
-        mouseSelectionCandidate: null,
-        defaultSelection: -1,
+        nothingSelected: true,
+        // add resultsToShow as derived state
         registries,
     } as Search
 }
 
 function searchResults(search: Search): Registry.SearchResult[] {
-    const errorTolerance = (search.text.length <= 1) ? 0 : 1
+    let searchText: string
+    let errorTolerance: number
+    if (search.selection.isOccurring && search.selection.textChanged === false) {
+        searchText = ""
+        errorTolerance = 0
+    }
+    else {
+        searchText = search.text
+        errorTolerance = (search.text.length <= 1) ? 0 : 1
+    }
     // Search all given registries
     const searchResults: Registry.SearchResult[] = []
     search.registries.forEach(r =>
         searchResults.push(
-            ...Registry.findConceptsWithLabelPrefix(r, search.text, errorTolerance)
+            ...Registry.findConceptsWithLabelPrefix(r, searchText, errorTolerance)
         )
     )
     // Sort the results by closeness
-    searchResults.sort((a, b) => a.distance - b.distance)
+    if (searchText.length > 1) {
+        searchResults.sort((a, b) => a.distance - b.distance)
+    }
+    // Put the exact match at the top, if any.
+    // TODO: If we later allow multiple concepts to have the same label, then
+    // this ordering can lead to a hazardous outcome: the wrong concept gets
+    // put at the top of the search results, and autocomplete switches it out.
+    for (let i = 0; i < searchResults.length; ++i) {
+        if (searchResults[i].key === search.text) {
+            searchResults.unshift(searchResults.removeAt(i))
+            break
+        }
+    }
     return searchResults
 }
 
@@ -63,9 +81,9 @@ function Link(conceptRegistry: Registry.T, varRegistry: Registry.T, subject?: Co
 }
 
 const linkDerivedProps: DerivedProps<Link> = {
-    subject: { search: { results: searchResults } },
-    relation: { search: { results: searchResults } },
-    object: { search: { results: searchResults } },
+    subject: { search: { resultsToShow: searchResults } },
+    relation: { search: { resultsToShow: searchResults } },
+    object: { search: { resultsToShow: searchResults } },
 }
 
 interface Rule {
@@ -102,7 +120,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
     }
     return withDerivedProps(essentialState, {
         conceptCreatorSearch: {
-            results: searchResults,
+            resultsToShow: searchResults,
         },
         rules: {
             head: linkDerivedProps,
@@ -167,22 +185,19 @@ function newPremise(rule: Rule): void {
 const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
     searchBox (item.search, {
         borderAlwaysVisible: false,
-        defaultResult: {optionText: "nothing", optionTextStyle: "noConceptOption", inputTextStyle: "labelForNothing"},
         inputTextStyle: className,
-        onSelect(selection: number) {
-            const search = item.search
-            if (selection >= 0) {
-                const result = search.results[selection]
-                item.concept = result.value
-            }
-            else {
-                item.concept = null
-            }
-            // Accept the selection
+        unmatchingInputTextStyle: "labelForNothing",
+        showNothingOption: {
+            text: "nothing",
+            textStyle: "noConceptOption",
+        },
+        onSelect(result: Registry.SearchResult) {
+            item.concept = result.value
             return true
         },
-        onNoSelection() {
+        onNothingSelected() {
             item.concept = null
+            return true
         },
     })
 
@@ -190,22 +205,22 @@ const linkEl = (link: Link): HTMLElement =>
     div ({class: "link"}, [
         div ({class: "row"}, [
             linkItemEl (link.subject, "subject"),
-            $if (() => link.subject.concept !== null, {
-                $then: () => [p("*")],
-                $else: () => [],
-            }),
+            // $if (() => link.subject.concept !== null, {
+            //     $then: () => [p("*")],
+            //     $else: () => [],
+            // }),
             div ({class: "linkSpacing"}),
             linkItemEl (link.relation, "relation"),
-            $if (() => link.relation.concept !== null, {
-                $then: () => [p("*")],
-                $else: () => [],
-            }),
+            // $if (() => link.relation.concept !== null, {
+            //     $then: () => [p("*")],
+            //     $else: () => [],
+            // }),
             div ({class: "linkSpacing"}),
             linkItemEl (link.object, "object"),
-            $if (() => link.object.concept !== null, {
-                $then: () => [p("*")],
-                $else: () => [],
-            }),
+            // $if (() => link.object.concept !== null, {
+            //     $then: () => [p("*")],
+            //     $else: () => [],
+            // }),
         ]),
     ])
 
@@ -248,11 +263,10 @@ app ("app", state,
         ]),
         div ({class: "separator"}),
         br (),
-        p ("Create or find a concept:"),
+        p ("Create a concept:"),
         searchBox (state.conceptCreatorSearch, {
             blurOnSelect: false,
-            defaultResult: {optionText: "new", optionTextStyle: "newConceptOption", inputTextStyle: ""},
-            onSelect() {
+            onNothingSelected(): boolean {
                 const label = state.conceptCreatorSearch.text
                 if (label.length > 0) {
                     const outcome = Registry.newConcept(state.conceptRegistry, label)
