@@ -167,6 +167,7 @@ export interface SearchResult<Value> {
 }
 
 export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTolerance: number): SearchResult<Value>[] {
+    key = key.toLowerCase() // fuzzy search is case-insensitive
     const matches: SearchResult<Value>[] = []
 
     // Collect all the key/value pairs for the given subtree.
@@ -264,7 +265,7 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
                 const deletion = table.get(row, column-1) + 1
                 const substitution = row > 0 // need to check this to safely index "key"
                     ? ( table.get(row-1, column-1) + (
-                            key[row-1] === node.prefix[columnOffset]
+                            key[row-1] === node.prefix[columnOffset].toLowerCase()
                                 ? 0
                                 : 1
                         )
@@ -277,10 +278,10 @@ export function fuzzySearch<Value>(tree: FuzzyDict<Value>, key: string, errorTol
                         // If we're currently looking at the first char of the current prefix,
                         // we will find the previous char at the end of currentPath.
                         (columnOffset===0
-                            ? currentPath[currentPath.length-1]
-                            : node.prefix[columnOffset-1]
+                            ? currentPath[currentPath.length-1].toLowerCase()
+                            : node.prefix[columnOffset-1].toLowerCase()
                         )
-                    && key[row-2] === node.prefix[columnOffset]
+                    && key[row-2] === node.prefix[columnOffset].toLowerCase()
                     )
                     ? table.get(row-2, column-2) + 1
                     : Infinity
