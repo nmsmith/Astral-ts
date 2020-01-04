@@ -94,6 +94,8 @@ export function searchBox<SearchResultType extends SearchResult>(
                 : " textBoxBorderOnHover" // this will apply a border to the span, not me
         ),
         autocomplete: "nope",
+        autocapitalize: "off",
+        type: "search",
         value: toRefs(search).text,
         onkeydown: (event: KeyboardEvent) => {
             if (search.selection.isOccurring) {

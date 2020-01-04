@@ -41,6 +41,7 @@ export function textBox(
                 : " textBoxBorderOnHover" // this will apply a border to the span, not me
         ),
         autocomplete: "nope",
+        autocapitalize: "off",
         value: toRefs(state).text,
         onkeydown: (event: KeyboardEvent) => {
             if (event.key === "Enter" || event.key === "Tab") {
