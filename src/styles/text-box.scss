@@ -3,6 +3,7 @@
 }
 
 .textBoxInputContext {
+    @extend .grow;
     @extend .col;
 // create a stacking context for the input element to sit in
     position: relative;

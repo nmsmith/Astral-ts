@@ -4,6 +4,7 @@ module.exports = {
     devtool: "inline-source-map",
     devServer: {
         contentBase: __dirname + "/site",
+        host: "0.0.0.0", // open to local network
         port: 8080,
     },
     module: {

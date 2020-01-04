@@ -247,7 +247,7 @@ app ("app", state,
                 onclick: () => newRule(0),
             }),
             $for (() => state.rules, rule => [
-                div ({class: "rule"}, [
+                div ({class: "rule", draggable: true}, [
                     div ({class: "ruleLabelBox"}, [
                         textBox(rule.labelBoxState, {
                             borderAlwaysVisible: false,
@@ -259,6 +259,10 @@ app ("app", state,
                                         rule.labelBoxState.text = rule.ruleConcept.label
                                 }
                             },
+                        }),
+                        span("•••", {
+                            class: "ruleDragHandle",
+                            onclick: () => state.rules.removeAt(rule.$index),
                         }),
                     ]),
                     div ({class: "ruleContent"}, [
@@ -299,6 +303,7 @@ app ("app", state,
                 return false
             },
         }),
+        div ({class: "viewBottomPadding"}),
     ])
 )
 
