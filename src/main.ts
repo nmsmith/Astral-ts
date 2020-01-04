@@ -205,22 +205,20 @@ const linkEl = (link: Link): HTMLElement =>
     div ({class: "link"}, [
         div ({class: "row"}, [
             linkItemEl (link.subject, "subject"),
-            // $if (() => link.subject.concept !== null, {
-            //     $then: () => [p("*")],
-            //     $else: () => [],
-            // }),
-            div ({class: "linkSpacing"}),
+            div ({class: () => (link.subject.search.nothingSelected && link.relation.search.nothingSelected)
+                    ? "linkSpacingWide"
+                        : (link.subject.search.nothingSelected || link.relation.search.nothingSelected)
+                            ? "linkSpacingMedium"
+                            : "linkSpacingNarrow",
+            }),
             linkItemEl (link.relation, "relation"),
-            // $if (() => link.relation.concept !== null, {
-            //     $then: () => [p("*")],
-            //     $else: () => [],
-            // }),
-            div ({class: "linkSpacing"}),
+            div ({class: () => (link.relation.search.nothingSelected && link.object.search.nothingSelected)
+                ? "linkSpacingWide"
+                    : (link.relation.search.nothingSelected || link.object.search.nothingSelected)
+                        ? "linkSpacingMedium"
+                        : "linkSpacingNarrow",
+            }),
             linkItemEl (link.object, "object"),
-            // $if (() => link.object.concept !== null, {
-            //     $then: () => [p("*")],
-            //     $else: () => [],
-            // }),
         ]),
     ])
 

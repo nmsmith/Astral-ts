@@ -1,5 +1,11 @@
 /* generic styles */
 
+html, body {
+    // We need this because input boxes need a +1px width with their absolute
+    // positioning, and this allows them to extend beyond the screen bounds.
+    overflow-x: hidden;
+}
+
 .matchParentSize {
     // Note: don't use this in any parent with padding/multiple siblings
     width: 100%;
@@ -155,8 +161,16 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     padding-top: 8px;
 }
 
-.linkSpacing {
-    width: 4px;
+.linkSpacingNarrow {
+    width: 1px;
+}
+
+.linkSpacingMedium {
+    width: 3px;
+}
+
+.linkSpacingWide {
+    width: 5px;
 }
 
 .relation {
@@ -185,7 +199,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     @extend .searchBoxInputPadding;
     // match the width of my sibling, but don't consume space myself
     position: absolute;
-    width: 100%;
+    width: calc(100% + 1px); // requires the 1px to not scroll in Chrome
     box-sizing: border-box;
     font: inherit; // Important: needs to match the font of the span that computes my size 
     border-style: none;
