@@ -123,8 +123,6 @@ const state: WithDerivedProps<State> =
     ? createState(Cycle.retrocycle(JSON.parse(localStorage.state)))
     : createState()
 
-console.log("App state: ", state) // for debugging
-
 function saveState(): void {
     // If an input element is focused, trigger its blur event
     if (document.activeElement !== null && document.activeElement.tagName === "INPUT") {
@@ -211,7 +209,7 @@ const linkEl = (link: Link): HTMLElement =>
         ]),
     ])
 
-app("app",
+app ("app", state,
     div ({class: "view"}, [
         div ({class: "toolbar"}, [
             button ("Reset state", {
@@ -225,7 +223,7 @@ app("app",
                 onclick: () => newRule(0),
             }),
             $for (() => state.rules, rule => [
-                div({class: "rule"}, [
+                div ({class: "rule"}, [
                     div ({class: "ruleLabel"}, [
                         p (() => rule.ruleConcept.label),
                     ]),
@@ -251,7 +249,7 @@ app("app",
         div ({class: "separator"}),
         br (),
         p ("Create or find a concept:"),
-        searchBox(state.conceptCreatorSearch, {
+        searchBox (state.conceptCreatorSearch, {
             blurOnSelect: false,
             defaultResult: {optionText: "new", optionTextStyle: "newConceptOption", inputTextStyle: ""},
             onSelect() {

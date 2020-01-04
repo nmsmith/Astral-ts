@@ -459,10 +459,13 @@ const eventHandlerNames = new Set([
     "onvrdisplaypointerunrestricted",
 ])
 
+let appStateForDebugPrint: unknown
+
 /// Find the node with the given ID and replace it with the app's HTML.
 /// Also organises clean-up code.
-export function app(rootNodeID: string, appHTML: HTMLElement): void {
-    const rootNode = document.getElementById(rootNodeID)
+export function app<State>(rootNodeID: string, stateForDebugPrint: State | undefined, appHTML: HTMLElement): void {
+    appStateForDebugPrint = stateForDebugPrint
+    const rootNode = document.getElementById(rootNodeID) 
     if (rootNode === null) {
         console.error(`Unable to find app root node with ID: ${rootNodeID}`)
     }
@@ -573,6 +576,7 @@ function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
         console.log(`%cDOM update ${++updateNumber}`, updateMsgStyle)
         console.log("Event:", event.type)
         console.log("Target:", event.target)
+        console.log("Current state:", appStateForDebugPrint)
         if (midUpdate) {
             console.error("WARNING: Something has triggered a nested DOM update (such as the browser engine calling onblur() during child management).")
         }
@@ -782,12 +786,16 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     el.insertBefore(fragment, marker)
                 }
                 else {
+                    // Keep track of whether something changed. Something should ALWAYS change during a run.
+                    // If this is our first run (or we have no children), consider this to be a change.
+                    let somethingChanged = elementsCache.size === 0
                     const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
                     const newElementsForLogging: Effectful<HTMLElement>[] = []
                     // For each item, determine whether new or already existed
                     items().forEach((item, index) => {
                         const existingElements = elementsCache.get(item)
                         if (existingElements === undefined) {
+                            somethingChanged = true
                             // Associate the item with a reactive index (it may be moved later)
                             const itemWithIndex = item as WithIndex<object>
                             itemWithIndex.$index = index
@@ -801,7 +809,10 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                         }
                         else { // Item is old; use its existing elements
                             // Update the item's index
-                            (item as WithIndex<object>).$index = index
+                            if ((item as WithIndex<object>).$index !== index) {
+                                (item as WithIndex<object>).$index = index
+                                somethingChanged = true
+                            }
                             // Need to pause tracking since moving elements can
                             // cause onBlur() to be called.
                             pauseTracking()
@@ -825,6 +836,10 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                         elementsCache.forEach(oldElements => {
                             oldElements.forEach(remove)
                         })
+                    }
+                    else if (!somethingChanged) {
+                        console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
+                        console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for body.")
                     }
 
                     // Attach the new nodes
