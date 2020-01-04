@@ -195,6 +195,7 @@ export function searchBox(
                             class: "searchResults",
                             // Prevent the "blur" event from occurring when the dropdown is clicked
                             onmousedown: event => event.preventDefault(),
+                            onmouseleave: () => search.mouseSelectionCandidate = null,
                         }, [
                             $if (() => options.defaultResult !== undefined, {
                                 $then: () => [resultEl(
