@@ -43,7 +43,7 @@ function constructDerivedProperties<T extends object>(
             const c = computed(() => {
                 const currentValue = (propSpec as (obj: T) => unknown)(currObj)
                 console.log("%cObject", "font-weight: bold")
-                console.log(`  %c${propName} = ${currentValue}`, "color: #7700ff")
+                console.log(`  %c${propName} =`, "color: #7700ff", currentValue)
                 return currentValue
             })
             maintainers.push(c.effect)

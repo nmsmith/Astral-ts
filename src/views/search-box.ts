@@ -152,22 +152,24 @@ export function searchBox<SearchResultType extends SearchResult>(
         },
         oninput: () => {
             if (search.selection.isOccurring) {
+                search.selection.textChanged = true // Must update this before asking for results
                 search.selection.keyboard = search.resultsToShow.length === 0 || (search.resultsToShow[0].distance > 0 && options.showNothingOption !== undefined)
                     ? "nothing"
                     : 0
                 search.selection.mouse = null
-                search.selection.textChanged = true
             }
         },
         onfocus: () => {
+            // Must set this before asking for results
             search.selection = {
                 isOccurring: true,
-                keyboard: search.resultsToShow.length === 0 || search.nothingSelected
-                    ? "nothing"
-                    : 0,
+                keyboard: 0,
                 mouse: null,
                 textChanged: false,
             }
+            search.selection.keyboard = search.resultsToShow.length === 0 || search.nothingSelected
+                    ? "nothing"
+                    : 0
             if (options.onActive !== undefined) options.onActive()
         },
         onblur: () => {    
