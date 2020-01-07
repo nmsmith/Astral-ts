@@ -39,9 +39,11 @@ $standard-border-color: #aaaaaa;
     transition: background-color 0.1s;
 }
 
-.insertionPoint:hover {
-    background-color: #ffefbc;
-    //height: $standard-font-size + 8px;
+// only highlight if the device actually has hover
+@media(hover: hover) {
+    .insertionPoint:hover {
+        background-color: #ffefbc;
+    }
 }
 
 .ruleInsertionPoint {

@@ -33,18 +33,19 @@ $text-box-min-width: 16px;
     background-color: #00000000; // need to hide background so doesn't stomp on span border
 }
 
-.outlined {
+.textBoxBorder + .textBoxTextSizeMeasure {
     outline-style: solid;
     outline-width: 1px;
     outline-color: $standard-border-color;
 }
 
-.textBoxBorder + .textBoxTextSizeMeasure {
-    @extend .outlined;
-}
-
-.textBoxBorderOnHover:hover + .textBoxTextSizeMeasure {
-    @extend .outlined;
+// only show border if the device actually has hover
+@media(hover: hover) {
+    .textBoxBorderOnHover:hover + .textBoxTextSizeMeasure {
+        outline-style: solid;
+        outline-width: 1px;
+        outline-color: $standard-border-color;
+    }
 }
 
 .searchResultsLocation {

@@ -160,6 +160,9 @@ const state: WithDerivedProps<State> =
     ? createState(Cycle.retrocycle(JSON.parse(localStorage.state)))
     : createState()
 
+// By default, load the previous state on page load
+localStorage.loadLastState = true
+
 function saveState(): void {
     // If an input element is focused, trigger its blur event
     if (document.activeElement !== null && document.activeElement.tagName === "INPUT") {
@@ -168,12 +171,31 @@ function saveState(): void {
     localStorage.state = JSON.stringify(Cycle.decycle(state))
 }
 
-// Save on quit, and load on start
-window.addEventListener("beforeunload", saveState)
-localStorage.loadLastState = true
+function onVisibilityChange(): void {
+    if (document.hidden) saveState()
+}
+
+// Save whenever the page is hidden (including when closed).
+// This doesn't work in Safari, because it doesn't follow the Visibility API spec.
+// The following page can be used to test what lifecycle events are triggered:
+// http://output.jsbin.com/zubiyid/latest/quiet
+window.addEventListener("visibilitychange", onVisibilityChange)
+
+// Detect desktop/mobile Safari, including Chrome on iOS etc. (wrappers over Safari).
+// Note: iPadOS pretends to be desktop Safari, making desktop and mobile
+// indistinguishable, despite the fact that their implementations differ.
+const safari = /^((?!chrome|android).)*safari/i.test(window.navigator.userAgent)
+
+if (safari) {
+    const text = document.createElement("p")
+    text.textContent = "If you are using iOS, be warned that autosaving does not work."
+    document.body.prepend(text)
+    // This intervention works in desktop Safari, but not iOS Safari:
+    addEventListener("beforeunload", saveState)
+}
 
 function loadLastSave(): void {
-    window.removeEventListener("beforeunload", saveState)
+    window.removeEventListener("visibilitychange", onVisibilityChange)
     location.reload()
 }
 
