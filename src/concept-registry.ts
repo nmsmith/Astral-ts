@@ -1,4 +1,5 @@
 import * as FuzzyDict from "./libs/fuzzy-prefix-dict"
+import { DeletableSearchResult } from "./views/search-box"
 
 export interface ConceptRegistry {
     readonly namesDict: FuzzyDict.T<Concept>
@@ -11,7 +12,7 @@ export type T = ConceptRegistry
 // Currently, concepts are uniquely identified by their address.
 // For a distributed system, (under the hood) identity will need
 // to be established via some kind of conflict-free UUID.
-export interface Concept {
+export interface Concept extends DeletableSearchResult {
     readonly label: string // source of truth
     readonly registry: ConceptRegistry
 }
@@ -53,9 +54,10 @@ export function newConcept(registry: ConceptRegistry, label?: string): Concept |
             myLabel = label
         }
     }
-    const concept = {
+    const concept: Concept = {
         label: myLabel,
         registry,
+        boxesToClear: new Set(),
     }
     if (label === undefined) {
         // With an auto-generated label, insertion should always be successful
@@ -88,6 +90,10 @@ export function setConceptLabel(concept: Concept, newLabel: string): "success" |
  * Returns whether the concept was found in the registry (and thus deleted).
  */
 export function deleteConcept(concept: Concept): boolean {
+    // clear search boxes which have selected the concept
+    concept.boxesToClear.forEach(box => box.resultSelected = null)
+    concept.boxesToClear.clear()
+    // delete the concept
     return FuzzyDict.remove(concept.registry.namesDict, concept.label) !== undefined
 }
 

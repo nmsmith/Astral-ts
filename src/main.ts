@@ -13,21 +13,21 @@ import { SearchResult } from "./libs/fuzzy-prefix-dict"
 
 type Concept = Registry.Concept
 
-type Search = SearchBoxState<Registry.SearchResult> & {
+type SearchState = SearchBoxState<Concept> & {
     registries: Registry.T[]
 }
 
-function Search<Location, Result>(registries: Registry.T[]): Search {
+function SearchState<Location, Result>(registries: Registry.T[]): SearchState {
     return {
         selection: {isOccurring: false},
         text: "",
-        nothingSelected: true,
-        // add resultsToShow as derived state
+        resultSelected: null,
+        // add results & resultSelected as derived state
         registries,
-    } as Search
+    } as SearchState
 }
 
-function searchResults(search: Search): Registry.SearchResult[] {
+function searchResults(search: SearchState): Registry.SearchResult[] {
     let searchText: string
     let errorTolerance: number
     if (search.selection.isOccurring && search.selection.textChanged === false) {
@@ -62,29 +62,24 @@ function searchResults(search: Search): Registry.SearchResult[] {
     return searchResults
 }
 
-interface LinkItem {
-    concept: Concept | null
-    readonly search: Search
-}
-
 interface Link {
-    readonly subject: LinkItem
-    readonly relation: LinkItem
-    readonly object: LinkItem
+    readonly subject: SearchState
+    readonly relation: SearchState
+    readonly object: SearchState
 }
 
-function Link(conceptRegistry: Registry.T, varRegistry: Registry.T, subject?: Concept, relation?: Concept, object?: Concept): Link {
+function Link(conceptRegistry: Registry.T, varRegistry: Registry.T): Link {
     return {
-        subject: { concept: subject === undefined ? null : subject, search: Search([conceptRegistry, varRegistry]) },
-        relation: { concept: relation === undefined ? null : relation, search: Search([conceptRegistry, varRegistry]) },
-        object: { concept: object === undefined ? null : object, search: Search([conceptRegistry, varRegistry]) },
+        subject: SearchState([conceptRegistry, varRegistry]),
+        relation: SearchState([conceptRegistry, varRegistry]),
+        object: SearchState([conceptRegistry, varRegistry]),
     }
 }
 
 const linkDerivedProps: DerivedProps<Link> = {
-    subject: { search: { resultsToShow: searchResults } },
-    relation: { search: { resultsToShow: searchResults } },
-    object: { search: { resultsToShow: searchResults } },
+    subject:  { results: searchResults },
+    relation: { results: searchResults },
+    object:   { results: searchResults },
 }
 
 interface Rule {
@@ -114,30 +109,27 @@ interface RuleView {
 
 interface State {
     readonly conceptRegistry: Registry.T // the database Domain
-    readonly conceptCreatorSearch: Search
     readonly ruleRegistry: Registry.T // for naming and searching for specific rules
     readonly rules: Rule[]
     currentView: RuleView
+// derived state
+    readonly allConcepts: Registry.SearchResult[]
 }
 
 function createState(existingState?: State): WithDerivedProps<State> {
     const conceptRegistry = Registry.empty("concept")
     const essentialState = existingState !== undefined ? existingState : {
         conceptRegistry,
-        conceptCreatorSearch:
-            Search([conceptRegistry]),
         ruleRegistry:
             Registry.empty("rule"),
         rules:
             [] as Rule[],
         currentView:
             {rules: []},
+        allConcepts: [], // TODO: Shouldn't require this in the essential state
     }
-    return withDerivedProps(essentialState, {
+    return withDerivedProps<State>(essentialState, {
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
-        conceptCreatorSearch: {
-            resultsToShow: searchResults,
-        },
         rules: {
             labelBoxState: {
                 textIsValid: state => state.text.length > 0,
@@ -145,6 +137,12 @@ function createState(existingState?: State): WithDerivedProps<State> {
             head: linkDerivedProps,
             body: linkDerivedProps,
         },
+        allConcepts: state => searchResults({
+            selection: {isOccurring: false},
+            text: "",
+            resultSelected: null,
+            registries: [state.conceptRegistry],
+        } as SearchState),
     })
 }
 
@@ -215,8 +213,8 @@ function newPremise(rule: Rule): void {
     rule.body.push(Link(state.conceptRegistry, rule.varRegistry))
 }
 
-const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
-    searchBox (item.search, {
+const linkItemEl = (item: SearchState, className: string): HTMLElement =>
+    searchBox (item, {
         borderAlwaysVisible: false,
         inputTextStyle: className,
         unmatchingInputTextStyle: "linkLabelForNothing",
@@ -224,30 +222,22 @@ const linkItemEl = (item: LinkItem, className: string): HTMLElement =>
             text: "nothing",
             textStyle: "linkOptionNothing",
         },
-        onSelect(result: Registry.SearchResult) {
-            item.concept = result.value
-            return true
-        },
-        onNothingSelected() {
-            item.concept = null
-            return true
-        },
     })
 
 const linkEl = (link: Link): HTMLElement =>
     div ({class: "link"}, [
         div ({class: "row"}, [
             linkItemEl (link.subject, "linkLabelForSubject"),
-            div ({class: () => (link.subject.search.nothingSelected && link.relation.search.nothingSelected)
+            div ({class: () => (link.subject.resultSelected === null && link.relation.resultSelected === null)
                     ? "linkSpacingWide"
-                        : (link.subject.search.nothingSelected || link.relation.search.nothingSelected)
+                        : (link.subject.resultSelected === null || link.relation.resultSelected === null)
                             ? "linkSpacingMedium"
                             : "linkSpacingNarrow",
             }),
             linkItemEl (link.relation, "linkLabelForRelation"),
-            div ({class: () => (link.relation.search.nothingSelected && link.object.search.nothingSelected)
+            div ({class: () => (link.relation.resultSelected === null && link.object.resultSelected === null)
                 ? "linkSpacingWide"
-                    : (link.relation.search.nothingSelected || link.object.search.nothingSelected)
+                    : (link.relation.resultSelected === null || link.object.resultSelected === null)
                         ? "linkSpacingMedium"
                         : "linkSpacingNarrow",
             }),
@@ -255,21 +245,25 @@ const linkEl = (link: Link): HTMLElement =>
         ]),
     ])
 
+// Insert a static toolbar that will be visible even if the app crashes during creation
+document.body.prepend(
+    div ({class: "toolbar"}, [
+        button ("Reset state", {
+            onclick: resetState,
+        }),
+    ]),
+    div ({class: "separator"}),
+)
+
 app ("app", state,
     div ({class: "view"}, [
-        div ({class: "toolbar"}, [
-            button ("Reset state", {
-                onclick: resetState,
-            }),
-        ]),
-        div ({class: "separator"}),
         div ({class: "ruleView"}, [
             div ({
                 class: "ruleInsertionPoint",
                 onclick: () => newRule(0),
             }),
             $for (() => state.rules, rule => [
-                div ({class: "rule", draggable: true}, [
+                div ({class: "rule"}, [
                     div ({class: "ruleLabelBox"}, [
                         textBox(rule.labelBoxState, {
                             borderAlwaysVisible: false,
@@ -307,24 +301,34 @@ app ("app", state,
             ]),
         ]),
         div ({class: "separator"}),
-        br (),
         p ("Create a concept:"),
-        searchBox (state.conceptCreatorSearch, {
-            blurOnSelect: false,
-            onNothingSelected(): boolean {
-                const label = state.conceptCreatorSearch.text
-                if (label.length > 0) {
-                    const outcome = Registry.newConcept(state.conceptRegistry, label)
-                    if (typeof outcome === "object") {
-                        state.conceptCreatorSearch.text = ""
-                    }
-                    else {
-                        // TODO: Display an error status in the search box
+        input ({
+            onkeydown: (event: KeyboardEvent) => {
+                if (event.key === "Enter") {
+                    const label = (event.target as HTMLInputElement).value
+                    if (label.length > 0) {
+                        
+                        // create the new concept
+                        const outcome = Registry.newConcept(state.conceptRegistry, label)
+                        if (typeof outcome === "object") {
+                            // clear the box
+                            (event.target as HTMLInputElement).value = ""
+                        }
+                        else {
+                            // TODO: Can't use this label; display an error status
+                        }
                     }
                 }
-                return false
             },
         }),
+        $for (() => state.allConcepts, result => [
+            div ({class: "row"}, [
+                span(result.value.label),
+                span("X", {
+                    onclick: () => Registry.deleteConcept(result.value),
+                }),
+            ]),
+        ]),
         div ({class: "viewBottomPadding"}),
     ])
 )

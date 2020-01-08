@@ -61,7 +61,10 @@ $standard-border-color: #aaaaaa;
 
 $box-shadow-color: #979797;
 $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
-$label-error-background: #ffbfbf;
+
+.labelError {
+    background-color: #ffbfbf;
+}
 
 .rule {
     flex-shrink: 0;
@@ -104,7 +107,7 @@ $label-error-background: #ffbfbf;
 
 .ruleLabelTextForNothing {
     @extend .ruleLabelText;
-    background-color: $label-error-background;
+    @extend .labelError;
 }
 
 .ruleContent {
@@ -140,7 +143,7 @@ $label-error-background: #ffbfbf;
 }
 
 .linkLabelForNothing {
-    background-color: $label-error-background;
+    @extend .labelError
 }
 
 .linkLabelForRelation {

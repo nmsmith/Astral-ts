@@ -1,12 +1,13 @@
 import { toRefs } from "@vue/reactivity"
 import { $if, $for, div, input, span } from "../libs/lib-view"
 
-interface SearchResult {
+interface SearchResult<ResultValue> {
     readonly key: string
+    readonly value: ResultValue
     readonly distance: number
 }
 
-export interface SearchBoxState<SearchResultType extends SearchResult> {
+export interface SearchBoxState<ResultValue> {
     selection: {isOccurring: false} | {
         isOccurring: true
         keyboard: number | "nothing"
@@ -14,8 +15,13 @@ export interface SearchBoxState<SearchResultType extends SearchResult> {
         textChanged: boolean
     }
     text: string
-    nothingSelected: boolean
-    readonly resultsToShow: SearchResultType[]
+    resultSelected: ResultValue | null
+// The user of this view should derive the results from the above state.
+    readonly results: SearchResult<ResultValue>[]
+}
+
+export interface DeletableSearchResult {
+    boxesToClear: Set<SearchBoxState<unknown>>
 }
 
 export interface NothingOption {
@@ -23,17 +29,14 @@ export interface NothingOption {
     textStyle: string
 }
 
-export function searchBox<SearchResultType extends SearchResult>(
-    search: SearchBoxState<SearchResultType>,
+export function searchBox<ResultValue extends DeletableSearchResult>(
+    search: SearchBoxState<ResultValue>,
     options: {
         borderAlwaysVisible?: boolean // default: true
         blurOnSelect?: boolean // default: true
         inputTextStyle?: string
         unmatchingInputTextStyle?: string
         showNothingOption?: NothingOption // menu option for choosing no result
-        onActive?: () => void
-        onSelect?: (result: SearchResultType) => boolean // return whether the selection was accepted
-        onNothingSelected?: () => boolean // return whether the non-selection was accepted
     }
 ): HTMLElement {
     // Fill in missing options
@@ -41,7 +44,8 @@ export function searchBox<SearchResultType extends SearchResult>(
     const blurOnSelect = options.blurOnSelect !== false
     const inputTextStyle = (options.inputTextStyle === undefined) ? "" : options.inputTextStyle
     const unmatchingInputTextStyle = (options.unmatchingInputTextStyle === undefined) ? "" : options.unmatchingInputTextStyle
-    
+    const nothingOptionExists = options.showNothingOption !== undefined
+
     function activeSelection(): number | "nothing" | undefined {
         if (search.selection.isOccurring) {
             if (search.selection.mouse === null) {
@@ -59,20 +63,24 @@ export function searchBox<SearchResultType extends SearchResult>(
     function currentInputTextStyle(): string {
         const styleAsUnmatching = search.selection.isOccurring
             ? activeSelection() === "nothing"
-            : search.nothingSelected
+            : search.resultSelected === null
         return styleAsUnmatching ? unmatchingInputTextStyle : inputTextStyle
     }
-    function offerResult(selection: number | "nothing"): void {
-        if (selection === "nothing") {
-            if (options.onNothingSelected !== undefined && options.onNothingSelected()) {
-                search.nothingSelected = true
-            }
+    function deselectResult(): void {
+        if (search.resultSelected !== null) {
+            search.resultSelected.boxesToClear.delete(search)
+            search.resultSelected = null
         }
-        else if (options.onSelect !== undefined) {
-            if (options.onSelect(search.resultsToShow[selection])) {
-                search.text = search.resultsToShow[selection].key
-                search.nothingSelected = false
-            }
+    }
+    function selectResult(selection: number | "nothing"): void {
+        // Deselect any previous result that may be selected
+        deselectResult()
+
+        if (selection !== "nothing") {
+            search.text = search.results[selection].key
+            search.resultSelected = search.results[selection].value
+            console.log("SELECTED", search.text, search.resultSelected)
+            search.resultSelected.boxesToClear.add(search)
         }
     }
     function disableSearch(): void {
@@ -100,7 +108,7 @@ export function searchBox<SearchResultType extends SearchResult>(
         onkeydown: (event: KeyboardEvent) => {
             if (search.selection.isOccurring) {
                 if (event.key === "ArrowDown") {
-                    if (search.resultsToShow.length === 0) return // can't move
+                    if (search.results.length === 0) return // can't move
 
                     if (search.selection.mouse !== null) {
                         search.selection.keyboard = search.selection.mouse === "nothing"
@@ -114,8 +122,8 @@ export function searchBox<SearchResultType extends SearchResult>(
                     else {
                         ++search.selection.keyboard
                     }
-                    if (search.selection.keyboard >= search.resultsToShow.length) {
-                        search.selection.keyboard = search.resultsToShow.length - 1
+                    if (search.selection.keyboard >= search.results.length) {
+                        search.selection.keyboard = search.results.length - 1
                     }
                     event.preventDefault() // don't move the cursor to end of input
                 }
@@ -130,15 +138,15 @@ export function searchBox<SearchResultType extends SearchResult>(
                         --search.selection.keyboard
                     }
                     if (search.selection.keyboard < 0) {
-                        search.selection.keyboard = options.showNothingOption === undefined
-                            ? 0
-                            : "nothing"
+                        search.selection.keyboard = nothingOptionExists
+                            ? "nothing"
+                            : 0
                     }
                     event.preventDefault() // don't move the cursor to start of input
                 }
                 // Select and defocus
                 else if (event.key === "Enter") {
-                    offerResult(search.selection.keyboard)
+                    selectResult(search.selection.keyboard)
                     if (blurOnSelect === true) {
                         disableSearch()
                         defocusInput()
@@ -146,7 +154,7 @@ export function searchBox<SearchResultType extends SearchResult>(
                 }
                 // Consider tab-navigation to be selection
                 else if (event.key === "Tab") {
-                    offerResult(search.selection.keyboard)
+                    selectResult(search.selection.keyboard)
                     disableSearch()
                     defocusInput()
                 }
@@ -155,7 +163,7 @@ export function searchBox<SearchResultType extends SearchResult>(
         oninput: () => {
             if (search.selection.isOccurring) {
                 search.selection.textChanged = true // Must update this before asking for results
-                search.selection.keyboard = search.resultsToShow.length === 0 || (search.resultsToShow[0].distance > 0 && options.showNothingOption !== undefined)
+                search.selection.keyboard = search.results.length === 0 || (search.results[0].distance > 0 && nothingOptionExists)
                     ? "nothing"
                     : 0
                 search.selection.mouse = null
@@ -169,16 +177,14 @@ export function searchBox<SearchResultType extends SearchResult>(
                 mouse: null,
                 textChanged: false,
             }
-            search.selection.keyboard = search.resultsToShow.length === 0 || search.nothingSelected
+            search.selection.keyboard = search.results.length === 0 || search.resultSelected === null
                     ? "nothing"
                     : 0
-            options.onActive?.()
         },
         onblur: () => {
             if (search.selection.isOccurring) {
                 if (search.selection.textChanged) {
-                    options.onNothingSelected?.()
-                    search.nothingSelected = true
+                    deselectResult()
                 }
                 disableSearch()
             }
@@ -193,7 +199,7 @@ export function searchBox<SearchResultType extends SearchResult>(
             }),
         ]),
         div ({class: "searchResultsLocation"}, [ // searchResults div is positioned relative to here
-            $if (() => search.selection.isOccurring && (search.resultsToShow.length > 0 || options.showNothingOption !== undefined), {
+            $if (() => search.selection.isOccurring && (nothingOptionExists || search.results.length > 0), {
                 $then: () => {
                     const resultEl = (text: string, textClass: string, index: () => number | "nothing"): HTMLElement =>
                         div ({
@@ -209,7 +215,7 @@ export function searchBox<SearchResultType extends SearchResult>(
                                     search.selection.keyboard = i
                                     search.selection.mouse = i
                                 }
-                                offerResult(i)
+                                selectResult(i)
                                 if (blurOnSelect === true) {
                                     disableSearch()
                                     defocusInput()
@@ -225,7 +231,7 @@ export function searchBox<SearchResultType extends SearchResult>(
                             onmousedown: event => event.preventDefault(),
                             onmouseleave: () => (search.selection as {mouse: null}).mouse = null,
                         }, [
-                            $if (() => options.showNothingOption !== undefined, {
+                            $if (() => nothingOptionExists, {
                                 $then: () => [resultEl (
                                     (options.showNothingOption as NothingOption).text as string,
                                     (options.showNothingOption as NothingOption).textStyle as string,
@@ -233,8 +239,8 @@ export function searchBox<SearchResultType extends SearchResult>(
                                 )],
                                 $else: () => [],
                             }),
-                            $for (() => search.resultsToShow, result => [
-                                resultEl (result.key, "", () => result.$index),
+                            $for (() => search.results, result => [
+                                resultEl (result.key, "", () => nothingOptionExists ? (result.$index + 1) : result.$index),
                             ]),
                         ]),
                     ]
