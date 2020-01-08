@@ -10,29 +10,43 @@
     z-index: 0;
 }
 
-$text-box-vertical-padding: 2px;
+$text-box-h-padding: 3px;
 
-.textBoxInputPadding {
-    padding-left: 3px;
-    padding-right: 3px;
-    padding-top: $text-box-vertical-padding;
-    padding-bottom: $text-box-vertical-padding;
+.textBoxStyleTemplate {
+// padding
+    padding-left: $text-box-h-padding;
+    padding-right: $text-box-h-padding;
+    padding-top: 2px;
+    padding-bottom: 2px;
+// make sure the text box is visible when empty
+    min-width: 16px;
+// Webkit does weird stuff with line-height on input boxes
+    box-sizing: content-box;
+    height: 1em;
+    line-height: 1em;
 }
-
-$text-box-min-width: 16px;
 
 .textBoxInput {
-    @extend .textBoxInputPadding;
-    min-width: $text-box-min-width;
-    // match the width of my sibling, but don't consume space myself
-    position: absolute;
-    z-index: 1; // sit on top of the size measure span so interaction still works
-    width: calc(100% + 2px); // requires the 2px to not scroll & to show cursor in Chrome
-    box-sizing: border-box;
+    @extend .textBoxStyleTemplate;
     border-style: none;
     background-color: #00000000; // need to hide background so doesn't stomp on span border
+// force width to fit parent -- requires the 1px to not scroll in Chrome
+    position: absolute;
+    z-index: 1; // sit on top of the size measure span so interaction still works
+    width: calc(100% - 2 * #{$text-box-h-padding} + 1px);
 }
 
+// IMPORTANT: Needs to be listed after other CSS styles so that we can override
+// colours that may be applied etc. to ensure this element is invisible.
+.textBoxTextSizeMeasure {
+    @extend .textBoxStyleTemplate;
+    color: #00000000;
+// put the span underneath the input element so that we can still interact
+    position: relative;
+    z-index: 0;
+}
+
+// Border style is for input el (so hover works), but is applied to the size measure el
 .textBoxBorder + .textBoxTextSizeMeasure {
     outline-style: solid;
     outline-width: 1px;
@@ -72,19 +86,4 @@ $text-box-min-width: 16px;
 
 .deleteButton {
     color: red;
-}
-
-// IMPORTANT: Needs to be listed after other CSS styles so that we can override
-// colours that may be applied etc. to ensure this element is invisible.
-.textBoxTextSizeMeasure {
-    @extend .textBoxInputPadding;
-    // This padding is a close APPROXIMATION of the auto-magic padding
-    // that browsers give to input elements
-    padding-bottom: calc(#{$text-box-vertical-padding} + 0.15em);
-    min-width: $text-box-min-width;
-    white-space: pre;
-    color: #00000000;
-// put the span underneath the input element so that we can still interact
-    position: relative;
-    z-index: 0;
 }
