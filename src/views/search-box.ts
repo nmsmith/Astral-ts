@@ -77,9 +77,11 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
         deselectResult()
 
         if (selection !== "nothing") {
-            state.text = state.results[selection].key
+            // grab result from results list
             state.resultSelected = state.results[selection].value
-            console.log("SELECTED", state.text, state.resultSelected)
+            // update the visible text to match the new result
+            state.text = state.results[selection].key
+            // let the result know it is selected
             state.resultSelected.boxesToClear.add(state)
         }
     }
@@ -240,7 +242,7 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
                                 $else: () => [],
                             }),
                             $for (() => state.results, result => [
-                                resultEl (result.key, "", () => nothingOptionExists ? (result.$index + 1) : result.$index),
+                                resultEl (result.key, "", () => result.$index),
                             ]),
                         ]),
                     ]
