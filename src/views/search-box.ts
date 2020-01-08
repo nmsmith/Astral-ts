@@ -30,7 +30,7 @@ export interface NothingOption {
 }
 
 export function searchBox<ResultValue extends DeletableSearchResult>(
-    search: SearchBoxState<ResultValue>,
+    state: SearchBoxState<ResultValue>,
     options: {
         borderAlwaysVisible?: boolean // default: true
         blurOnSelect?: boolean // default: true
@@ -47,12 +47,12 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
     const nothingOptionExists = options.showNothingOption !== undefined
 
     function activeSelection(): number | "nothing" | undefined {
-        if (search.selection.isOccurring) {
-            if (search.selection.mouse === null) {
-                return search.selection.keyboard
+        if (state.selection.isOccurring) {
+            if (state.selection.mouse === null) {
+                return state.selection.keyboard
             }
             else {
-                return search.selection.mouse
+                return state.selection.mouse
             }
         }
         else {
@@ -61,15 +61,15 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
     }
     // Input text style customization as specified in options
     function currentInputTextStyle(): string {
-        const styleAsUnmatching = search.selection.isOccurring
+        const styleAsUnmatching = state.selection.isOccurring
             ? activeSelection() === "nothing"
-            : search.resultSelected === null
+            : state.resultSelected === null
         return styleAsUnmatching ? unmatchingInputTextStyle : inputTextStyle
     }
     function deselectResult(): void {
-        if (search.resultSelected !== null) {
-            search.resultSelected.boxesToClear.delete(search)
-            search.resultSelected = null
+        if (state.resultSelected !== null) {
+            state.resultSelected.boxesToClear.delete(state)
+            state.resultSelected = null
         }
     }
     function selectResult(selection: number | "nothing"): void {
@@ -77,14 +77,14 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
         deselectResult()
 
         if (selection !== "nothing") {
-            search.text = search.results[selection].key
-            search.resultSelected = search.results[selection].value
-            console.log("SELECTED", search.text, search.resultSelected)
-            search.resultSelected.boxesToClear.add(search)
+            state.text = state.results[selection].key
+            state.resultSelected = state.results[selection].value
+            console.log("SELECTED", state.text, state.resultSelected)
+            state.resultSelected.boxesToClear.add(state)
         }
     }
     function disableSearch(): void {
-        search.selection = {isOccurring: false}
+        state.selection = {isOccurring: false}
     }
     function defocusInput(): void {
         /* eslint-disable @typescript-eslint/no-use-before-define */
@@ -97,48 +97,48 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
     // The text of this input is hidden; it is displayed in a span instead.
     const inputEl = input ({
         class: () => "textBoxInput " + currentInputTextStyle() + (
-            borderAlwaysVisible === true || search.selection.isOccurring
+            borderAlwaysVisible === true || state.selection.isOccurring
                 ? " textBoxBorder"
                 : " textBoxBorderOnHover" // this will apply a border to the span, not me
         ),
         autocomplete: "nope",
         autocapitalize: "off",
         type: "search",
-        value: toRefs(search).text,
+        value: toRefs(state).text,
         onkeydown: (event: KeyboardEvent) => {
-            if (search.selection.isOccurring) {
+            if (state.selection.isOccurring) {
                 if (event.key === "ArrowDown") {
-                    if (search.results.length === 0) return // can't move
+                    if (state.results.length === 0) return // can't move
 
-                    if (search.selection.mouse !== null) {
-                        search.selection.keyboard = search.selection.mouse === "nothing"
+                    if (state.selection.mouse !== null) {
+                        state.selection.keyboard = state.selection.mouse === "nothing"
                             ? 0
-                            : search.selection.mouse + 1
-                        search.selection.mouse = null
+                            : state.selection.mouse + 1
+                        state.selection.mouse = null
                     }
-                    else if (search.selection.keyboard === "nothing") {
-                        search.selection.keyboard = 0
+                    else if (state.selection.keyboard === "nothing") {
+                        state.selection.keyboard = 0
                     }
                     else {
-                        ++search.selection.keyboard
+                        ++state.selection.keyboard
                     }
-                    if (search.selection.keyboard >= search.results.length) {
-                        search.selection.keyboard = search.results.length - 1
+                    if (state.selection.keyboard >= state.results.length) {
+                        state.selection.keyboard = state.results.length - 1
                     }
                     event.preventDefault() // don't move the cursor to end of input
                 }
                 else if (event.key === "ArrowUp") {
-                    if (search.selection.mouse !== null) {
-                        search.selection.keyboard = search.selection.mouse === "nothing"
+                    if (state.selection.mouse !== null) {
+                        state.selection.keyboard = state.selection.mouse === "nothing"
                             ? "nothing"
-                            : search.selection.mouse - 1
-                        search.selection.mouse = null
+                            : state.selection.mouse - 1
+                        state.selection.mouse = null
                     }
-                    else if (search.selection.keyboard !== "nothing") {
-                        --search.selection.keyboard
+                    else if (state.selection.keyboard !== "nothing") {
+                        --state.selection.keyboard
                     }
-                    if (search.selection.keyboard < 0) {
-                        search.selection.keyboard = nothingOptionExists
+                    if (state.selection.keyboard < 0) {
+                        state.selection.keyboard = nothingOptionExists
                             ? "nothing"
                             : 0
                     }
@@ -146,7 +146,7 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
                 }
                 // Select and defocus
                 else if (event.key === "Enter") {
-                    selectResult(search.selection.keyboard)
+                    selectResult(state.selection.keyboard)
                     if (blurOnSelect === true) {
                         disableSearch()
                         defocusInput()
@@ -154,36 +154,36 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
                 }
                 // Consider tab-navigation to be selection
                 else if (event.key === "Tab") {
-                    selectResult(search.selection.keyboard)
+                    selectResult(state.selection.keyboard)
                     disableSearch()
                     defocusInput()
                 }
             }
         },
         oninput: () => {
-            if (search.selection.isOccurring) {
-                search.selection.textChanged = true // Must update this before asking for results
-                search.selection.keyboard = search.results.length === 0 || (search.results[0].distance > 0 && nothingOptionExists)
+            if (state.selection.isOccurring) {
+                state.selection.textChanged = true // Must update this before asking for results
+                state.selection.keyboard = state.results.length === 0 || (state.results[0].distance > 0 && nothingOptionExists)
                     ? "nothing"
                     : 0
-                search.selection.mouse = null
+                state.selection.mouse = null
             }
         },
         onfocus: () => {
             // Must set this before asking for results
-            search.selection = {
+            state.selection = {
                 isOccurring: true,
                 keyboard: 0,
                 mouse: null,
                 textChanged: false,
             }
-            search.selection.keyboard = search.results.length === 0 || search.resultSelected === null
+            state.selection.keyboard = state.results.length === 0 || state.resultSelected === null
                     ? "nothing"
                     : 0
         },
         onblur: () => {
-            if (search.selection.isOccurring) {
-                if (search.selection.textChanged) {
+            if (state.selection.isOccurring) {
+                if (state.selection.textChanged) {
                     deselectResult()
                 }
                 disableSearch()
@@ -194,12 +194,12 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
         div ({class: () => "textBoxInputContext"}, [
             inputEl,
             // This span determines the input el's width
-            span (() => (search.text.length > 0) ? search.text : " ", {
+            span (() => (state.text.length > 0) ? state.text : " ", {
                 class: () => "textBoxTextSizeMeasure " + currentInputTextStyle(),
             }),
         ]),
         div ({class: "searchResultsLocation"}, [ // searchResults div is positioned relative to here
-            $if (() => search.selection.isOccurring && (nothingOptionExists || search.results.length > 0), {
+            $if (() => state.selection.isOccurring && (nothingOptionExists || state.results.length > 0), {
                 $then: () => {
                     const resultEl = (text: string, textClass: string, index: () => number | "nothing"): HTMLElement =>
                         div ({
@@ -208,12 +208,12 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
                                     $then: () => "searchResult highlighted",
                                     $else: () => "searchResult",
                                 }),
-                            onmouseenter: () => (search.selection as {mouse: number | "nothing"}).mouse = index(),
+                            onmouseenter: () => (state.selection as {mouse: number | "nothing"}).mouse = index(),
                             onclick: () => {
                                 const i = index()
-                                if (search.selection.isOccurring) {
-                                    search.selection.keyboard = i
-                                    search.selection.mouse = i
+                                if (state.selection.isOccurring) {
+                                    state.selection.keyboard = i
+                                    state.selection.mouse = i
                                 }
                                 selectResult(i)
                                 if (blurOnSelect === true) {
@@ -229,7 +229,7 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
                             class: "searchResults",
                             // Prevent the "blur" event from occurring when the dropdown is clicked
                             onmousedown: event => event.preventDefault(),
-                            onmouseleave: () => (search.selection as {mouse: null}).mouse = null,
+                            onmouseleave: () => (state.selection as {mouse: null}).mouse = null,
                         }, [
                             $if (() => nothingOptionExists, {
                                 $then: () => [resultEl (
@@ -239,7 +239,7 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
                                 )],
                                 $else: () => [],
                             }),
-                            $for (() => search.results, result => [
+                            $for (() => state.results, result => [
                                 resultEl (result.key, "", () => nothingOptionExists ? (result.$index + 1) : result.$index),
                             ]),
                         ]),
