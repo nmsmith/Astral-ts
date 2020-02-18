@@ -1,6 +1,6 @@
 .view {
     @extend .fillViewport;
-    @extend .col;
+    @extend .row;
 // create a stacking context so can we render the rule view (and its dropdowns)
 // in front of other page elements
     position: relative;
@@ -25,6 +25,17 @@ $standard-border-color: #aaaaaa;
     border-bottom-style: solid;
     border-width: 1px;
     border-color: $standard-border-color;
+}
+
+.databaseView {
+    width: 200px;
+    margin-right: -40px;
+    background-color: #ddddff;
+}
+
+.tempView {
+    @extend .col;
+    flex-grow: 1;
 }
 
 .ruleView {
@@ -54,7 +65,7 @@ $standard-border-color: #aaaaaa;
     z-index: -1;
 }
 
-.linkInsertionPoint {
+.premiseInsertionPoint {
     @extend .insertionPoint;
     height: 20px;
 }
@@ -121,31 +132,31 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     padding-left: 16px;
 }
 
-.link {
+.fact {
     @extend .row;
     padding-top: 8px;
 }
 
-.linkSpacingNarrow {
+.factSpacingNarrow {
     width: 1px;
 }
 
-.linkSpacingMedium {
+.factSpacingMedium {
     width: 3px;
 }
 
-.linkSpacingWide {
+.factSpacingWide {
     width: 6px;
 }
 
-.linkOptionNothing {
+.labelForNothingOption {
     color: #9b0000;
 }
 
-.linkLabelForNothing {
+.labelForNothing {
     @extend .labelError
 }
 
-.linkLabelForRelation {
+.labelForRelation {
     color: rgb(153, 0, 255);
 }

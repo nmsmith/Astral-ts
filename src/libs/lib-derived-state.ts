@@ -122,6 +122,9 @@ export function withDerivedProps<Obj extends object>(
     return observableObject as WithDerivedProps<Obj>
 }
 
+/**
+ * Attaches computed properties to each element in the array.
+ */
 function arrayWithDerivedProps<Obj extends object>(
     sourceArray: Obj[],
     derivedProps: DerivedProps<Obj>,

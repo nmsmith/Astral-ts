@@ -62,35 +62,32 @@ function searchResults(search: SearchState): Registry.SearchResult[] {
     return searchResults
 }
 
-interface Link {
-    readonly subject: SearchState
+interface Fact {
     readonly relation: SearchState
-    readonly object: SearchState
+    readonly objects: SearchState[]
 }
 
-function Link(conceptRegistry: Registry.T, varRegistry: Registry.T): Link {
+function Fact(relationRegistry: Registry.T): Fact {
     return {
-        subject: SearchState([conceptRegistry, varRegistry]),
-        relation: SearchState([conceptRegistry, varRegistry]),
-        object: SearchState([conceptRegistry, varRegistry]),
+        relation: SearchState([relationRegistry]),
+        objects: [],
     }
 }
 
-const linkDerivedProps: DerivedProps<Link> = {
-    subject:  { results: searchResults },
-    relation: { results: searchResults },
-    object:   { results: searchResults },
+const factDerivedProps: DerivedProps<Fact> = {
+    relation:  { results: searchResults },
+    objects: { results: searchResults },
 }
 
 interface Rule {
     readonly ruleConcept: Concept // rules are themselves concepts to make them searchable
     readonly labelBoxState: TextBoxState
     readonly varRegistry: Registry.T // for local variables
-    readonly head: Link
-    readonly body: Link[]
+    readonly head: Fact
+    readonly body: Fact[]
 }
 
-function Rule(ruleRegistry: Registry.T, conceptRegistry: Registry.T): Rule {
+function Rule(ruleRegistry: Registry.T, relationRegistry: Registry.T): Rule {
     const ruleConcept = Registry.newConcept(ruleRegistry)
     const varRegistry = Registry.empty("var")
 
@@ -98,7 +95,7 @@ function Rule(ruleRegistry: Registry.T, conceptRegistry: Registry.T): Rule {
         ruleConcept,
         labelBoxState: {focused: false, text: ruleConcept.label} as TextBoxState,
         varRegistry,
-        head: Link(conceptRegistry, varRegistry),
+        head: Fact(relationRegistry),
         body: [],
     } as Rule
 }
@@ -108,25 +105,31 @@ interface RuleView {
 }
 
 interface State {
-    readonly conceptRegistry: Registry.T // the database Domain
+    readonly relationRegistry: Registry.T
+    readonly objectRegistry: Registry.T // the database Domain
     readonly ruleRegistry: Registry.T // for naming and searching for specific rules
     readonly rules: Rule[]
     currentView: RuleView
 // derived state
-    readonly allConcepts: Registry.SearchResult[]
+    readonly allRelations: Registry.SearchResult[]
+    readonly allObjects: Registry.SearchResult[]
 }
 
 function createState(existingState?: State): WithDerivedProps<State> {
-    const conceptRegistry = Registry.empty("concept")
+    const relationRegistry = Registry.empty("relation")
+    const objectRegistry = Registry.empty("object")
     const essentialState = existingState !== undefined ? existingState : {
-        conceptRegistry,
+        relationRegistry,
+        objectRegistry,
         ruleRegistry:
             Registry.empty("rule"),
         rules:
             [] as Rule[],
         currentView:
             {rules: []},
-        allConcepts: [], // TODO: Shouldn't require this in the essential state
+        // TODO: Shouldn't require these in the essential state
+        allRelations: [],
+        allObjects: [],
     }
     return withDerivedProps<State>(essentialState, {
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
@@ -134,14 +137,20 @@ function createState(existingState?: State): WithDerivedProps<State> {
             labelBoxState: {
                 textIsValid: state => state.text.length > 0,
             },
-            head: linkDerivedProps,
-            body: linkDerivedProps,
+            head: factDerivedProps,
+            body: factDerivedProps,
         },
-        allConcepts: state => searchResults({
+        allRelations: state => searchResults({
             selection: {isOccurring: false},
             text: "",
             resultSelected: null,
-            registries: [state.conceptRegistry],
+            registries: [state.relationRegistry],
+        } as SearchState),
+        allObjects: state => searchResults({
+            selection: {isOccurring: false},
+            text: "",
+            resultSelected: null,
+            registries: [state.objectRegistry],
         } as SearchState),
     })
 }
@@ -206,42 +215,69 @@ function resetState(): void {
 //#region  --- The view & transition logic ----
 
 function newRule(i: number): void {
-    state.rules.insert(i, Rule(state.ruleRegistry, state.conceptRegistry))
+    state.rules.insert(i, Rule(state.ruleRegistry, state.relationRegistry))
 }
 
 function newPremise(rule: Rule): void {
-    rule.body.push(Link(state.conceptRegistry, rule.varRegistry))
+    rule.body.push(Fact(state.relationRegistry))
 }
 
-const linkItemEl = (item: SearchState, className: string): HTMLElement =>
+const referenceEl = (item: SearchState, className: string): HTMLElement =>
     searchBox (item, {
         borderAlwaysVisible: false,
         inputTextStyle: className,
-        unmatchingInputTextStyle: "linkLabelForNothing",
+        unmatchingInputTextStyle: "labelForNothing",
         showNothingOption: {
             text: "nothing",
-            textStyle: "linkOptionNothing",
+            textStyle: "labelForNothingOption",
         },
     })
 
-const linkEl = (link: Link): HTMLElement =>
-    div ({class: "link"}, [
+const factEl = (fact: Fact): HTMLElement =>
+    div ({class: "fact"}, [
         div ({class: "row"}, [
-            linkItemEl (link.subject, "linkLabelForSubject"),
-            div ({class: () => (link.subject.resultSelected === null && link.relation.resultSelected === null)
-                    ? "linkSpacingWide"
-                        : (link.subject.resultSelected === null || link.relation.resultSelected === null)
-                            ? "linkSpacingMedium"
-                            : "linkSpacingNarrow",
-            }),
-            linkItemEl (link.relation, "linkLabelForRelation"),
-            div ({class: () => (link.relation.resultSelected === null && link.object.resultSelected === null)
-                ? "linkSpacingWide"
-                    : (link.relation.resultSelected === null || link.object.resultSelected === null)
-                        ? "linkSpacingMedium"
-                        : "linkSpacingNarrow",
-            }),
-            linkItemEl (link.object, "linkLabelForObject"),
+            referenceEl (fact.relation, "labelForRelation"),
+            span (": "),
+            $for (() => fact.objects, obj => [
+                referenceEl (obj, "labelForObject"),
+            ]),
+            // div ({class: () => (link.subject.resultSelected === null && link.relation.resultSelected === null)
+            //         ? "factSpacingWide"
+            //             : (link.subject.resultSelected === null || link.relation.resultSelected === null)
+            //                 ? "factSpacingMedium"
+            //                 : "factSpacingNarrow",
+            // }),
+        ]),
+    ])
+
+const conceptList = (registry: Registry.T, list: () => Registry.SearchResult[]): HTMLElement =>
+    div({}, [
+        input ({
+            onkeydown: (event: KeyboardEvent) => {
+                if (event.key === "Enter") {
+                    const label = (event.target as HTMLInputElement).value
+                    if (label.length > 0) {
+                        
+                        // create the new concept
+                        const outcome = Registry.newConcept(registry, label)
+                        if (typeof outcome === "object") {
+                            // clear the box
+                            (event.target as HTMLInputElement).value = ""
+                        }
+                        else {
+                            // TODO: Can't use this label; display an error status
+                        }
+                    }
+                }
+            },
+        }),
+        $for (list, result => [
+            div ({class: "row"}, [
+                span(result.value.label),
+                span("X", {
+                    onclick: () => Registry.deleteConcept(result.value),
+                }),
+            ]),
         ]),
     ])
 
@@ -257,79 +293,58 @@ document.body.prepend(
 
 app ("app", state,
     div ({class: "view"}, [
-        div ({class: "ruleView"}, [
-            div ({
-                class: "ruleInsertionPoint",
-                onclick: () => newRule(0),
-            }),
-            $for (() => state.rules, rule => [
-                div ({class: "rule"}, [
-                    div ({class: "ruleLabelBox"}, [
-                        textBox(rule.labelBoxState, {
-                            borderAlwaysVisible: false,
-                            inputTextStyle: "ruleLabelText",
-                            invalidInputTextStyle: "ruleLabelTextForNothing",
-                            onSubmit() {
-                                if (!rule.labelBoxState.textIsValid ||
-                                    Registry.setConceptLabel(rule.ruleConcept, rule.labelBoxState.text) !== "success") {
-                                        rule.labelBoxState.text = rule.ruleConcept.label
-                                }
-                            },
-                        }),
-                        span("•••", {
-                            class: "ruleDragHandle",
-                            onclick: () => state.rules.removeAt(rule.$index),
-                        }),
-                    ]),
-                    div ({class: "ruleContent"}, [
-                        linkEl (rule.head),
-                        div ({class: "ruleBody"}, [
-                            $for (() => rule.body, link => [
-                                linkEl (link),
-                            ]),
-                            div ({
-                                class: "linkInsertionPoint",
-                                onclick: () => newPremise(rule),
-                            }),
-                        ]),
-                    ]),
-                ]),
+        div ({class: "databaseView"}),
+        div ({class: "tempView"}, [
+            div ({class: "ruleView"}, [
                 div ({
                     class: "ruleInsertionPoint",
-                    onclick: () => newRule(rule.$index+1),
+                    onclick: () => newRule(0),
                 }),
+                $for (() => state.rules, rule => [
+                    div ({class: "rule"}, [
+                        div ({class: "ruleLabelBox"}, [
+                            textBox(rule.labelBoxState, {
+                                borderAlwaysVisible: false,
+                                inputTextStyle: "ruleLabelText",
+                                invalidInputTextStyle: "ruleLabelTextForNothing",
+                                onSubmit() {
+                                    if (!rule.labelBoxState.textIsValid ||
+                                        Registry.setConceptLabel(rule.ruleConcept, rule.labelBoxState.text) !== "success") {
+                                            rule.labelBoxState.text = rule.ruleConcept.label
+                                    }
+                                },
+                            }),
+                            span("•••", {
+                                class: "ruleDragHandle",
+                                onclick: () => state.rules.removeAt(rule.$index),
+                            }),
+                        ]),
+                        div ({class: "ruleContent"}, [
+                            factEl (rule.head),
+                            div ({class: "ruleBody"}, [
+                                $for (() => rule.body, fact => [
+                                    factEl (fact),
+                                ]),
+                                div ({
+                                    class: "premiseInsertionPoint",
+                                    onclick: () => newPremise(rule),
+                                }),
+                            ]),
+                        ]),
+                    ]),
+                    div ({
+                        class: "ruleInsertionPoint",
+                        onclick: () => newRule(rule.$index+1),
+                    }),
+                ]),
             ]),
+            div ({class: "separator"}),
+            p ("Create a relation:"),
+            conceptList(state.relationRegistry, () => state.allRelations),
+            p ("Create an object:"),
+            conceptList(state.objectRegistry, () => state.allObjects),
+            div ({class: "viewBottomPadding"}),
         ]),
-        div ({class: "separator"}),
-        p ("Create a concept:"),
-        input ({
-            onkeydown: (event: KeyboardEvent) => {
-                if (event.key === "Enter") {
-                    const label = (event.target as HTMLInputElement).value
-                    if (label.length > 0) {
-                        
-                        // create the new concept
-                        const outcome = Registry.newConcept(state.conceptRegistry, label)
-                        if (typeof outcome === "object") {
-                            // clear the box
-                            (event.target as HTMLInputElement).value = ""
-                        }
-                        else {
-                            // TODO: Can't use this label; display an error status
-                        }
-                    }
-                }
-            },
-        }),
-        $for (() => state.allConcepts, result => [
-            div ({class: "row"}, [
-                span(result.value.label),
-                span("X", {
-                    onclick: () => Registry.deleteConcept(result.value),
-                }),
-            ]),
-        ]),
-        div ({class: "viewBottomPadding"}),
     ])
 )
 

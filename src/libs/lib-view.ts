@@ -646,7 +646,7 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
 
         if (isRef(attrValue)) {
             scheduleDOMUpdate(el, () => {
-                el[(key as AssKeys)] = attrValue.value
+                el[(key as AssKeys)] = attrValue.value as any
                 logAttributeChange(key, attrValue.value)
             })
         }
