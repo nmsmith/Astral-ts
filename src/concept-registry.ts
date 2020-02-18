@@ -57,7 +57,7 @@ export function newConcept(registry: ConceptRegistry, label?: string): Concept |
     const concept: Concept = {
         label: myLabel,
         registry,
-        boxesToClear: new Set(),
+        boxesToClear: [],
     }
     if (label === undefined) {
         // With an auto-generated label, insertion should always be successful
@@ -92,7 +92,7 @@ export function setConceptLabel(concept: Concept, newLabel: string): "success" |
 export function deleteConcept(concept: Concept): boolean {
     // clear search boxes which have selected the concept
     concept.boxesToClear.forEach(box => box.resultSelected = null)
-    concept.boxesToClear.clear()
+    concept.boxesToClear.length = 0
     // delete the concept
     return FuzzyDict.remove(concept.registry.namesDict, concept.label) !== undefined
 }

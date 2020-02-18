@@ -21,7 +21,7 @@ export interface SearchBoxState<ResultValue> {
 }
 
 export interface DeletableSearchResult {
-    boxesToClear: Set<SearchBoxState<unknown>>
+    boxesToClear: SearchBoxState<unknown>[]
 }
 
 export interface NothingOption {
@@ -68,7 +68,13 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
     }
     function deselectResult(): void {
         if (state.resultSelected !== null) {
-            state.resultSelected.boxesToClear.delete(state)
+            const i = state.resultSelected.boxesToClear.findIndex(e => e === state)
+            if (i === -1) {
+                console.error("Tried to delete reference to search box state, but none existed.")
+            }
+            else {
+                state.resultSelected.boxesToClear.removeAt(i)
+            }
             state.resultSelected = null
         }
     }
@@ -82,7 +88,7 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
             // update the visible text to match the new result
             state.text = state.results[selection].key
             // let the result know it is selected
-            state.resultSelected.boxesToClear.add(state)
+            state.resultSelected.boxesToClear.push(state)
         }
     }
     function disableSearch(): void {
