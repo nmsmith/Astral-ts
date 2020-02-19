@@ -51,6 +51,7 @@ function constructDerivedProperties<T extends object>(
                 get() {return c.value},
                 set() {throw `Can't assign to the (readonly) derived property "${propName}".`},
                 enumerable: false, // Prevent this property from being serialized
+                configurable: true, // Allow this property to be deleted
             })
         }
         else if (typeof propSpec === "object") {
