@@ -14,6 +14,7 @@ export function textBox(
         inputTextStyle?: string
         invalidInputTextStyle?: string
         onSubmit?: () => void
+        onDelete?: () => void // when the user attempts to delete an empty box
     },
 ): HTMLElement {
     // Fill in missing options
@@ -48,6 +49,11 @@ export function textBox(
                 options.onSubmit?.()
                 defocusInput()
                 state.focused = false
+            }
+            else if (state.text === "" && (event.key === "Backspace" || event.key === "Delete")) {
+                if (options.onDelete !== undefined) {
+                    options.onDelete()
+                }
             }
         },
         onfocus: () => {

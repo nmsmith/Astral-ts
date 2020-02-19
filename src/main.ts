@@ -222,7 +222,7 @@ function newPremise(rule: Rule): void {
     rule.body.push(Fact(state.relationRegistry))
 }
 
-const referenceEl = (item: SearchState, className: string): HTMLElement =>
+const relationRefEl = (item: SearchState, className: string): HTMLElement =>
     searchBox (item, {
         borderAlwaysVisible: false,
         inputTextStyle: className,
@@ -233,20 +233,37 @@ const referenceEl = (item: SearchState, className: string): HTMLElement =>
         },
     })
 
-const factEl = (fact: Fact): HTMLElement =>
+const objectRefEl = (allRefs: SearchState[], thisRef: SearchState, className: string): HTMLElement =>
+    searchBox (thisRef, {
+        borderAlwaysVisible: false,
+        inputTextStyle: className,
+        unmatchingInputTextStyle: "labelForNothing",
+        showNothingOption: {
+            text: "nothing",
+            textStyle: "labelForNothingOption",
+        },
+        onDelete: () => {
+            allRefs.removeAt(allRefs.indexOf(thisRef))
+        },
+    })
+
+const factEl = (fact: Fact, varRegistry: Registry.T): HTMLElement =>
     div ({class: "fact"}, [
         div ({class: "row"}, [
-            referenceEl (fact.relation, "labelForRelation"),
-            span (": "),
-            $for (() => fact.objects, obj => [
-                referenceEl (obj, "labelForObject"),
+            relationRefEl (fact.relation, "labelForRelation"),
+            span ("(", {class: "factText"}),
+            $for (() => fact.objects.slice(0, -1), obj => [
+                objectRefEl (fact.objects, obj, "labelForObject"),
+                span (",", {class: "factComma"}),
             ]),
-            // div ({class: () => (link.subject.resultSelected === null && link.relation.resultSelected === null)
-            //         ? "factSpacingWide"
-            //             : (link.subject.resultSelected === null || link.relation.resultSelected === null)
-            //                 ? "factSpacingMedium"
-            //                 : "factSpacingNarrow",
-            // }),
+            $for (() => fact.objects.slice(-1), obj => [
+                objectRefEl (fact.objects, obj, "labelForObject"),
+            ]),
+            span (")", {class: "factText"}),
+            button ("", {
+                class: "addObjectToFact",
+                onclick: () => fact.objects.push(SearchState([state.objectRegistry, varRegistry])),
+            }),
         ]),
     ])
 
@@ -273,8 +290,9 @@ const conceptList = (registry: Registry.T, list: () => Registry.SearchResult[]):
         }),
         $for (list, result => [
             div ({class: "row"}, [
-                span(result.value.label),
-                span("X", {
+                span (result.value.label),
+                button ("X", {
+                    class: "unstyledButton",
                     onclick: () => Registry.deleteConcept(result.value),
                 }),
             ]),
@@ -296,14 +314,14 @@ app ("app", state,
         div ({class: "databaseView"}),
         div ({class: "tempView"}, [
             div ({class: "ruleView"}, [
-                div ({
+                button ("", {
                     class: "ruleInsertionPoint",
                     onclick: () => newRule(0),
                 }),
                 $for (() => state.rules, rule => [
                     div ({class: "rule"}, [
                         div ({class: "ruleLabelBox"}, [
-                            textBox(rule.labelBoxState, {
+                            textBox (rule.labelBoxState, {
                                 borderAlwaysVisible: false,
                                 inputTextStyle: "ruleLabelText",
                                 invalidInputTextStyle: "ruleLabelTextForNothing",
@@ -314,25 +332,25 @@ app ("app", state,
                                     }
                                 },
                             }),
-                            span("•••", {
+                            button ("•••", {
                                 class: "ruleDragHandle",
                                 onclick: () => state.rules.removeAt(rule.$index),
                             }),
                         ]),
                         div ({class: "ruleContent"}, [
-                            factEl (rule.head),
+                            factEl (rule.head, rule.varRegistry),
                             div ({class: "ruleBody"}, [
                                 $for (() => rule.body, fact => [
-                                    factEl (fact),
+                                    factEl (fact, rule.varRegistry),
                                 ]),
-                                div ({
+                                button ("", { 
                                     class: "premiseInsertionPoint",
                                     onclick: () => newPremise(rule),
                                 }),
                             ]),
                         ]),
                     ]),
-                    div ({
+                    button ("", {
                         class: "ruleInsertionPoint",
                         onclick: () => newRule(rule.$index+1),
                     }),
@@ -340,9 +358,9 @@ app ("app", state,
             ]),
             div ({class: "separator"}),
             p ("Create a relation:"),
-            conceptList(state.relationRegistry, () => state.allRelations),
+            conceptList (state.relationRegistry, () => state.allRelations),
             p ("Create an object:"),
-            conceptList(state.objectRegistry, () => state.allObjects),
+            conceptList (state.objectRegistry, () => state.allObjects),
             div ({class: "viewBottomPadding"}),
         ]),
     ])

@@ -45,7 +45,13 @@ $standard-border-color: #aaaaaa;
     z-index: 1;
 }
 
+.unstyledButton {
+    border-style: none;
+    background-color: #ffffff00;
+}
+
 .insertionPoint {
+    @extend .unstyledButton;
     flex-shrink: 0;
     transition: background-color 0.1s;
 }
@@ -55,6 +61,11 @@ $standard-border-color: #aaaaaa;
     .insertionPoint:hover {
         background-color: #ffefbc;
     }
+}
+
+// highlight the button when it is tab-focused
+.insertionPoint:focus {
+    background-color: #ffefbc;
 }
 
 .ruleInsertionPoint {
@@ -106,6 +117,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 
 .ruleDragHandle {
+    @extend .unstyledButton;
     @extend .noSelect;
     color: #414141;
     font-size: 1.2em;
@@ -135,6 +147,23 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 .fact {
     @extend .row;
     padding-top: 8px;
+}
+
+.factText {
+    padding-top: 2px;
+    padding-bottom: 2px;
+    font-weight: bold;
+}
+
+.factComma {
+    @extend .factText;
+    margin-left: -1px;
+    padding-right: 4px;
+}
+
+.addObjectToFact {
+    @extend .insertionPoint;
+    width: 20px;
 }
 
 .factSpacingNarrow {
