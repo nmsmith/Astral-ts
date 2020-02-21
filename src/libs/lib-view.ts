@@ -954,3 +954,30 @@ export function input<Keys extends keyof HTMLInputElement>(
 
     return element("input", attributes, [])
 }
+
+export function textarea<Keys extends keyof HTMLTextAreaElement>(
+    attributes: AttributeSpec<Keys, HTMLTextAreaElement> = {} as any,
+): HTMLTextAreaElement {
+    const attrs = attributes as AttributeSpec<Keys | "value" | "oninput", HTMLTextAreaElement>
+    const valueRef: string | Ref<string> | DerivedAttribute<string> | undefined = attrs.value
+    // If the "value" attribute exists and is a Ref, then set up two-way binding
+    if (valueRef !== undefined && isRef(valueRef)) {
+        const existingOnInput = attrs.oninput
+        // If there is no existing oninput function
+        if (existingOnInput === undefined || existingOnInput === null) {
+            // On input, update the ref bound to "value"
+            attrs.oninput = function (event: Event): any {
+                valueRef.value = (event.target as HTMLInputElement).value
+            }
+        }
+        else {
+            // On input, update the ref bound to "value" and then call the existing oninput function
+            attrs.oninput = function (event: Event): any {
+                valueRef.value = (event.target as HTMLInputElement).value
+                return existingOnInput.call(this, event)
+            }
+        }
+    }
+
+    return element("textarea", attributes, [])
+}
