@@ -33,7 +33,7 @@ $text-box-h-padding: 3px;
 // force width to fit parent -- requires the 1px to not scroll in Chrome
     position: absolute;
     z-index: 1; // sit on top of the size measure span so interaction still works
-    width: calc(100% - 2 * #{$text-box-h-padding} + 1px);
+    width: calc(100% - 2 * #{$text-box-h-padding} + 2px);
 }
 
 // IMPORTANT: Needs to be listed after other CSS styles so that we can override
