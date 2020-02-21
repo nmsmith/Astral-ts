@@ -833,12 +833,15 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
 
                     // Remove the elements for the items which were removed
                     if (elementsCache.size > 0) {
+                        somethingChanged = true
                         logChangeStart(el)
                         elementsCache.forEach(oldElements => {
                             oldElements.forEach(remove)
                         })
                     }
-                    else if (!somethingChanged) {
+                    
+                    if (!somethingChanged) {
+                        console.log(items())
                         console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
                         console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for body.")
                     }
