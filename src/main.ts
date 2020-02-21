@@ -233,7 +233,7 @@ const relationRefEl = (item: SearchState, className: string): HTMLElement =>
         },
     })
 
-const objectRefEl = (allRefs: SearchState[], thisRef: SearchState, className: string): HTMLElement =>
+const objectRefEl = (allRefs: SearchState[], thisRef: SearchState, varRegistry: Registry.T, className: string): HTMLElement =>
     searchBox (thisRef, {
         borderAlwaysVisible: false,
         inputTextStyle: className,
@@ -242,8 +242,28 @@ const objectRefEl = (allRefs: SearchState[], thisRef: SearchState, className: st
             text: "nothing",
             textStyle: "labelForNothingOption",
         },
-        onDelete: () => {
-            allRefs.removeAt(allRefs.indexOf(thisRef))
+        onKeyDown(key: string, input: HTMLInputElement) {
+            if ((key === "Backspace" || key === "Delete") && thisRef.text === "") {
+                // Delete the search box
+                allRefs.removeAt(allRefs.indexOf(thisRef))
+                return true
+            }
+            else if (key === ",") {
+                // Split the box/text into two search boxes
+                const newSearchBox = SearchState([state.objectRegistry, varRegistry])
+                if (input.selectionStart !== null) {
+                    const beforeComma = thisRef.text.slice(0, input.selectionStart)
+                    const afterComma = thisRef.text.slice(input.selectionStart)
+                    thisRef.text = beforeComma
+                    newSearchBox.text = afterComma
+                }
+                
+                allRefs.insert(allRefs.indexOf(thisRef) + 1, newSearchBox)
+                // Proactively blur the box, since it will otherwise be blurred in the middle of the view update (as its siblings are shuffled around).
+                // This ensures we update its rendering.
+                return true
+            }
+            else return false
         },
     })
 
@@ -253,11 +273,11 @@ const factEl = (fact: Fact, varRegistry: Registry.T): HTMLElement =>
             relationRefEl (fact.relation, "labelForRelation"),
             span ("(", {class: "factText"}),
             $for (() => fact.objects.slice(0, -1), obj => [
-                objectRefEl (fact.objects, obj, "labelForObject"),
+                objectRefEl (fact.objects, obj, varRegistry, "labelForObject"),
                 span (",", {class: "factComma"}),
             ]),
             $for (() => fact.objects.slice(-1), obj => [
-                objectRefEl (fact.objects, obj, "labelForObject"),
+                objectRefEl (fact.objects, obj, varRegistry, "labelForObject"),
             ]),
             span (")", {class: "factText"}),
             button ("", {
