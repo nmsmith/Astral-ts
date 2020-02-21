@@ -14,7 +14,7 @@ export function textBox(
         inputTextStyle?: string
         invalidInputTextStyle?: string
         onSubmit?: () => void
-        onDelete?: () => void // when the user attempts to delete an empty box
+        onKeyDown?: (key: string, input: HTMLInputElement) => boolean // returns whether to blur the box
     },
 ): HTMLElement {
     // Fill in missing options
@@ -50,9 +50,9 @@ export function textBox(
                 defocusInput()
                 state.focused = false
             }
-            else if (state.text === "" && (event.key === "Backspace" || event.key === "Delete")) {
-                if (options.onDelete !== undefined) {
-                    options.onDelete()
+            else if (options.onKeyDown !== undefined) {
+                if (options.onKeyDown(event.key, event.target as HTMLInputElement)) {
+                    defocusInput()
                 }
             }
         },

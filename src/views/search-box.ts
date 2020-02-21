@@ -37,7 +37,7 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
         inputTextStyle?: string
         unmatchingInputTextStyle?: string
         showNothingOption?: NothingOption // menu option for choosing no result
-        onDelete?: () => void // when the user attempts to delete an empty box
+        onKeyDown?: (key: string, input: HTMLInputElement) => boolean // returns whether to blur the box
     }
 ): HTMLElement {
     // Fill in missing options
@@ -167,9 +167,10 @@ export function searchBox<ResultValue extends DeletableSearchResult>(
                     disableSearch()
                     defocusInput()
                 }
-                else if (state.text === "" && (event.key === "Backspace" || event.key === "Delete")) {
-                    if (options.onDelete !== undefined) {
-                        options.onDelete()
+                else if (options.onKeyDown !== undefined) {
+                    if (options.onKeyDown(event.key, event.target as HTMLInputElement)) {
+                        disableSearch()
+                        defocusInput()
                     }
                 }
             }
