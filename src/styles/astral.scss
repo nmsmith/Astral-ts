@@ -112,6 +112,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 .ruleLabelText {
     flex-grow: 1;
     font-size: 1.15em;
+    border-style: none;
 }
 
 .ruleDragHandle {
@@ -138,4 +139,10 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     font-family: monospace;
     line-height: 140%;
     tab-size: 2;
+    font-size: 18px;
+}
+
+.errorText {
+    padding: 4px;
+    background-color: #ffbfbf;
 }

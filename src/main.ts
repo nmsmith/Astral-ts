@@ -3,43 +3,40 @@ import "./styles/styles.scss"
 import "./globals"
 import Cycle from "json-cycle"
 import { toRefs } from "@vue/reactivity"
-import { WithDerivedProps, DerivedProps, withDerivedProps } from "./libs/lib-derived-state"
-import * as Registry from "./concept-registry"
-import { $if, $for, app, div, p, br, button, input, textarea, span } from "./libs/lib-view"
-import { textBox, TextBoxState } from "./views/text-box"
+import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
+import { $if, $for, app, div, p, button, input, textarea, span } from "./libs/lib-view"
+import {parseRule} from "./parser"
+import {Rule} from "./semantics"
 
 //#region  --- Essential & derived state ---
-interface Fact {
-    readonly relation: string
-    readonly objects: string[]
-}
 
-interface Rule {
-    readonly label: string,
+interface RuleEditor {
+    readonly label: string
     readonly rawText: string
-    readonly lastParsed: null | {
+    errorText: string | null
+    lastParsed: null | {
         readonly rawText: string
-        readonly head: Fact
-        readonly body: Fact[]
+        readonly rule: Rule
     }
 }
 
-function Rule(): Rule {
+function RuleEditor(): RuleEditor {
     return {
         label: "",
         rawText: "",
+        errorText: null,
         lastParsed: null,
     }
 }
 
 interface State {
-    readonly rules: Rule[]
+    readonly rules: RuleEditor[]
 }
 
 function createState(existingState?: State): WithDerivedProps<State> {
     const essentialState = existingState !== undefined ? existingState : {
         rules:
-            [] as Rule[],
+            [] as RuleEditor[],
     }
     return withDerivedProps<State>(essentialState, {
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
@@ -107,40 +104,8 @@ function resetState(): void {
 //#region  --- The view & transition logic ----
 
 function newRule(i: number): void {
-    state.rules.insert(i, Rule())
+    state.rules.insert(i, RuleEditor())
 }
-
-const conceptList = (registry: Registry.T, list: () => Registry.SearchResult[]): HTMLElement =>
-    div({}, [
-        input ({
-            onkeydown: (event: KeyboardEvent) => {
-                if (event.key === "Enter") {
-                    const label = (event.target as HTMLInputElement).value
-                    if (label.length > 0) {
-                        
-                        // create the new concept
-                        const outcome = Registry.newConcept(registry, label)
-                        if (typeof outcome === "object") {
-                            // clear the box
-                            (event.target as HTMLInputElement).value = ""
-                        }
-                        else {
-                            // TODO: Can't use this label; display an error status
-                        }
-                    }
-                }
-            },
-        }),
-        $for (list, result => [
-            div ({class: "row"}, [
-                span (result.value.label),
-                button ("X", {
-                    class: "unstyledButton",
-                    onclick: () => Registry.deleteConcept(result.value),
-                }),
-            ]),
-        ]),
-    ])
 
 // Insert a static toolbar that will be visible even if the app crashes during creation
 document.body.prepend(
@@ -151,20 +116,6 @@ document.body.prepend(
     ]),
     div ({class: "separator"}),
 )
-
-type ParseResult = {result: "failure", reason: string} | {result: "success"}
-
-function parseRule(s: string): ParseResult {
-    if (s === "") {
-        return {result: "failure", reason: "Nothing entered."}
-    }
-    else {
-        return {result: "success"}
-    }
-}
-
-// Hack to prevent textareas from auto-inserting a tab char if the user is trying to delete it
-let deletingText = false
 
 app ("app", state,
     div ({class: "view"}, [
@@ -180,6 +131,8 @@ app ("app", state,
                         div ({class: "ruleLabelBar"}, [
                             input ({
                                 class: "ruleLabelText",
+                                autocomplete: "nope",
+                                autocapitalize: "off",
                                 value: toRefs(rule).label,
                             }),
                             button ("•••", {
@@ -191,29 +144,49 @@ app ("app", state,
                             class: "ruleTextArea",
                             value: toRefs(rule).rawText,
                             onkeydown: (event: KeyboardEvent) => {
-                                deletingText = (event.key === "Backspace" || event.key === "Delete")
+                                // Do basic autoformatting.
+                                // Note: execCommand() is needed to preserve the browser's undo
+                                // stack, and setTimeout() prevents a nested DOM update.
+                                if (event.key === ",") {
+                                    event.preventDefault()
+                                    setTimeout(() =>
+                                        document.execCommand("insertText", false, ", "), 0)
+                                }
+                                else if (event.key === "Enter") {
+                                    event.preventDefault()
+                                    setTimeout(() =>
+                                        document.execCommand("insertText", false, "\n\t"), 0)
+                                }
                             },
                             oninput: (event: Event) => {
                                 const el = (event.target as HTMLTextAreaElement)
-                                if (!deletingText) {
-                                    // Auto-insert a tab character if necessary
-                                    const fixedText = rule.rawText.replace(/\n([^\t]|$)/g, "\n\t$1")
-                                    if (fixedText !== el.value) {
-                                        toRefs(rule).rawText.value = fixedText
-                                        const start = el.selectionStart
-                                        const end = el.selectionEnd
-                                        setTimeout(() => {
-                                            // Move cursor position past inserted Tab
-                                            el.selectionStart = start+1
-                                            el.selectionEnd = end+1
-                                        }, 0)
-                                    }
-                                }
                                 const parseResult = parseRule(rule.rawText)
+                                if (parseResult.result === "success") {
+                                    rule.lastParsed = {
+                                        rawText: rule.rawText,
+                                        rule: parseResult.rule,
+                                    }
+                                    rule.errorText = null
+                                }
+                                else if (parseResult.result === "noRule") {
+                                    rule.lastParsed = null
+                                    rule.errorText = null
+                                }
+                                else {
+                                    rule.errorText = parseResult.reason
+                                }
                                 // resize the box to fit its contents
                                 el.style.height = "auto"
                                 el.style.height = el.scrollHeight + "px"
                             },
+                        }),
+                        $if (() => rule.errorText !== null, {
+                            $then: () => [
+                                p (() => rule.errorText as string, {
+                                    class: "errorText",
+                                }),
+                            ],
+                            $else: () => [],
                         }),
                     ]),
                     button ("", {
