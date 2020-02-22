@@ -69,11 +69,24 @@ export function parseRule(s: string): ParseResult {
             }
         }
 
+        const trimmedRel = relationText.trim()
+
         // --- Check relation name ---
-        if (relationText.trim().length === 0) {
+        if (trimmedRel.length === 0 || (trimmedRel[0] === "¬" && trimmedRel.slice(1).trim().length === 0)) {
             return fail(`Line ${lineNumber}: Missing a relation name.`)
         }
-        else if (relationText.indexOf(",") !== -1) {
+
+        const negPosition = trimmedRel.indexOf("¬")
+        if (negPosition >= 0) {
+            if (negPosition > 0 || trimmedRel.split("¬").length > 2) {
+                return fail(`Line ${lineNumber}: A negation symbol can only be placed at the start of a line.`)
+            }
+            else if (trimmedRel[1] !== " ") {
+                return fail(`Line ${lineNumber}: A negation symbol must be followed by a space.`)
+            }
+        }
+
+        if (relationText.indexOf(",") !== -1) {
             return fail(`Line ${lineNumber}: Unexpected comma in relation name.`)
         }
         else if (relationText.indexOf("#") !== -1) {
@@ -98,7 +111,8 @@ export function parseRule(s: string): ParseResult {
             }
         }
 
-        const relationName = relationText.trim()
+        const relationName = trimmedRel.split("¬").slice(-1)[0]
+        const sign: "positive" | "negative" = negPosition >= 0 ? "negative" : "positive"
 
         if (/\s\s/.test(relationName)) {
             return fail(`Line ${lineNumber}: Unexpected double space. Words should be separated with a single space.`)
@@ -109,6 +123,9 @@ export function parseRule(s: string): ParseResult {
         for (const objectText of objectTexts) {
             if (objectText.trim().length === 0) {
                 return fail(`Line ${lineNumber}: Missing an object name.`)
+            }
+            else if (objectText.indexOf("¬") !== -1) {
+                return fail(`Line ${lineNumber}: Unexpected negation symbol in object name.`)
             }
             else if (/\s\s/.test(objectText)) {
                 return fail(`Line ${lineNumber}: Unexpected double space. Words should be separated with a single space.`)
@@ -138,7 +155,7 @@ export function parseRule(s: string): ParseResult {
             }
         }
 
-        const fact = {relation: relationName, objects}
+        const fact = {sign, relation: relationName, objects}
         if (lineNumber === 1) {
             head = fact
         }
