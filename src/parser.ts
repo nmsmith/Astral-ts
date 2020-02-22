@@ -45,9 +45,9 @@ export function parseRule(s: string): ParseResult {
         }
         
         const parts1 = line.split("(")
-        const parts2 = line.split(")")
+        const parts2 = parts1[1].split(")")
         const relationText = parts1[0]
-        const objectTexts = parts2[0].split(",")
+        const objectTexts = (parts2[0].length > 0) ? parts2[0].split(",") : []
         const remainder = parts2[1]
 
         // --- Check end of line ---
@@ -76,7 +76,10 @@ export function parseRule(s: string): ParseResult {
         else if (relationText.indexOf(",") !== -1) {
             return fail(`Line ${lineNumber}: Unexpected comma in relation name.`)
         }
-        
+        else if (relationText.indexOf("#") !== -1) {
+            return fail(`Line ${lineNumber}: Unexpected # symbol in relation name.`)
+        }
+
         // --- Test for inappropriate whitespace in relation names ---
         if (lineNumber === 1) {
             if (/\s/.test(relationText[0])) {
@@ -118,7 +121,16 @@ export function parseRule(s: string): ParseResult {
             }
             
             const objectName = objectText.trim()
-            if (objectName[0] === objectName[0].toUpperCase()) {
+            if (objectName.indexOf("#") > 0) {
+                console.log(objectName)
+                console.log("FOUND AT ", objectName.indexOf("#"))
+                return fail(`Line ${lineNumber}: The # symbol can only be used as the first character of an object name.`)
+            }
+
+            if (objectName[0] === "#") { // constants start with #
+                objects.push({type: "constant", name: objectName})
+            }
+            else {
                 objects.push({type: "variable", name: objectName})
                  if (lineNumber === 1) {
                      unsafeVariables.add(objectName)
@@ -126,9 +138,6 @@ export function parseRule(s: string): ParseResult {
                  else {
                      unsafeVariables.delete(objectName)
                  }
-            }
-            else {
-                objects.push({type: "constant", name: objectName})
             }
         }
 
