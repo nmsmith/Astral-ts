@@ -144,6 +144,7 @@ app ("app", state,
                             class: "ruleTextArea",
                             value: toRefs(rule).rawText,
                             onkeydown: (event: KeyboardEvent) => {
+                                const el = (event.target as HTMLTextAreaElement)
                                 // Do basic autoformatting.
                                 // Note: execCommand() is needed to preserve the browser's undo
                                 // stack, and setTimeout() prevents a nested DOM update.
@@ -155,7 +156,19 @@ app ("app", state,
                                 else if (event.key === "Enter") {
                                     event.preventDefault()
                                     setTimeout(() =>
-                                        document.execCommand("insertText", false, "\n\t"), 0)
+                                        document.execCommand("insertText", false, "\n  "), 0)
+                                }
+                                // Disallow spaces next to an existing space, unless at the start of a line
+                                else if (
+                                    event.key === " " && !(
+                                        el.selectionStart >= 1 && rule.rawText[el.selectionStart-1] === "\n"
+                                    ) && !(
+                                        el.selectionStart > 1 && rule.rawText[el.selectionStart-2] === "\n"
+                                    ) && (
+                                        (el.selectionStart >= 1 && rule.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < rule.rawText.length && rule.rawText[el.selectionEnd] === " ")
+                                    )
+                                ) {
+                                    event.preventDefault()
                                 }
                             },
                             oninput: (event: Event) => {

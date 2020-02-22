@@ -90,22 +90,19 @@ export function parseRule(s: string): ParseResult {
             }
         }
         else {
-            if (!(/\t/.test(relationText[0]))) {
-                return fail(`Line ${lineNumber}: Line should start with a tab.`)
+            if (!(/^ {2}[^\s]/.test(relationText))) {
+                return fail(`Line ${lineNumber}: Line should start with exactly two spaces.`)
             }
-            else if (/\s/.test(relationText[1])) {
-                return fail(`Line ${lineNumber}: Unexpected whitespace before the relation name (after the tab).`)
-            }
-            else if (relationText.slice(1).trim() !== relationText.slice(1)) {
+            else if (relationText.slice(2).trim() !== relationText.slice(2)) {
                 return fail(`Line ${lineNumber}: Unexpected whitespace after relation name.`)
             }
         }
 
-        if (/\s\s/.test(relationText)) {
+        const relationName = relationText.trim()
+
+        if (/\s\s/.test(relationName)) {
             return fail(`Line ${lineNumber}: Unexpected double space. Words should be separated with a single space.`)
         }
-
-        const relationName = relationText.trim()
 
         // --- Test object names ---
         const objects: Obj[] = []
@@ -152,7 +149,7 @@ export function parseRule(s: string): ParseResult {
 
     // --- The rule was successfully parsed, but we need to check safety criteria
     if (unsafeVariables.size > 0) {
-        let errorText = "This rule is unsafe -- the following variables appear in the head but not the body: "
+        let errorText = "This rule is unsafe, as the following variables appear in the head but not the body: "
         let first = true
         unsafeVariables.forEach(variable => {
             if (first) {
