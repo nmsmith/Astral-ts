@@ -76,11 +76,6 @@ $standard-border-color: #aaaaaa;
     z-index: -1;
 }
 
-.premiseInsertionPoint {
-    @extend .insertionPoint;
-    height: 20px;
-}
-
 $box-shadow-color: #979797;
 $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 
@@ -89,7 +84,9 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 
 .rule {
+    width: 400px;
     flex-shrink: 0;
+    @extend .col;
     margin-left: $main-pad;
     margin-right: $main-pad;
     box-shadow: $standard-box-shadow;
@@ -101,7 +98,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 //     pointer-events: none;
 // }
 
-.ruleLabelBox {
+.ruleLabelBar {
     @extend .row;
     padding-left: 8px;
     padding-right: 4px;
@@ -113,6 +110,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 
 .ruleLabelText {
+    flex-grow: 1;
     font-size: 1.15em;
 }
 
@@ -133,59 +131,11 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     @extend .labelError;
 }
 
-.ruleContent {
-    @extend .col;
-    padding-left: 8px;
-    padding-right: 8px;
-}
-
-.ruleBody {
-    @extend .col;
-    padding-left: 16px;
-}
-
-.fact {
-    @extend .row;
-    padding-top: 8px;
-}
-
-.factText {
-    padding-top: 2px;
-    padding-bottom: 2px;
-    font-weight: bold;
-}
-
-.factComma {
-    @extend .factText;
-    margin-left: -1px;
-    padding-right: 4px;
-}
-
-.addObjectToFact {
-    @extend .insertionPoint;
-    width: 20px;
-}
-
-.factSpacingNarrow {
-    width: 1px;
-}
-
-.factSpacingMedium {
-    width: 3px;
-}
-
-.factSpacingWide {
-    width: 6px;
-}
-
-.labelForNothingOption {
-    color: #9b0000;
-}
-
-.labelForNothing {
-    @extend .labelError
-}
-
-.labelForRelation {
-    color: rgb(153, 0, 255);
+.ruleTextArea {
+    overflow-y: hidden;
+    resize: none;
+    padding: 6px;
+    font-family: monospace;
+    line-height: 140%;
+    tab-size: 2;
 }
