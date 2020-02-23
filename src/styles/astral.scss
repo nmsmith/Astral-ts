@@ -27,15 +27,25 @@ $standard-border-color: #aaaaaa;
     border-color: $standard-border-color;
 }
 
-.databaseView {
+.codeArea {
+    padding: 6px;
+    font-family: "Lucida Console", Monaco, monospace;
+    line-height: 140%;
+    font-size: 18px;
+}
+
+.graphView {
+    @extend .col;
+    @extend .codeArea;
     width: 200px;
-    margin-right: -40px;
     background-color: #ddddff;
 }
 
-.tempView {
-    @extend .col;
-    flex-grow: 1;
+.recursiveGroupComponent {
+    @extend .row;
+}
+.spacer {
+    width: 10px;
 }
 
 .ruleView {
@@ -84,7 +94,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 
 .rule {
-    width: 500px;
+    width: 1000px;
     flex-shrink: 0;
     @extend .col;
     margin-left: $main-pad;
@@ -132,17 +142,29 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     @extend .labelError;
 }
 
+.ruleTextDiv {
+    width: 60%;
+}
+
 .ruleTextArea {
+    @extend .codeArea;
+    box-sizing: border-box;
+    width: 100%;
     overflow-y: hidden;
+    border-style: none;
     resize: none;
-    padding: 6px;
-    font-family: "Lucida Console", Monaco, monospace;
-    line-height: 140%;
-    tab-size: 2;
-    font-size: 18px;
 }
 
 .errorText {
     padding: 4px;
     background-color: #ffbfbf;
+}
+
+.decompressionPane {
+    width: 40%;
+    @extend .col;
+    @extend .codeArea;
+    border-style: solid;
+    border-width: 0 0 0 1px;
+    border-color: $standard-border-color;
 }

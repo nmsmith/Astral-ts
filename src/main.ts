@@ -6,7 +6,7 @@ import { toRefs } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import { $if, $for, app, div, p, button, input, textarea, span } from "./libs/lib-view"
 import {parseRule} from "./parser"
-import {Rule} from "./semantics"
+import {Rule, relationDependencyGraph, Component, RecursiveGroup} from "./semantics"
 
 //#region  --- Essential & derived state ---
 
@@ -31,16 +31,48 @@ function RuleEditor(): RuleEditor {
 
 interface State {
     readonly rules: RuleEditor[]
+    readonly relationDepGraph: Component[]
+    readonly groupsWithInternalNegation: {errorText: string}[]
 }
 
 function createState(existingState?: State): WithDerivedProps<State> {
     const essentialState = existingState !== undefined ? existingState : {
         rules:
             [] as RuleEditor[],
+        // Derived state (to be overwritten):
+        relationDepGraph: [],
+        groupsWithInternalNegation: [],
     }
     return withDerivedProps<State>(essentialState, {
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
-        
+        relationDepGraph: state => {
+            const rawRules: Rule[] = []
+            state.rules.forEach(r => {
+                if (r.lastParsed !== null) rawRules.push(r.lastParsed.rule)
+            })
+            return relationDependencyGraph(rawRules)
+        },
+        groupsWithInternalNegation: state => {
+            const badGroups: {errorText: string}[] = []
+            state.relationDepGraph.forEach(component => {
+                if (component.type !== "recursiveGroup") return // try next component
+                for (const relation of component.relations) {
+                    for (const rule of state.rules) {
+                        if (rule.lastParsed !== null && rule.lastParsed.rule.head.relation === relation) {
+                            for (const fact of rule.lastParsed.rule.body) {
+                                if (fact.sign === "negative" && component.relations.has(fact.relation)) {
+                                    let errorText = ""
+                                    component.relations.forEach(r => errorText += r + ", ")
+                                    badGroups.push({errorText})
+                                    return // Move into next component
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            return badGroups
+        },
     })
 }
 
@@ -119,101 +151,124 @@ document.body.prepend(
 
 app ("app", state,
     div ({class: "view"}, [
-        div ({class: "databaseView"}),
-        div ({class: "tempView"}, [
-            div ({class: "ruleView"}, [
-                button ("", {
-                    class: "ruleInsertionPoint",
-                    onclick: () => newRule(0),
-                }),
-                $for (() => state.rules, rule => [
-                    div ({class: "rule"}, [
-                        div ({class: "ruleLabelBar"}, [
-                            input ({
-                                class: "ruleLabelText",
-                                autocomplete: "nope",
-                                autocapitalize: "off",
-                                value: toRefs(rule).label,
-                            }),
-                            button ("•••", {
-                                class: "ruleDragHandle",
-                                onclick: () => state.rules.removeAt(rule.$index),
-                            }),
+        div ({class: "graphView"}, [
+            $for (() => state.relationDepGraph, component => [
+                component.type === "node"
+                    ? p (component.relation, {class: "nodeComponent"})
+                    : div ({class: "recursiveGroupComponent"}, [
+                        span("⮕"),
+                        div({class: "spacer"}),
+                        $for (() => Array.from(component.relations).map(r => {return {relation: r}}), o => [
+                            span(o.relation + ","),
+                            div({class: "spacer"}),
                         ]),
-                        textarea ({
-                            class: "ruleTextArea",
-                            value: toRefs(rule).rawText,
-                            onkeydown: (event: KeyboardEvent) => {
-                                const el = (event.target as HTMLTextAreaElement)
-                                // React to vanilla key presses only
-                                if (!event.ctrlKey && !event.metaKey) {
-                                    // Do basic autoformatting.
-                                    // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
-                                    if (event.key === ",") {
-                                        event.preventDefault()
-                                        setTimeout(() =>
-                                            document.execCommand("insertText", false, ", "), 0)
-                                    }
-                                    else if (event.key === "Enter") {
-                                        event.preventDefault()
-                                        setTimeout(() =>
-                                            document.execCommand("insertText", false, "\n  "), 0)
-                                    }
-                                    else if (event.key === "-") {
-                                        event.preventDefault()
-                                        setTimeout(() =>
-                                            document.execCommand("insertText", false, "¬"), 0)
-                                    }
-                                    // Disallow spaces next to an existing space, unless at the start of a line
-                                    else if (
-                                        event.key === " " && !(
-                                            el.selectionStart >= 1 && rule.rawText[el.selectionStart-1] === "\n"
-                                        ) && !(
-                                            el.selectionStart > 1 && rule.rawText[el.selectionStart-2] === "\n"
-                                        ) && (
-                                            (el.selectionStart >= 1 && rule.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < rule.rawText.length && rule.rawText[el.selectionEnd] === " ")
-                                        )
-                                    ) {
-                                        event.preventDefault()
-                                    }
-                                }
-                            },
-                            oninput: (event: Event) => {
-                                const el = (event.target as HTMLTextAreaElement)
-                                const parseResult = parseRule(rule.rawText)
-                                if (parseResult.result === "success") {
-                                    rule.lastParsed = {
-                                        rawText: rule.rawText,
-                                        rule: parseResult.rule,
-                                    }
-                                    rule.errorText = null
-                                }
-                                else if (parseResult.result === "noRule") {
-                                    rule.lastParsed = null
-                                    rule.errorText = null
-                                }
-                                else {
-                                    rule.errorText = parseResult.reason
-                                }
-                                // resize the box to fit its contents
-                                el.style.height = "auto"
-                                el.style.height = el.scrollHeight + "px"
-                            },
+                      ]),
+            ]),
+        ]),
+        div ({class: "ruleView"}, [
+            $for (() => state.groupsWithInternalNegation, o => [
+                p (() => `The following recursive group has internal negation: ${o.errorText}`, {
+                    class: "errorText",
+                }),
+            ]),
+            button ("", {
+                class: "ruleInsertionPoint",
+                onclick: () => newRule(0),
+            }),
+            $for (() => state.rules, rule => [
+                div ({class: "rule"}, [
+                    div ({class: "ruleLabelBar"}, [
+                        input ({
+                            class: "ruleLabelText",
+                            autocomplete: "nope",
+                            autocapitalize: "off",
+                            value: toRefs(rule).label,
                         }),
-                        $if (() => rule.errorText !== null, {
-                            $then: () => [
-                                p (() => rule.errorText as string, {
-                                    class: "errorText",
-                                }),
-                            ],
-                            $else: () => [],
+                        button ("•••", {
+                            class: "ruleDragHandle",
+                            onclick: () => state.rules.removeAt(rule.$index),
                         }),
                     ]),
-                    button ("", {
-                        class: "ruleInsertionPoint",
-                        onclick: () => newRule(rule.$index+1),
-                    }),
+                    div ({class: "row"}, [
+                        div ({class: "ruleTextDiv"}, [
+                            textarea ({
+                                class: "ruleTextArea",
+                                value: toRefs(rule).rawText,
+                                onkeydown: (event: KeyboardEvent) => {
+                                    const el = (event.target as HTMLTextAreaElement)
+                                    // React to vanilla key presses only
+                                    if (!event.ctrlKey && !event.metaKey) {
+                                        // Do basic autoformatting.
+                                        // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
+                                        if (event.key === ",") {
+                                            event.preventDefault()
+                                            setTimeout(() =>
+                                                document.execCommand("insertText", false, ", "), 0)
+                                        }
+                                        else if (event.key === "Enter") {
+                                            event.preventDefault()
+                                            setTimeout(() =>
+                                                document.execCommand("insertText", false, "\n  "), 0)
+                                        }
+                                        else if (event.key === "-") {
+                                            event.preventDefault()
+                                            setTimeout(() =>
+                                                document.execCommand("insertText", false, "¬"), 0)
+                                        }
+                                        // Disallow spaces next to an existing space, unless at the start of a line
+                                        else if (
+                                            event.key === " " && !(
+                                                el.selectionStart >= 1 && rule.rawText[el.selectionStart-1] === "\n"
+                                            ) && !(
+                                                el.selectionStart > 1 && rule.rawText[el.selectionStart-2] === "\n"
+                                            ) && (
+                                                (el.selectionStart >= 1 && rule.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < rule.rawText.length && rule.rawText[el.selectionEnd] === " ")
+                                            )
+                                        ) {
+                                            event.preventDefault()
+                                        }
+                                    }
+                                },
+                                oninput: (event: Event) => {
+                                    const el = (event.target as HTMLTextAreaElement)
+                                    const parseResult = parseRule(rule.rawText)
+                                    if (parseResult.result === "success") {
+                                        rule.lastParsed = {
+                                            rawText: rule.rawText,
+                                            rule: parseResult.rule,
+                                        }
+                                        rule.errorText = null
+                                    }
+                                    else if (parseResult.result === "noRule") {
+                                        rule.lastParsed = null
+                                        rule.errorText = null
+                                    }
+                                    else {
+                                        rule.errorText = parseResult.reason
+                                    }
+                                    // resize the box to fit its contents
+                                    el.style.height = "auto"
+                                    el.style.height = el.scrollHeight + "px"
+                                },
+                            }),
+                            $if (() => rule.errorText !== null, {
+                                $then: () => [
+                                    p (() => rule.errorText as string, {
+                                        class: "errorText",
+                                    }),
+                                ],
+                                $else: () => [],
+                            }),
+                        ]),
+                        div ({class: "decompressionPane"}, [
+                            p ("likes(#bob, #jill)"),
+                        ]),
+                    ]),
                 ]),
+                button ("", {
+                    class: "ruleInsertionPoint",
+                    onclick: () => newRule(rule.$index+1),
+                }),
             ]),
             div ({class: "separator"}),
             div ({class: "viewBottomPadding"}),

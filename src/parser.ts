@@ -111,7 +111,7 @@ export function parseRule(s: string): ParseResult {
             }
         }
 
-        const relationName = trimmedRel.split("¬").slice(-1)[0]
+        const relationName = trimmedRel.split("¬ ").slice(-1)[0]
         const sign: "positive" | "negative" = negPosition >= 0 ? "negative" : "positive"
 
         if (/\s\s/.test(relationName)) {
