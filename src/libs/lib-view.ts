@@ -904,6 +904,30 @@ export function br<Keys extends keyof HTMLBRElement>(
     return element("br", attributes, [])
 }
 
+export function h1<Keys extends keyof HTMLHeadingElement>(
+    textContent: string | DerivedAttribute<string>,
+    attributes: AttributeSpec<Keys, HTMLParagraphElement> = {} as any,
+): HTMLParagraphElement {
+    Object.assign(attributes, {textContent: textContent})
+    return element("h1", attributes, [])
+}
+
+export function h2<Keys extends keyof HTMLHeadingElement>(
+    textContent: string | DerivedAttribute<string>,
+    attributes: AttributeSpec<Keys, HTMLParagraphElement> = {} as any,
+): HTMLParagraphElement {
+    Object.assign(attributes, {textContent: textContent})
+    return element("h2", attributes, [])
+}
+
+export function h3<Keys extends keyof HTMLHeadingElement>(
+    textContent: string | DerivedAttribute<string>,
+    attributes: AttributeSpec<Keys, HTMLParagraphElement> = {} as any,
+): HTMLParagraphElement {
+    Object.assign(attributes, {textContent: textContent})
+    return element("h3", attributes, [])
+}
+
 export function p<Keys extends keyof HTMLParagraphElement>(
     textContent: string | DerivedAttribute<string>,
     attributes: AttributeSpec<Keys, HTMLParagraphElement> = {} as any,
