@@ -37,17 +37,8 @@ $standard-border-color: #aaaaaa;
 .graphView {
     @extend .col;
     @extend .codeArea;
-    width: 700px;
+    width: 200px;
     background-color: #ddddff;
-}
-
-.graphRoot {
-    width: 100%;
-    height: 700px;
-    background-color: #ffbfbf;
-    border-style: solid;
-    border-width: 1px;
-    border-color: $standard-border-color;
 }
 
 .recursiveGroupComponent {
@@ -58,7 +49,6 @@ $standard-border-color: #aaaaaa;
 }
 
 .ruleView {
-    flex-grow: 1;
     @extend .col;
 // create a stacking context so can we render insertion points behind rule cards
     position: relative;
@@ -104,7 +94,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 
 .rule {
-    width: 700px;
+    width: 1000px;
     flex-shrink: 0;
     @extend .col;
     margin-left: $main-pad;
@@ -118,41 +108,24 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 //     pointer-events: none;
 // }
 
-.ruleSummaryBar {
+.ruleLabelBar {
     @extend .row;
+    padding-left: 8px;
+    padding-right: 4px;
+    padding-top: 6px;
+    padding-bottom: 6px;
     border-bottom-style: solid;
     border-width: 1px;
     border-color: $standard-border-color;
 }
 
-$ruleLeftColumnWidth: 100px;
-
-.ruleSummaryBarPadding {
-    padding-left: 8px;
-    padding-right: 4px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-}
-
-.ruleType {
-    @extend .ruleSummaryBarPadding;
-    box-sizing: border-box;
-    border-style: solid;
-    border-width: 0 1px 0 0;
-    border-color: $standard-border-color;
-    background-color: #9dffaa;
-    width: $ruleLeftColumnWidth;
-}
-
 .ruleLabelText {
-    @extend .ruleSummaryBarPadding;
     flex-grow: 1;
     font-size: 1.15em;
     border-style: none;
 }
 
 .ruleDragHandle {
-    @extend .ruleSummaryBarPadding;
     @extend .unstyledButton;
     @extend .noSelect;
     color: #414141;
@@ -170,29 +143,7 @@ $ruleLeftColumnWidth: 100px;
 }
 
 .ruleTextDiv {
-    flex-grow: 1;
-}
-
-.timeColumn {
-    flex-grow: 0;
-    flex-shrink: 0;
-    @extend .col;
-    @extend .codeArea;
-    border-style: solid;
-    border-width: 0 1px 0 0;
-    border-color: $standard-border-color;
-    background-color: #e4e4e4;
-    width: $ruleLeftColumnWidth;
-    box-sizing: border-box;
-}
-
-.relationText {
-    white-space: pre;
-    font-size: 0.8em;
-}
-
-.objectText {
-    text-decoration: underline;
+    width: 60%;
 }
 
 .ruleTextArea {
@@ -210,8 +161,7 @@ $ruleLeftColumnWidth: 100px;
 }
 
 .decompressionPane {
-    flex-shrink: 0;
-    width: 10%;
+    width: 40%;
     @extend .col;
     @extend .codeArea;
     border-style: solid;
