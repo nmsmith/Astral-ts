@@ -231,10 +231,22 @@ function updateCytoElements<NewStuff extends {readonly rule: Rule}>(
         // Add a graph node for the rule head
         const elementsToAdd: cytoscape.ElementDefinition[] = []
         const headID = cytoID++
-        elementsToAdd.push({ data: { id: headID.toString(), parent: newStuff.rule.head.relation } })
+        const head = newStuff.rule.head
+        const argList = head.objects.map(x => x.name).reduce((prev, curr) => `${prev}, ${curr}`)
+        elementsToAdd.push({ data: {
+            id: headID.toString(),
+            parent: head.relation,
+            label: `${head.relation}\n(${argList})`,
+        } })
         for (const premise of newStuff.rule.body) {
             // Add an edge for each premise
-            elementsToAdd.push({ data: { id: (cytoID++).toString(), source: premise.relation, target: headID }})
+            const argList = premise.objects.map(x => x.name).reduce((prev, curr) => `${prev}, ${curr}`)
+            elementsToAdd.push({ data: {
+                id: (cytoID++).toString(),
+                source: premise.relation,
+                target: headID,
+                label: `${premise.relation} (${argList})`,
+            }})
         }
         let cytoElements = cyto.add(elementsToAdd)
         // Store the attached elements so they can be deleted later
@@ -451,28 +463,35 @@ cyto = cytoscape({
     },
     style: [ // the stylesheet for the graph
         {
-            selector: "node",
+            selector: "node[label]",
             style: {
-                "background-color": "#666",
-                "label": "data(id)",
+                "background-color": "#888",
+                "label": "data(label)",
+                "text-wrap": "wrap",
+                "text-valign": "center",
+                "width": "label",
+                "height": 18,
+                "shape": "rectangle",
+                "text-margin-y": -7,
             },
         },
         {
             selector: "edge",
             style: {
-                "width": 3,
-                //"line-color": "#ccc",
+                "label": "data(label)",
+                "width": 18,
+                "line-color": "#ffffff",
                 //"target-arrow-color": "#ccc",
-                "curve-style": "bezier",
+                "curve-style": "bezier",//"unbundled-bezier",
                 "target-arrow-shape": "triangle",
-                "arrow-scale": 2,
+                "arrow-scale": 0.75,
             },
         },
         {
             selector: ".relation",
             style: {
                 "background-color": "#ffffff",
-                "label": "data(id)",
+                //"label": "data(id)",
             },
         },
     ],
@@ -491,7 +510,5 @@ state.rules.forEach(rule => {
 })
 // Lay out these added nodes
 cyto.layout(layoutType).run()
-
-console.log("Cytoscape instance: ", cyto)
 
 //#endregion
