@@ -511,15 +511,23 @@ interface DerivedFromChoice<T> {
 export type WithIndex<T extends object> = T & {$index: number}
 
 interface DerivedFromSequence<T, I extends object> {
+    type: "fromSequence"
     items: () => readonly I[]
     f: (item: WithIndex<I>) => T
 }
 
+interface DerivedFromSet<T, I, D> {
+    type: "fromSet"
+    items: () => Map<I, D>
+    f: (item: I, data: D) => T
+}
+
 export type DerivedAttribute<T> = (() => T) | DerivedFromChoice<T>
 
-export type DerivedDocFragment<I extends object = object> =
+export type DerivedDocFragment =
       DerivedFromChoice<HTMLElement[]>
-    | DerivedFromSequence<HTMLElement[], I>
+    | DerivedFromSequence<HTMLElement[], any>
+    | DerivedFromSet<HTMLElement[], any, any>
 
 function isFunction(value: unknown): value is Function {
     return typeof value === "function"
@@ -530,7 +538,11 @@ function isDerivedFromChoice(value: unknown): value is DerivedFromChoice<unknown
 }
 
 function isDerivedFromSequence(value: unknown): value is DerivedFromSequence<unknown, any> {
-    return typeof (value as DerivedFromSequence<unknown, any>).items !== "undefined"
+    return (value as DerivedFromSequence<unknown, any>).type === "fromSequence"
+}
+
+function isDerivedFromSet(value: unknown): value is DerivedFromSet<unknown, any, any> {
+    return (value as DerivedFromSet<unknown, any, any>).type === "fromSet"
 }
 
 export function $if<T>(
@@ -549,7 +561,24 @@ export function $for<I extends object>(
     items: () => readonly I[],
     f: (item: WithIndex<I>) => HTMLElement[],
 ): DerivedFromSequence<HTMLElement[], I> {
-    return {items: items, f: f}
+    return {type: "fromSequence", items: items, f: f}
+}
+
+/**
+ * $set is for specifying a set of DOM nodes where their insertion order does not
+ * affect the visual outcome (e.g. because the nodes have position: absolute).
+ * This function has an optimization over $for: items are never removed from
+ * the DOM during an update, unless they have been removed from the input Map.
+ * This means elements will never be blurred() accidentally, and their position
+ * can be animated using CSS animations.
+ * The input is a Map rather than a Set so that the user has the freedom to
+ * construct new input objects whilst maintaining the same key identity over time.
+ */
+export function $set<I,D>(
+    items: () => Map<I,D>,
+    f: (item: I, data: D) => HTMLElement[],
+): DerivedFromSet<HTMLElement[], I, D> {
+    return {type: "fromSet", items: items, f: f}
 }
 
 // Every node that is permanently removed from the DOM must be cleaned up via this function
@@ -601,8 +630,18 @@ function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
 declare global {
     interface Element {
         "class": string
+        // CSS properties that can be made dynamic.
+        // These property names must also be put into the "cssPropertiesPx" set.
+        "left": number
+        "right": number
+        "top": number
+        "bottom": number
+        "width": number
+        "height": number
     }
 }
+
+const cssPropertiesPx = new Set(["left", "right", "top", "bottom", "width", "height"])
 
 // Defines a record of properties that can be assigned to an Element. If the property
 // is an EventHandler, then it must be a plain old function. Otherwise, the property
@@ -634,6 +673,14 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
     el: Effectful<El>,
     assignment: AttributeSpec<AssKeys, El>,
 ): Effectful<El> {
+    function assignKeyValue(key: string, value: unknown): void {
+        if (cssPropertiesPx.has(key)) {
+            el.style[key as any] = `${value}px`
+        }
+        else {
+            el[(key as AssKeys)] = value as any
+        }
+    }
     function logAttributeChange(key: string, value: unknown): void {
         logChangeStart(el)
         console.log(`  %c${key} = "${value}"`, attributeChangedStyle)
@@ -647,14 +694,14 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
 
         if (isRef(attrValue)) {
             scheduleDOMUpdate(el, () => {
-                el[(key as AssKeys)] = attrValue.value as any
+                assignKeyValue(key, attrValue.value)
                 logAttributeChange(key, attrValue.value)
             })
         }
         else if (!eventHandlerNames.has(key) && isFunction(attrValue)) { // is derived value
             scheduleDOMUpdate(el, () => {
                 const newValue = attrValue()
-                el[(key as AssKeys)] = newValue as any
+                assignKeyValue(key, newValue)
                 logAttributeChange(key, newValue)
             })
         }
@@ -668,12 +715,12 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
                 const conditionNow = condition()
                 if (conditionNow === true && conditionPrevious !== true) {
                     const newValue = $then()
-                    el[(key as AssKeys)] = newValue as any
+                    assignKeyValue(key, newValue)
                     logAttributeChange(key, newValue)
                 }
                 else if (conditionNow === false && conditionPrevious !== false) {
                     const newValue = $else()
-                    el[(key as AssKeys)] = newValue as any
+                    assignKeyValue(key, newValue)
                     logAttributeChange(key, newValue)
                 }
 
@@ -681,14 +728,14 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
             })
         }
         else {
-            el[(key as AssKeys)] = attrValue as any
+            assignKeyValue(key, attrValue)
         }
     }
     return el
 }
 
 export type HTMLChildren =
-    (HTMLElement | DerivedDocFragment<any>)[]
+    (HTMLElement | DerivedDocFragment)[]
 
 function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): void {
     function putFragmentMarker(): Element {
@@ -764,94 +811,134 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
             const items = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).items
             const f = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).f
 
-            // Temp benchmarking
-            const childrenAttachedHere: Effectful<HTMLElement>[] = []
+            scheduleDOMUpdate(el, () => {
+                const fragment = document.createDocumentFragment()
+                // Keep track of whether something changed. Something should ALWAYS change during a run.
+                // If this is our first run (or we have no children), consider this to be a change.
+                let somethingChanged = elementsCache.size === 0
+                const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
+                const newElementsForLogging: Effectful<HTMLElement>[] = []
+                // For each item, determine whether new or already existed
+                items().forEach((item, index) => {
+                    const existingElements = elementsCache.get(item)
+                    if (existingElements === undefined) {
+                        somethingChanged = true
+                        // Associate the item with a reactive index (it may be moved later)
+                        const itemWithIndex = item as WithIndex<object>
+                        itemWithIndex.$index = index
+                        // Item is new; create and cache its DOM elements
+                        const newElements = f(itemWithIndex)
+                        pauseTracking()
+                        fragment.append(...newElements)
+                        resumeTracking()
+                        newElementsCache.set(item, newElements)
+                        newElementsForLogging.push(...newElements)
+                    }
+                    else { // Item is old; use its existing elements
+                        // Update the item's index
+                        if ((item as WithIndex<object>).$index !== index) {
+                            (item as WithIndex<object>).$index = index
+                            somethingChanged = true
+                        }
+                        // Need to pause tracking since moving elements can
+                        // cause onBlur() to be called.
+                        pauseTracking()
+                        fragment.append(...existingElements)
+                        resumeTracking()
+                        // Put the item in the new cache
+                        elementsCache.delete(item)
+                        newElementsCache.set(item, existingElements)
+                    }
+                })
+
+                // Log each new item that was added
+                if (newElementsForLogging.length > 0) {
+                    logChangeStart(el)
+                    newElementsForLogging.forEach(logAdd)
+                }
+
+                // Remove the elements for the items which were removed
+                if (elementsCache.size > 0) {
+                    somethingChanged = true
+                    logChangeStart(el)
+                    elementsCache.forEach(oldElements => {
+                        oldElements.forEach(remove)
+                    })
+                }
+                
+                if (!somethingChanged) {
+                    console.log(items())
+                    console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
+                    console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for body.")
+                }
+
+                // Attach the new nodes
+                pauseTracking()
+                el.insertBefore(fragment, marker)
+                resumeTracking()
+                elementsCache = newElementsCache
+            })
+        }
+        else if (isDerivedFromSet(child)) {
+            const marker = putFragmentMarker()
+            let elementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
+
+            const items = (child as DerivedFromSet<Effectful<HTMLElement>[], any, any>).items
+            const f = (child as DerivedFromSet<Effectful<HTMLElement>[], any, any>).f
 
             scheduleDOMUpdate(el, () => {
                 const fragment = document.createDocumentFragment()
-
-                const createAllNewChildren = false
-                if (createAllNewChildren) { // FOR BENCHMARKING ONLY
-                    // remove
-                    if (childrenAttachedHere.length > 0) logChangeStart(el)
-                    childrenAttachedHere.forEach(remove)
-                    childrenAttachedHere.length = 0
-                    // add
-                    items().forEach((item, index) => {
-                        const itemWithIndex = item as WithIndex<object>
-                        itemWithIndex.$index = index
-                        childrenAttachedHere.push(...f(itemWithIndex))
-                    })
-                    if (childrenAttachedHere.length > 0) logChangeStart(el)
-                    childrenAttachedHere.forEach(child => fragment.appendChild(child))
-                    el.insertBefore(fragment, marker)
-                }
-                else {
-                    // Keep track of whether something changed. Something should ALWAYS change during a run.
-                    // If this is our first run (or we have no children), consider this to be a change.
-                    let somethingChanged = elementsCache.size === 0
-                    const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
-                    const newElementsForLogging: Effectful<HTMLElement>[] = []
-                    // For each item, determine whether new or already existed
-                    items().forEach((item, index) => {
-                        const existingElements = elementsCache.get(item)
-                        if (existingElements === undefined) {
-                            somethingChanged = true
-                            // Associate the item with a reactive index (it may be moved later)
-                            const itemWithIndex = item as WithIndex<object>
-                            itemWithIndex.$index = index
-                            // Item is new; create and cache its DOM elements
-                            const newElements = f(itemWithIndex)
-                            pauseTracking()
-                            fragment.append(...newElements)
-                            resumeTracking()
-                            newElementsCache.set(item, newElements)
-                            newElementsForLogging.push(...newElements)
-                        }
-                        else { // Item is old; use its existing elements
-                            // Update the item's index
-                            if ((item as WithIndex<object>).$index !== index) {
-                                (item as WithIndex<object>).$index = index
-                                somethingChanged = true
-                            }
-                            // Need to pause tracking since moving elements can
-                            // cause onBlur() to be called.
-                            pauseTracking()
-                            fragment.append(...existingElements)
-                            resumeTracking()
-                            // Put the item in the new cache
-                            elementsCache.delete(item)
-                            newElementsCache.set(item, existingElements)
-                        }
-                    })
-
-                    // Log each new item that was added
-                    if (newElementsForLogging.length > 0) {
-                        logChangeStart(el)
-                        newElementsForLogging.forEach(logAdd)
-                    }
-
-                    // Remove the elements for the items which were removed
-                    if (elementsCache.size > 0) {
+                // Keep track of whether something changed. Something should ALWAYS change during a run.
+                // If this is our first run (or we have no children), consider this to be a change.
+                let somethingChanged = elementsCache.size === 0
+                const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
+                const newElementsForLogging: Effectful<HTMLElement>[] = []
+                // For each item, determine whether new or already existed
+                items().forEach((value, key) => {
+                    const existingElements = elementsCache.get(key)
+                    if (existingElements === undefined) {
                         somethingChanged = true
-                        logChangeStart(el)
-                        elementsCache.forEach(oldElements => {
-                            oldElements.forEach(remove)
-                        })
+                        // Item is new; create and cache its DOM elements
+                        const newElements = f(key, value)
+                        pauseTracking()
+                        fragment.append(...newElements)
+                        resumeTracking()
+                        newElementsCache.set(key, newElements)
+                        newElementsForLogging.push(...newElements)
                     }
-                    
-                    if (!somethingChanged) {
-                        console.log(items())
-                        console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
-                        console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for body.")
+                    else { // Item is old; don't change it
+                        // Put the item in the new cache
+                        elementsCache.delete(key)
+                        newElementsCache.set(key, existingElements)
                     }
+                })
 
-                    // Attach the new nodes
-                    pauseTracking()
-                    el.insertBefore(fragment, marker)
-                    resumeTracking()
-                    elementsCache = newElementsCache
+                // Log each new item that was added
+                if (newElementsForLogging.length > 0) {
+                    logChangeStart(el)
+                    newElementsForLogging.forEach(logAdd)
                 }
+
+                // Remove the elements for the items which were removed
+                if (elementsCache.size > 0) {
+                    somethingChanged = true
+                    logChangeStart(el)
+                    elementsCache.forEach(oldElements => {
+                        oldElements.forEach(remove)
+                    })
+                }
+                
+                if (!somethingChanged) {
+                    console.log(items())
+                    console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
+                    console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for body.")
+                }
+
+                // Attach the new nodes
+                pauseTracking()
+                el.insertBefore(fragment, marker)
+                resumeTracking()
+                elementsCache = newElementsCache
             })
         }
         // We have a non-reactive (static) child
@@ -942,6 +1029,16 @@ export function span<Keys extends keyof HTMLParagraphElement>(
 ): HTMLParagraphElement {
     Object.assign(attributes, {textContent: textContent})
     return element("span", attributes, [])
+}
+
+export function list<KeysL extends keyof HTMLOListElement, KeysI extends keyof HTMLLIElement>(
+    listAttributes: AttributeSpec<KeysL, HTMLOListElement>,
+    listItemAttributes: AttributeSpec<KeysI, HTMLLIElement>,
+    items: HTMLElement[],
+): HTMLOListElement {
+    const htmlItems: HTMLElement[] = []
+    items.forEach(item => htmlItems.push(element("li", listItemAttributes, [item])))
+    return element("ol", listAttributes, htmlItems)
 }
 
 export function button<Keys extends keyof HTMLButtonElement>(
