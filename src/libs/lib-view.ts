@@ -516,10 +516,10 @@ interface DerivedFromSequence<T, I extends object> {
     f: (item: WithIndex<I>) => T
 }
 
-interface DerivedFromSet<T, I, D> {
+interface DerivedFromSet<T, I> {
     type: "fromSet"
-    items: () => Map<I, D>
-    f: (item: I, data: D) => T
+    items: () => Set<I>
+    f: (item: I) => T
 }
 
 export type DerivedAttribute<T> = (() => T) | DerivedFromChoice<T>
@@ -527,22 +527,22 @@ export type DerivedAttribute<T> = (() => T) | DerivedFromChoice<T>
 export type DerivedDocFragment =
       DerivedFromChoice<HTMLElement[]>
     | DerivedFromSequence<HTMLElement[], any>
-    | DerivedFromSet<HTMLElement[], any, any>
+    | DerivedFromSet<HTMLElement[], any>
 
 function isFunction(value: unknown): value is Function {
     return typeof value === "function"
 }
 
 function isDerivedFromChoice(value: unknown): value is DerivedFromChoice<unknown> {
-    return typeof (value as DerivedFromChoice<unknown>).condition !== "undefined"
+    return (value as DerivedFromChoice<unknown>).condition !== undefined
 }
 
 function isDerivedFromSequence(value: unknown): value is DerivedFromSequence<unknown, any> {
     return (value as DerivedFromSequence<unknown, any>).type === "fromSequence"
 }
 
-function isDerivedFromSet(value: unknown): value is DerivedFromSet<unknown, any, any> {
-    return (value as DerivedFromSet<unknown, any, any>).type === "fromSet"
+function isDerivedFromSet(value: unknown): value is DerivedFromSet<unknown, any> {
+    return (value as DerivedFromSet<unknown, any>).type === "fromSet"
 }
 
 export function $if<T>(
@@ -568,16 +568,14 @@ export function $for<I extends object>(
  * $set is for specifying a set of DOM nodes where their insertion order does not
  * affect the visual outcome (e.g. because the nodes have position: absolute).
  * This function has an optimization over $for: items are never removed from
- * the DOM during an update, unless they have been removed from the input Map.
+ * the DOM during an update, unless they have been removed from the input Set.
  * This means elements will never be blurred() accidentally, and their position
  * can be animated using CSS animations.
- * The input is a Map rather than a Set so that the user has the freedom to
- * construct new input objects whilst maintaining the same key identity over time.
  */
-export function $set<I,D>(
-    items: () => Map<I,D>,
-    f: (item: I, data: D) => HTMLElement[],
-): DerivedFromSet<HTMLElement[], I, D> {
+export function $set<I>(
+    items: () => Set<I>,
+    f: (item: I) => HTMLElement[],
+): DerivedFromSet<HTMLElement[], I> {
     return {type: "fromSet", items: items, f: f}
 }
 
@@ -599,7 +597,7 @@ function cleanUp(node: Effectful<HTMLElement>): void {
 // Update the DOM after executing the given state update function.
 let updateNumber = 0
 let midUpdate = false
-function thenUpdateDOM(eventName: string, stateUpdate: Function): Function {
+export function defineDOMUpdate(stateUpdate: Function): Function {
     return (...args: unknown[]): void => {
         const event = args[0] as Event
         console.log(`%cDOM update ${++updateNumber}`, updateMsgStyle)
@@ -883,8 +881,8 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
             const marker = putFragmentMarker()
             let elementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
 
-            const items = (child as DerivedFromSet<Effectful<HTMLElement>[], any, any>).items
-            const f = (child as DerivedFromSet<Effectful<HTMLElement>[], any, any>).f
+            const items = (child as DerivedFromSet<Effectful<HTMLElement>[], any>).items
+            const f = (child as DerivedFromSet<Effectful<HTMLElement>[], any>).f
 
             scheduleDOMUpdate(el, () => {
                 const fragment = document.createDocumentFragment()
@@ -894,12 +892,12 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                 const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
                 const newElementsForLogging: Effectful<HTMLElement>[] = []
                 // For each item, determine whether new or already existed
-                items().forEach((value, key) => {
+                items().forEach(key => {
                     const existingElements = elementsCache.get(key)
                     if (existingElements === undefined) {
                         somethingChanged = true
                         // Item is new; create and cache its DOM elements
-                        const newElements = f(key, value)
+                        const newElements = f(key)
                         pauseTracking()
                         fragment.append(...newElements)
                         resumeTracking()
@@ -963,7 +961,7 @@ export function element<Keys extends keyof El, El extends HTMLElement>(
     // Ensure that DOM events trigger DOM updates after running
     for (const key in attributes) {
         if (eventHandlerNames.has(key)) {
-            attributes[key] = thenUpdateDOM(key, attributes[key] as any) as any
+            attributes[key] = defineDOMUpdate(attributes[key] as any) as any
         }
     }
     // Finish constructing the element

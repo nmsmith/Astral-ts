@@ -34,56 +34,32 @@ $standard-border-color: #aaaaaa;
     font-size: 18px;
 }
 
-.graphView {
-    @extend .col;
-    @extend .codeArea;
-    width: 200px;
-    background-color: #ddddff;
-}
-
-.recursiveGroupComponent {
-    @extend .row;
-}
 .spacer {
     width: 10px;
 }
 
-.ruleView {
+.ideaList {
     @extend .col;
-// create a stacking context so can we render insertion points behind rule cards
+    line-height: 24px;
+}
+
+.listItem {
+    @extend .row;
+}
+
+.listItem:before {
+    content: "• ";
+    white-space: pre;
+}
+
+.ruleView {
+// create an origin for child "absolute" positioning
     position: relative;
-    z-index: 1;
 }
 
 .unstyledButton {
     border-style: none;
     background-color: #ffffff00;
-}
-
-.insertionPoint {
-    @extend .unstyledButton;
-    flex-shrink: 0;
-    transition: background-color 0.1s;
-}
-
-// only highlight if the device actually has hover
-@media(hover: hover) {
-    .insertionPoint:hover {
-        background-color: #ffefbc;
-    }
-}
-
-// highlight the button when it is tab-focused
-.insertionPoint:focus {
-    background-color: #ffefbc;
-}
-
-.ruleInsertionPoint {
-    @extend .insertionPoint;
-    height: 20px;
-// create a stacking context so can we render behind rule cards
-    position: relative;
-    z-index: -1;
 }
 
 $box-shadow-color: #979797;
@@ -92,9 +68,9 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 .labelError {
     background-color: #ffbfbf;
 }
-
 .rule {
-    width: 1000px;
+    position: absolute;
+    width: 500px;
     flex-shrink: 0;
     @extend .col;
     margin-left: $main-pad;
@@ -102,6 +78,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     box-shadow: $standard-box-shadow;
     align-self: flex-start;
     background-color: white;
+    transition-duration: 0.3s; // for movement animation
 }
 
 // .beingDragged {
@@ -142,8 +119,9 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     @extend .labelError;
 }
 
-.ruleTextDiv {
-    width: 60%;
+.ruleTextWithErrors {
+    @extend .col;
+    width: 100%;
 }
 
 .ruleTextArea {

@@ -1,61 +1,78 @@
 export type Obj = {type: "constant", name: string} | {type: "variable", name: string}
 
-export interface Fact {
+// We store just the NAME of the relation in the atoms,
+// so that the parser knows what to produce. We later
+// map these names to an actual Relation type.
+export interface Atom {
+    relationName: string
+    objects: Obj[]
+}
+
+export interface Literal extends Atom {
     readonly sign: "positive" | "negative"
-    readonly relation: string
-    readonly objects: Obj[]
+}
+
+export type Component = Set<Relation>
+
+export interface Relation {
+    readonly name: string
+    rules: Set<Rule>
 }
 
 export interface Rule {
-    readonly head: Fact
-    readonly body: Fact[]
+    readonly head: Atom
+    readonly body: Literal[]
 }
 
-export type SingleNode = {type: "node", relation: string}
+export interface RuleGraphInfo {
+    readonly rules: Set<Rule>
+    readonly relations: Map<string, Relation>
+    readonly components: Map<Relation, Component>
+}
 
-export type RecursiveGroup = {type: "recursiveGroup", relations: Set<string>}
-
-export type Component =
-      SingleNode
-    | RecursiveGroup
-
-// This constructs a dependency graph of all the strongly connected components
-// in the given set of relations. We call the non-trivial components "recursive groups".
-// The components are returned in a reverse topological order. We use Tarjan's algorithm to
-// do this. Because of the way rules are defined, we technically traverse all edges "backwards".
-export function relationDependencyGraph(rules: Rule[]): Component[] {
-    // Because a relation may be defined across multiple rules,
-    // we first need to group all rules for a relation together.
-    const nodes = new Map<string, Fact[][]>()
+// We take the implicitly defined rule graph as input, analyse its structure, and return
+// the set of relations and strongly connected components as output.
+// We use Tarjan's algorithm to identify the components. Because of the
+// way rules are defined, we technically traverse all edges "backwards".
+//
+// It's quite challenging to compute strongly connected components incrementally,
+// so I don't attempt to do this right now. I just reconstruct all information every
+// time the set of rules changes:
+// https://cs.stackexchange.com/questions/96424/incremental-strongly-connected-components
+export function analyseRuleGraph(rules: Set<Rule>): RuleGraphInfo {
+    // Find all the relations defined in the DB
+    const relations = new Map<string, Relation>()
     for (const rule of rules) {
-        const entry = nodes.get(rule.head.relation)
+        const entry = relations.get(rule.head.relationName)
         if (entry === undefined) {
-            nodes.set(rule.head.relation, [rule.body])
+            relations.set(rule.head.relationName, {
+                name: rule.head.relationName,
+                rules: new Set<Rule>([rule]),
+            })
         }
-        else {
-            entry.push(rule.body)
-        }
+        else entry.rules.add(rule)
     }
     // For keeping track of the "depth" at which we saw a node in the active call stack.
     const depths = new Map<string, number>()
-    const visitedStack: string[] = []
-    const components: Component[] = []
+    const visitedStack: Relation[] = []
+    const components = new Map<Relation, Component>()
 
-    function tarjan(myDepth: number, nodeName: string): number {
-        depths.set(nodeName, myDepth)
-        visitedStack.push(nodeName)
-        const successors = nodes.get(nodeName)
+    function tarjan(myDepth: number, relationName: string): number {
+        depths.set(relationName, myDepth)
+        const relation = relations.get(relationName) as Relation
+        visitedStack.push(relation)
+        const successors = relation.rules
         let lowLink = myDepth
         // Track whether this connected component is trivial (one node, no cycles),
         // or whether there's a cycle.
         let cycleFound = false
         if (successors !== undefined) {
-            for (const premises of successors) {
-                for (const fact of premises) {
-                    const itsDepth = depths.get(fact.relation)
+            for (const rule of successors) {
+                for (const fact of rule.body) {
+                    const itsDepth = depths.get(fact.relationName)
                     if (itsDepth === undefined) {
                         // It's not yet visited
-                        const itsLowLink = tarjan(myDepth + 1, fact.relation)
+                        const itsLowLink = tarjan(myDepth + 1, fact.relationName)
                         if (itsLowLink <= myDepth) {
                             // It's part of the same connected component as me
                             lowLink = Math.min(lowLink, itsLowLink)
@@ -80,24 +97,25 @@ export function relationDependencyGraph(rules: Rule[]): Component[] {
         }
 
         if (lowLink === myDepth) {
-            // This node started a connected component.
+            // This node started a strongly connected component.
+            const component = new Set<Relation>()
             if (cycleFound) {
                 // Gather all the other nodes.
-                const component = new Set<string>()
-                let n: string
+                let rel: Relation
                 do {
-                    n = visitedStack.pop() as string
-                    depths.set(n, NaN)
-                    component.add(n)
+                    rel = visitedStack.pop() as Relation
+                    depths.set(rel.name, NaN)
+                    component.add(rel)
+                    components.set(rel, component)
                 }
-                while (n !== nodeName)
-                components.push({type: "recursiveGroup", relations: component})
+                while (rel !== relation)
             }
             else {
                 // The current node is the whole component.
-                const n = visitedStack.pop() as string
-                depths.set(n, NaN)
-                components.push({type: "node", relation: n})
+                const rel = visitedStack.pop() as Relation
+                depths.set(rel.name, NaN)
+                component.add(rel)
+                components.set(rel, component)
             }
         }
         
@@ -105,11 +123,11 @@ export function relationDependencyGraph(rules: Rule[]): Component[] {
     }
 
     // Start a depth-first search from each yet-to-be-visited node
-    for (const node of nodes.keys()) {
-        if (depths.get(node) === undefined) {
-            tarjan(0, node)
+    for (const relName of relations.keys()) {
+        if (depths.get(relName) === undefined) {
+            tarjan(0, relName)
         }
     }
 
-    return components
+    return { rules, relations, components }
 }

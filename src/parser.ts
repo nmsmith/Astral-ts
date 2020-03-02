@@ -1,4 +1,4 @@
-import {Obj, Fact, Rule} from "./semantics"
+import {Obj, Atom, Literal, Rule} from "./semantics"
 
 export type ParseResult =
     {result: "failure", reason: string}
@@ -15,8 +15,8 @@ export function parseRule(s: string): ParseResult {
     }
 
     // Rule head and body to be constructed
-    let head: Fact | undefined = undefined
-    const body: Fact[] = []
+    let head: Atom | undefined = undefined
+    const body: Literal[] = []
     // Track potentially-unsafe variable names to check rule safety.
     // Add them to the set if they're seen in the rule head or a negated atom.
     const potUnsafeVariables: Set<string> = new Set()
@@ -155,12 +155,11 @@ export function parseRule(s: string): ParseResult {
             }
         }
 
-        const fact = {sign, relation: relationName, objects}
         if (lineNumber === 1) {
-            head = fact
+            head = {relationName, objects}
         }
         else {
-            body.push(fact)
+            body.push({sign, relationName, objects})
         }
     }
 
@@ -187,5 +186,5 @@ export function parseRule(s: string): ParseResult {
         return fail("This rule is unsafe, because it refers to an implicit time variable that does not appear in the body.")
     }
 
-    return {result: "success", rule: {head: head as Fact, body}}
+    return {result: "success", rule: {head: head as Atom, body}}
 }
