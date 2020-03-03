@@ -2,79 +2,119 @@ import "./reset.css"
 import "./styles/styles.scss"
 import "./globals"
 import Cycle from "json-cycle"
-import { toRefs } from "@vue/reactivity"
+import { toRefs, reactive as observable } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
-import { h1, h3, $if, $for, app, div, p, button, input, textarea, span, list, $set, defineDOMUpdate } from "./libs/lib-view"
+import { h1, h3, $if, $for, app, div, p, button,  textarea, span, list, $set, defineDOMUpdate } from "./libs/lib-view"
 import {parseRule} from "./parser"
-import {Rule, analyseRuleGraph, Component, RuleGraphInfo } from "./semantics"
+import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation } from "./semantics"
 
 //#region  --- Essential & derived state ---
 
-interface RuleEditor {
-    readonly label: string
+interface RuleCard {
     readonly rawText: string
     errorText: string | null
     lastParsed: null | {
         readonly rawText: string
         readonly rule: Rule
     }
-    ruleBoxHeight: number
+    ruleCardHeight: number
 }
 
-function RuleEditor(): RuleEditor {
+function RuleCard(): RuleCard {
     return {
-        label: "",
         rawText: "",
         errorText: null,
         lastParsed: null,
-        ruleBoxHeight: 101, // Have to hardcode this, since we have no way to observe it on element creation
+        ruleCardHeight: 123, // to be overwritten once page is constructed
     }
 }
 
-interface LayoutInfo {
-    readonly column: RuleEditor[]
+// Group whole connected components or (if a rule hasn't been parsed yet) a single rule card.
+type ColumnItem = Component | RuleCard
+
+function isComponent(item: ColumnItem): item is Component {
+    return (item as RuleCard).rawText === undefined
+}
+
+interface Column {
+    readonly index: number
+    readonly items: ColumnItem[]
 }
 
 interface State {
-    readonly ruleEditors: Set<RuleEditor>
-    readonly selectedRule: RuleEditor | null
+    readonly ruleCard: RuleCard[]
+    selectedRule: RuleCard | null
 // derived state:
-    readonly ruleGraph: RuleGraphInfo // determined by analysis of parsed rules
-    readonly ruleLayoutInfo: Map<RuleEditor, LayoutInfo> // determined from graph info
+    readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
+    readonly ruleLayoutInfo: Map<RuleCard, Column> // determined from graph info
     readonly groupsWithInternalNegation: {errorText: string}[] // TODO: include this in RuleGraphInfo
 }
 
 function createState(existingState?: State): WithDerivedProps<State> {
     const essentialState = existingState !== undefined ? existingState : {
-        ruleEditors:
-            new Set<RuleEditor>(),
+        ruleCard: [],
         selectedRule: null,
         // Derived state (to be overwritten):
-        ruleGraph: {} as RuleGraphInfo,
-        ruleLayoutInfo: new Map<RuleEditor, LayoutInfo>(),
+        ruleGraph: {} as RuleGraphInfo<RuleCard>,
+        ruleLayoutInfo: new Map<RuleCard, Column>(),
         groupsWithInternalNegation: [],
     }
     return withDerivedProps<State>(essentialState, {
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
         ruleGraph: state => {
-            const rawRules = new Set<Rule>()
-            state.ruleEditors.forEach((_, r) => {
-                if (r.lastParsed !== null) rawRules.add(r.lastParsed.rule)
+            // IMPORTANT: all proxied (i.e. state) objects which will be tested for equality in the future
+            // must be inserted into an existing proxied object so that they are not "double-proxied" when
+            // their parent is later wrapped in observable(). Rules are tested for equality in Map.get().
+            const rawRules = observable(new Map<Rule, RuleCard>())
+            state.ruleCard.forEach(r => {
+                if (r.lastParsed !== null) {
+                    rawRules.set(r.lastParsed.rule, r)
+                }
             })
             return analyseRuleGraph(rawRules)
         },
         ruleLayoutInfo: state => {
-            const layoutInfo = new Map<RuleEditor, LayoutInfo>()
-            const column: RuleEditor[] = []
-            state.ruleEditors.forEach(r => {
-                // put all the rules in one column for now
-                column.push(r)
-                layoutInfo.set(r, {column})
+            // IMPORTANT: all proxied (i.e. state) objects which will be tested for equality in the future
+            // must be inserted into an existing proxied object so that they are not "double-proxied" when
+            // their parent is later wrapped in observable(). Rules are tested for equality in Map.get().
+            const layoutInfo = observable(new Map<RuleCard, Column>())
+
+            // Assign the rule (and its whole component, if exists) to the given column
+            function assignRuleToColumn(ruleCard: RuleCard, column: Column): void {
+                if (ruleCard.lastParsed === null) { // Display the incomplete rule card by itself
+                    column.items.push(ruleCard)
+                    layoutInfo.set(ruleCard, column)
+                }
+                else { // Display the entire component alongside the given rule
+                    const rule = ruleCard.lastParsed.rule
+                    const relation = state.ruleGraph.relations.get(rule.head.relationName) as Relation
+                    const component = state.ruleGraph.components.get(relation) as Component
+                    column.items.push(component)
+                    for (const relation of component) {
+                        for (const rule of relation.rules) {
+                            const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                            layoutInfo.set(ruleCard, column)
+                        }
+                    }
+                }
+            }
+
+            // Put the selected rule into its own column
+            if (state.selectedRule !== null) {
+                const column = observable({index: 0, items: []})
+                assignRuleToColumn(state.selectedRule, column)
+            }
+            // Put everything else into a single column
+            const defaultColumn = observable({index: 1, items: []})
+            state.ruleCard.forEach(r => {
+                if (layoutInfo.has(r)) return
+                assignRuleToColumn(r, defaultColumn)
             })
             return layoutInfo
         },
         groupsWithInternalNegation: state => {
             return []
+            // TODO: Replace this with an analysis of the RuleGraph within the Semantics module
             // const badGroups: {errorText: string}[] = []
             // state.relationDepGraph.forEach(component => {
             //     if (component.type !== "recursiveGroup") return // try next component
@@ -101,47 +141,50 @@ function createState(existingState?: State): WithDerivedProps<State> {
 //#endregion
 //#region  --- State initialization, saving and loading ---
 
-// Define the serialization of Maps to JSON
-declare global {
-    interface Map<K, V> {
-        toJSON(): any[]
-    }
-    interface Set<T> {
-        toJSON(): any[]
-    }
-}
+// Define the serialization of Maps to JSON.
+// UNFORTUNATELY, JSON-decycle doesn't support de-cycling Sets and Maps,
+// so being able to (de-)serialize them is not sufficient.
 
-const mapTypeMarker = "$Map()$"
-const setTypeMarker = "$Set()$"
+// declare global {
+//     interface Map<K, V> {
+//         toJSON(): any[]
+//     }
+//     interface Set<T> {
+//         toJSON(): any[]
+//     }
+// }
 
-Map.prototype.toJSON = function() {
-    const array: any[] = Array.from(this.entries())
-    array.push(mapTypeMarker) // mark this array as a Map type
-    return array
-}
+// const mapTypeMarker = "$Map()$"
+// const setTypeMarker = "$Set()$"
 
-Set.prototype.toJSON = function() {
-    const array: any[] = Array.from(this.keys())
-    array.push(setTypeMarker) // mark this array as a Set type
-    return array
-}
+// Map.prototype.toJSON = function() {
+//     const array: any[] = Array.from(this.entries())
+//     array.push(mapTypeMarker) // mark this array as a Map type
+//     return array
+// }
 
-// Identify which serialized arrays were actually Maps and Sets,
-// and reconstruct them.
-function parseMapsAndSets(key: string, value: any): any {
-    if (Array.isArray(value) && value.length > 0) {
-        const lastValue = value[value.length-1]
-        if (lastValue === mapTypeMarker) {
-            return new Map(value.slice(0, -1))
-        } else if (lastValue === setTypeMarker) {
-            return new Set(value.slice(0, -1))
-        }
-        else return value
-    }
-    else {
-        return value
-    }
-}
+// Set.prototype.toJSON = function() {
+//     const array: any[] = Array.from(this.keys())
+//     array.push(setTypeMarker) // mark this array as a Set type
+//     return array
+// }
+
+// // Identify which serialized arrays were actually Maps and Sets,
+// // and reconstruct them.
+// function parseMapsAndSets(key: string, value: any): any {
+//     if (Array.isArray(value) && value.length > 0) {
+//         const lastValue = value[value.length-1]
+//         if (lastValue === mapTypeMarker) {
+//             return new Map(value.slice(0, -1))
+//         } else if (lastValue === setTypeMarker) {
+//             return new Set(value.slice(0, -1))
+//         }
+//         else return value
+//     }
+//     else {
+//         return value
+//     }
+// }
 
 const state: WithDerivedProps<State> =
     // Load previous state, if applicable
@@ -149,7 +192,7 @@ const state: WithDerivedProps<State> =
      && localStorage.state !== undefined
      && localStorage.state !== "undefined"
     )
-    ? createState(Cycle.retrocycle(JSON.parse(localStorage.state, parseMapsAndSets)))
+    ? createState(Cycle.retrocycle(JSON.parse(localStorage.state)))
     : createState()
 
 // By default, load the previous state on page load
@@ -200,7 +243,7 @@ function resetState(): void {
 //#region  --- The view & transition logic ----
 
 function newRule(): void {
-    state.ruleEditors.add(RuleEditor())
+    state.ruleCard.push(RuleCard())
 }
 
 // Insert a static toolbar that will be visible even if the app crashes during creation
@@ -213,25 +256,90 @@ document.body.prepend(
     div ({class: "separator"}),
 )
 
-const ruleEditorSpacing = {x: 50, y: 30}
+const ruleCardWidthCSS = 500 // WARNING: Keep this in sync with the CSS file
+const ruleCardSpacing = {x: 50, y: 30}
+const ruleCardColumnWidth = ruleCardWidthCSS + ruleCardSpacing.x
 
-function computeTopPosition(rule: RuleEditor): number {
-    // TODO: There is some stupid bug (regarding proxies I think) that is preventing
-    // the (commented out) next line from working as expected. Map.get() doesn't work.
-    let layout = undefined//state.ruleLayoutInfo.get(rule)
-    // Hack alternative to Map.get():
-    for (const entry of state.ruleLayoutInfo.entries()) {
-        if (entry[0] === rule) {
-            layout = entry[1]
-        }
-    }
-    if (layout === undefined) {
+function computeLeftPosition(rule: RuleCard): number {
+    const column = state.ruleLayoutInfo.get(rule)
+    return column === undefined ? -123: column.index * ruleCardColumnWidth
+}
+
+function computeTopPosition(thisRuleCard: RuleCard): number {
+    const column = state.ruleLayoutInfo.get(thisRuleCard)
+    if (column === undefined) {
         return -123 // should never happen
     }
     else {
-        return layout.column.slice(0, layout.column.indexOf(rule)).reduce((total, r) => total + r.ruleBoxHeight + ruleEditorSpacing.y, 0)
+        let y = 0
+        // Get the rule for this card, if it exists, so
+        // we can attempt to find it within the column.
+        let thisRule: Rule | undefined = undefined
+        if (thisRuleCard.lastParsed !== null) {
+            thisRule = thisRuleCard.lastParsed.rule
+        }
+        // Scan down the column until we find the entry for this rule
+        // card, calculating the y-distance to the card as we go.
+        for (const item of column.items) {
+            if (isComponent(item)) {
+                for (const relation of item) {
+                    for (const rule of relation.rules) {
+                        if (rule === thisRule) {
+                            return y
+                        }
+                        else {
+                            const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                            y += ruleCard.ruleCardHeight
+                        }
+                    }
+                }
+            }
+            else if (item === thisRuleCard) {
+                return y
+            }
+            else {
+                y += item.ruleCardHeight
+            }
+            // Put space between components
+            y += ruleCardSpacing.y
+        }
+        // We should never reach here
+        return -123
     }
 }
+
+// When new rule cards are created, observe and record their height.
+// We need this to enable JS-driven layout.
+// We also re-record card height during every oninput() event of a rule's text area.
+const observer = new MutationObserver(mutations => {
+    // Traverse the ENTIRE tree of added nodes to check for a "rule" node.
+    let foundRule = false
+    function findRule(el: HTMLElement) {
+        if (el.className === "rule") {
+            (el as any)["data-1"].ruleCardHeight = el.offsetHeight
+            foundRule = true
+        }
+        else if (el.children !== undefined) {
+            for (let j = 0; j < el.children.length; ++j) {
+                findRule(el.children[j] as HTMLElement)
+            }
+        }
+    }
+    mutations.forEach(mutation => {
+        for (let i = 0; i < mutation.addedNodes.length; i++) {
+            const el = mutation.addedNodes[i] as HTMLElement
+            findRule(el)
+        }
+    })
+    if (foundRule) {
+        // Create a new DOM update to apply the effect of the new ruleCardHeight(s)
+        defineDOMUpdate(() => { /* no work to do */ })({
+            type: "Custom update",
+            target: null,
+        })
+    }
+})
+observer.observe(document, { childList: true, subtree: true })
 
 app ("app", state,
     div ({class: "view"}, [
@@ -250,28 +358,30 @@ app ("app", state,
             ]),
             button ("Add rule", {onclick: newRule}),
             div ({class: "ruleView"}, [
-                $set (() => new Set(state.ruleLayoutInfo.keys()), rule => [
+                $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
                     div ({
                         class: "rule",
-                        top: () => computeTopPosition(rule),
+                        left: () => computeLeftPosition(ruleCard),
+                        top: () => computeTopPosition(ruleCard),
+                        "data-1": ruleCard,
                     }, [
-                        div ({class: "ruleLabelBar"}, [
-                            input ({
-                                class: "ruleLabelText",
-                                autocomplete: "nope",
-                                autocapitalize: "off",
-                                value: toRefs(rule).label,
-                            }),
-                            button ("•••", {
-                                class: "ruleDragHandle",
-                                onclick: () => state.ruleEditors.delete(rule),
-                            }),
-                        ]),
+                        button ("✖", {
+                            class: "deleteRuleButton",
+                            onclick: () => {
+                                if (ruleCard === state.selectedRule) {
+                                    state.selectedRule = null
+                                }
+                                state.ruleCard.removeAt(state.ruleCard.indexOf(ruleCard))
+                            },
+                        }),
                         div ({class: "row"}, [
                             div ({class: "ruleTextWithErrors"}, [
                                 textarea ({
                                     class: "ruleTextArea",
-                                    value: toRefs(rule).rawText,
+                                    value: toRefs(ruleCard).rawText,
+                                    onfocus: () => {
+                                        state.selectedRule = ruleCard
+                                    },
                                     onkeydown: (event: KeyboardEvent) => {
                                         const el = (event.target as HTMLTextAreaElement)
                                         // React to vanilla key presses only
@@ -296,11 +406,11 @@ app ("app", state,
                                             // Disallow spaces next to an existing space, unless at the start of a line
                                             else if (
                                                 event.key === " " && !(
-                                                    el.selectionStart >= 1 && rule.rawText[el.selectionStart-1] === "\n"
+                                                    el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
                                                 ) && !(
-                                                    el.selectionStart > 1 && rule.rawText[el.selectionStart-2] === "\n"
+                                                    el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
                                                 ) && (
-                                                    (el.selectionStart >= 1 && rule.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < rule.rawText.length && rule.rawText[el.selectionEnd] === " ")
+                                                    (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
                                                 )
                                             ) {
                                                 event.preventDefault()
@@ -309,20 +419,20 @@ app ("app", state,
                                     },
                                     oninput: (event: Event) => {
                                         const el = (event.target as HTMLTextAreaElement)
-                                        const parseResult = parseRule(rule.rawText)
+                                        const parseResult = parseRule(ruleCard.rawText)
                                         if (parseResult.result === "success") {
-                                            rule.lastParsed = {
-                                                rawText: rule.rawText,
+                                            ruleCard.lastParsed = {
+                                                rawText: ruleCard.rawText,
                                                 rule: parseResult.rule,
                                             }
-                                            rule.errorText = null
+                                            ruleCard.errorText = null
                                         }
                                         else if (parseResult.result === "noRule") {
-                                            rule.lastParsed = null
-                                            rule.errorText = null
+                                            ruleCard.lastParsed = null
+                                            ruleCard.errorText = null
                                         }
                                         else {
-                                            rule.errorText = parseResult.reason
+                                            ruleCard.errorText = parseResult.reason
                                         }
 
                                         const ruleDiv = el.parentElement?.parentElement?.parentElement as HTMLElement
@@ -337,9 +447,9 @@ app ("app", state,
                                             defineDOMUpdate(() => {
                                                 // Record the height of the WHOLE rule div,
                                                 // so we can use it for code-driven layout.
-                                                rule.ruleBoxHeight = ruleDiv.scrollHeight
+                                                ruleCard.ruleCardHeight = ruleDiv.offsetHeight
                                             })({
-                                                type: "Manual delayed update",
+                                                type: "Custom update",
                                                 target: ruleDiv,
                                             })
                                         }, 0)
@@ -353,9 +463,9 @@ app ("app", state,
                                         // }
                                     },
                                 }),
-                                $if (() => rule.errorText !== null, {
+                                $if (() => ruleCard.errorText !== null, {
                                     $then: () => [
-                                        p (() => rule.errorText as string, {
+                                        p (() => ruleCard.errorText as string, {
                                             class: "errorText",
                                         }),
                                     ],

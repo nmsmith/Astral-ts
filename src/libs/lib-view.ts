@@ -624,10 +624,11 @@ export function defineDOMUpdate(stateUpdate: Function): Function {
     }
 }
 
-// Hack a "class" attribute onto Elements for readability's sake
+// Define some extra attributes for library-specific features
 declare global {
     interface Element {
-        "class": string
+        "class": string // Defined just for brevity
+        "data-1": any // Substitute for the "data-" attributes of HTML
         // CSS properties that can be made dynamic.
         // These property names must also be put into the "cssPropertiesPx" set.
         "left": number

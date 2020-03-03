@@ -1,10 +1,6 @@
 .view {
     @extend .fillViewport;
     @extend .row;
-// create a stacking context so can we render the rule view (and its dropdowns)
-// in front of other page elements
-    position: relative;
-    z-index: 0;
 }
 
 .viewBottomPadding {
@@ -32,10 +28,6 @@ $standard-border-color: #aaaaaa;
     font-family: "Lucida Console", Monaco, monospace;
     line-height: 140%;
     font-size: 18px;
-}
-
-.spacer {
-    width: 10px;
 }
 
 .ideaList {
@@ -72,51 +64,38 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     position: absolute;
     width: 500px;
     flex-shrink: 0;
-    @extend .col;
+    @extend .row;
     margin-left: $main-pad;
     margin-right: $main-pad;
-    box-shadow: $standard-box-shadow;
     align-self: flex-start;
     background-color: white;
-    transition-duration: 0.3s; // for movement animation
-}
-
-// .beingDragged {
-//     pointer-events: none;
-// }
-
-.ruleLabelBar {
-    @extend .row;
-    padding-left: 8px;
-    padding-right: 4px;
-    padding-top: 6px;
-    padding-bottom: 6px;
+// border for delimiting adjacent cards
     border-bottom-style: solid;
     border-width: 1px;
+    box-sizing: border-box;
     border-color: $standard-border-color;
+// animation
+    transition-duration: 0.7s; // for movement animation
 }
 
-.ruleLabelText {
-    flex-grow: 1;
-    font-size: 1.15em;
-    border-style: none;
+.rule:before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: -1;
+    box-shadow: $standard-box-shadow;
 }
 
-.ruleDragHandle {
+.deleteRuleButton {
     @extend .unstyledButton;
     @extend .noSelect;
-    color: #414141;
+    color: #aaaaaa;//#414141;
     font-size: 1.2em;
-    align-self: center;
-    padding-left: 10px;
-    padding-right: 6px;
-    padding-top: 2px;
-    cursor: grab;
-}
-
-.ruleLabelTextForNothing {
-    @extend .ruleLabelText;
-    @extend .labelError;
+    align-self: flex-start;
+    padding: 8px;
 }
 
 .ruleTextWithErrors {
@@ -131,6 +110,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     overflow-y: hidden;
     border-style: none;
     resize: none;
+    padding-bottom: 20px;
 }
 
 .errorText {

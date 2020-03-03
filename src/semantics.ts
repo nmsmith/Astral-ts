@@ -1,8 +1,10 @@
 export type Obj = {type: "constant", name: string} | {type: "variable", name: string}
 
-// We store just the NAME of the relation in the atoms,
-// so that the parser knows what to produce. We later
-// map these names to an actual Relation type.
+/**
+ * We store just the NAME of the relation in the atoms,
+ * so that the parser knows what to produce. We later
+ * map these names to an actual Relation type.
+ */
 export interface Atom {
     relationName: string
     objects: Obj[]
@@ -12,6 +14,7 @@ export interface Literal extends Atom {
     readonly sign: "positive" | "negative"
 }
 
+/** A strongly connected component. */
 export type Component = Set<Relation>
 
 export interface Relation {
@@ -24,25 +27,27 @@ export interface Rule {
     readonly body: Literal[]
 }
 
-export interface RuleGraphInfo {
-    readonly rules: Set<Rule>
+export interface RuleGraphInfo<T> {
+    readonly rules: Map<Rule, T>
     readonly relations: Map<string, Relation>
     readonly components: Map<Relation, Component>
 }
 
-// We take the implicitly defined rule graph as input, analyse its structure, and return
-// the set of relations and strongly connected components as output.
+// We take the set of rules as input, analyse the structure of the the underlying graph,
+// and return the set of relations and strongly connected components as output.
 // We use Tarjan's algorithm to identify the components. Because of the
 // way rules are defined, we technically traverse all edges "backwards".
+// The input set is a Map type so that the user can attach extra info if desired.
 //
 // It's quite challenging to compute strongly connected components incrementally,
 // so I don't attempt to do this right now. I just reconstruct all information every
 // time the set of rules changes:
 // https://cs.stackexchange.com/questions/96424/incremental-strongly-connected-components
-export function analyseRuleGraph(rules: Set<Rule>): RuleGraphInfo {
+export function analyseRuleGraph<T>(rules: Map<Rule, T>): RuleGraphInfo<T> {
     // Find all the relations defined in the DB
     const relations = new Map<string, Relation>()
-    for (const rule of rules) {
+    for (const rule of rules.keys()) {
+        // Construct or add to the rule's relation
         const entry = relations.get(rule.head.relationName)
         if (entry === undefined) {
             relations.set(rule.head.relationName, {
@@ -51,6 +56,15 @@ export function analyseRuleGraph(rules: Set<Rule>): RuleGraphInfo {
             })
         }
         else entry.rules.add(rule)
+        // Construct relations for the body atoms, if necessary
+        for (const literal of rule.body) {
+            if (!relations.has(literal.relationName)) {
+                relations.set(literal.relationName, {
+                    name: literal.relationName,
+                    rules: new Set<Rule>(),
+                })
+            }
+        }
     }
     // For keeping track of the "depth" at which we saw a node in the active call stack.
     const depths = new Map<string, number>()
