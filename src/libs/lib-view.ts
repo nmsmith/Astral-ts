@@ -1,4 +1,4 @@
-import { Ref, isRef, effect, ReactiveEffect, stop , pauseTracking, resumeTracking} from "@vue/reactivity"
+import { Ref, isRef, effect, ReactiveEffect, stop , pauseTracking, resetTracking} from "@vue/reactivity"
 
 // Styles for debug printing
 const updateMsgStyle = "font-size: 110%; font-weight: bold; color: blue; padding-top: 12px"
@@ -754,7 +754,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
     function remove(child: Effectful<HTMLElement>): void {
         pauseTracking()
         el.removeChild(child)
-        resumeTracking()
+        resetTracking()
         cleanUp(child)
         logRemove(child)
     }
@@ -781,7 +781,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     childrenAttachedHere.forEach(child => {
                         pauseTracking()
                         el.insertBefore(child, marker)
-                        resumeTracking()
+                        resetTracking()
                         logAdd(child)
                     })
                 }
@@ -795,7 +795,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     childrenAttachedHere.forEach(child => {
                         pauseTracking()
                         el.insertBefore(child, marker)
-                        resumeTracking()
+                        resetTracking()
                         logAdd(child)
                     })
                 }
@@ -828,7 +828,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                         const newElements = f(itemWithIndex)
                         pauseTracking()
                         fragment.append(...newElements)
-                        resumeTracking()
+                        resetTracking()
                         newElementsCache.set(item, newElements)
                         newElementsForLogging.push(...newElements)
                     }
@@ -842,7 +842,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                         // cause onBlur() to be called.
                         pauseTracking()
                         fragment.append(...existingElements)
-                        resumeTracking()
+                        resetTracking()
                         // Put the item in the new cache
                         elementsCache.delete(item)
                         newElementsCache.set(item, existingElements)
@@ -873,7 +873,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                 // Attach the new nodes
                 pauseTracking()
                 el.insertBefore(fragment, marker)
-                resumeTracking()
+                resetTracking()
                 elementsCache = newElementsCache
             })
         }
@@ -900,7 +900,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                         const newElements = f(key)
                         pauseTracking()
                         fragment.append(...newElements)
-                        resumeTracking()
+                        resetTracking()
                         newElementsCache.set(key, newElements)
                         newElementsForLogging.push(...newElements)
                     }
@@ -935,7 +935,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                 // Attach the new nodes
                 pauseTracking()
                 el.insertBefore(fragment, marker)
-                resumeTracking()
+                resetTracking()
                 elementsCache = newElementsCache
             })
         }
@@ -943,7 +943,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
         else {
             pauseTracking()
             el.appendChild(child)
-            resumeTracking()
+            resetTracking()
         }
     })
 }
