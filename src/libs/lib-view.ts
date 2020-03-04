@@ -6,6 +6,11 @@ const elementStyle = "font-weight: bold"
 const attributeChangedStyle = "color: #7700ff"
 const textContentStyle = "color: #007700"
 
+// For some reason HTML has width and height attributes: we need
+// to nuke them so we can re-use them for CSS styling.
+type Styleless<T> = Omit<Omit<T, "width">, "height">
+type StylelessElement = Styleless<HTMLElement>
+
 type EventHandler =
     | "oncut"
     | "onend"
@@ -463,7 +468,7 @@ let appStateForDebugPrint: unknown
 
 /// Find the node with the given ID and replace it with the app's HTML.
 /// Also organises clean-up code.
-export function app<State>(rootNodeID: string, stateForDebugPrint: State | undefined, appHTML: HTMLElement): void {
+export function app<State>(rootNodeID: string, stateForDebugPrint: State | undefined, appHTML: StylelessElement): void {
     appStateForDebugPrint = stateForDebugPrint
     const rootNode = document.getElementById(rootNodeID) 
     if (rootNode === null) {
@@ -483,7 +488,7 @@ export function app<State>(rootNodeID: string, stateForDebugPrint: State | undef
 // ALWAYS created after the parent they will attach to. Elements MUST be removed from
 // this map when they are deleted to avoid a memory leak. A WeakMap cannot be used since
 // it does not support iteration.
-const domUpdateJobs: Map<HTMLElement, Set<ReactiveEffect>> = new Map()
+const domUpdateJobs: Map<StylelessElement, Set<ReactiveEffect>> = new Map()
 console.log("Watch this for memory leaks: ", domUpdateJobs)
 
 type Effectful<E> = E & {
@@ -491,7 +496,7 @@ type Effectful<E> = E & {
     $effects: ReactiveEffect[]
 }
 
-function scheduleDOMUpdate(el: Effectful<HTMLElement>, update: () => void): void {
+function scheduleDOMUpdate(el: Effectful<StylelessElement>, update: () => void): void {
     el.$effects.push(effect(update, {scheduler: eff => {
         const jobsForThisEl = domUpdateJobs.get(el)
         if (jobsForThisEl === undefined) {
@@ -525,9 +530,9 @@ interface DerivedFromSet<T, I> {
 export type DerivedAttribute<T> = (() => T) | DerivedFromChoice<T>
 
 export type DerivedDocFragment =
-      DerivedFromChoice<HTMLElement[]>
-    | DerivedFromSequence<HTMLElement[], any>
-    | DerivedFromSet<HTMLElement[], any>
+      DerivedFromChoice<StylelessElement[]>
+    | DerivedFromSequence<StylelessElement[], any>
+    | DerivedFromSet<StylelessElement[], any>
 
 function isFunction(value: unknown): value is Function {
     return typeof value === "function"
@@ -559,8 +564,8 @@ export function $if<T>(
  */
 export function $for<I extends object>(
     items: () => readonly I[],
-    f: (item: WithIndex<I>) => HTMLElement[],
-): DerivedFromSequence<HTMLElement[], I> {
+    f: (item: WithIndex<I>) => StylelessElement[],
+): DerivedFromSequence<StylelessElement[], I> {
     return {type: "fromSequence", items: items, f: f}
 }
 
@@ -574,13 +579,13 @@ export function $for<I extends object>(
  */
 export function $set<I>(
     items: () => Set<I>,
-    f: (item: I) => HTMLElement[],
-): DerivedFromSet<HTMLElement[], I> {
+    f: (item: I) => StylelessElement[],
+): DerivedFromSet<StylelessElement[], I> {
     return {type: "fromSet", items: items, f: f}
 }
 
 // Every node that is permanently removed from the DOM must be cleaned up via this function
-function cleanUp(node: Effectful<HTMLElement>): void {
+function cleanUp(node: Effectful<StylelessElement>): void {
     // Double check this HTML element is one that we need to clean up
     if (node.$effects === undefined) return
 
@@ -591,7 +596,7 @@ function cleanUp(node: Effectful<HTMLElement>): void {
     }
 
     // Clean up all children currently attached
-    Array.from(node.children).forEach(node => cleanUp(node as Effectful<HTMLElement>))
+    Array.from(node.children).forEach(node => cleanUp(node as any))
 }
 
 // Update the DOM after executing the given state update function.
@@ -630,23 +635,23 @@ declare global {
         "class": string // Defined just for brevity
         "data-1": any // Substitute for the "data-" attributes of HTML
         // CSS properties that can be made dynamic.
-        // These property names must also be put into the "cssPropertiesPx" set.
-        "left": number
-        "right": number
-        "top": number
-        "bottom": number
-        "width": number
-        "height": number
+        // These property names must also be put into the "cssProperties" set.
+        "left": string
+        "right": string
+        "top": string
+        "bottom": string
+        "width": string
+        "height": string
     }
 }
 
-const cssPropertiesPx = new Set(["left", "right", "top", "bottom", "width", "height"])
+const cssProperties = new Set(["left", "right", "top", "bottom", "width", "height"])
 
 // Defines a record of properties that can be assigned to an Element. If the property
 // is an EventHandler, then it must be a plain old function. Otherwise, the property
 // can be dynamically computed. If the property is something that can be made a
 // two-way binding, (e.g. "value"), then if it is dynamic, it must be a Ref.
-export type AttributeSpec<Keys extends keyof El, El extends Element> =
+export type AttributeSpec<Keys extends keyof El, El extends Styleless<Element>> =
     { [K in Keys]: K extends EventHandler
         ? El[K]
         : K extends "value"
@@ -663,18 +668,18 @@ function prettifyClassName(name: string): string {
     }
 }
 
-function logChangeStart(el: HTMLElement): void {
+function logChangeStart(el: StylelessElement): void {
     console.log(`%c${el.nodeName}${prettifyClassName(el.className)}`, elementStyle)
 }
 
 // Assign attribute values and attach listeners to re-assign observable values when they change
-function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLElement>(
+function assignReactiveAttributes<AssKeys extends keyof El, El extends StylelessElement>(
     el: Effectful<El>,
     assignment: AttributeSpec<AssKeys, El>,
 ): Effectful<El> {
     function assignKeyValue(key: string, value: unknown): void {
-        if (cssPropertiesPx.has(key)) {
-            el.style[key as any] = `${value}px`
+        if (cssProperties.has(key)) {
+            el.style[key as any] = value as string
         }
         else {
             el[(key as AssKeys)] = value as any
@@ -734,9 +739,9 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends HTMLEleme
 }
 
 export type HTMLChildren =
-    (HTMLElement | DerivedDocFragment)[]
+    (StylelessElement | DerivedDocFragment)[]
 
-function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): void {
+function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren): void {
     function putFragmentMarker(): Element {
         // Create a marker child so that when the $if or $for fragment
         // is updated, we know where we need to insert the new elements.
@@ -746,13 +751,13 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
         el.appendChild(markerChild)
         return markerChild
     }
-    function logAdd(child: Effectful<HTMLElement>): void {
+    function logAdd(child: Effectful<StylelessElement>): void {
         console.log(`  %c+ ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
     }
-    function logRemove(child: Effectful<HTMLElement>): void {
+    function logRemove(child: Effectful<StylelessElement>): void {
         console.log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
     }
-    function remove(child: Effectful<HTMLElement>): void {
+    function remove(child: Effectful<StylelessElement>): void {
         pauseTracking()
         el.removeChild(child)
         resetTracking()
@@ -763,7 +768,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
     children.forEach(child => {
         if (isDerivedFromChoice(child)) {
             const marker = putFragmentMarker()
-            let childrenAttachedHere: Effectful<HTMLElement>[] = []
+            let childrenAttachedHere: Effectful<StylelessElement>[] = []
 
             const condition = child.condition
             const $then = child.branches.$then
@@ -777,7 +782,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(remove)
                     // add
-                    childrenAttachedHere = $then() as Effectful<HTMLElement>[]
+                    childrenAttachedHere = $then() as Effectful<StylelessElement>[]
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => {
                         pauseTracking()
@@ -791,7 +796,7 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(remove)
                     // add
-                    childrenAttachedHere = $else() as Effectful<HTMLElement>[]
+                    childrenAttachedHere = $else() as Effectful<StylelessElement>[]
                     if (childrenAttachedHere.length > 0) logChangeStart(el)
                     childrenAttachedHere.forEach(child => {
                         pauseTracking()
@@ -805,18 +810,18 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
         }
         else if (isDerivedFromSequence(child)) {
             const marker = putFragmentMarker()
-            let elementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
+            let elementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
 
-            const items = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).items
-            const f = (child as DerivedFromSequence<Effectful<HTMLElement>[], object>).f
+            const items = (child as DerivedFromSequence<Effectful<StylelessElement>[], object>).items
+            const f = (child as DerivedFromSequence<Effectful<StylelessElement>[], object>).f
 
             scheduleDOMUpdate(el, () => {
                 const fragment = document.createDocumentFragment()
                 // Keep track of whether something changed. Something should ALWAYS change during a run.
                 // If this is our first run (or we have no children), consider this to be a change.
                 let somethingChanged = elementsCache.size === 0
-                const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
-                const newElementsForLogging: Effectful<HTMLElement>[] = []
+                const newElementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
+                const newElementsForLogging: Effectful<StylelessElement>[] = []
                 // For each item, determine whether new or already existed
                 items().forEach((item, index) => {
                     const existingElements = elementsCache.get(item)
@@ -880,18 +885,18 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
         }
         else if (isDerivedFromSet(child)) {
             const marker = putFragmentMarker()
-            let elementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
+            let elementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
 
-            const items = (child as DerivedFromSet<Effectful<HTMLElement>[], any>).items
-            const f = (child as DerivedFromSet<Effectful<HTMLElement>[], any>).f
+            const items = (child as DerivedFromSet<Effectful<StylelessElement>[], any>).items
+            const f = (child as DerivedFromSet<Effectful<StylelessElement>[], any>).f
 
             scheduleDOMUpdate(el, () => {
                 const fragment = document.createDocumentFragment()
                 // Keep track of whether something changed. Something should ALWAYS change during a run.
                 // If this is our first run (or we have no children), consider this to be a change.
                 let somethingChanged = elementsCache.size === 0
-                const newElementsCache: Map<unknown, Effectful<HTMLElement>[]> = new Map()
-                const newElementsForLogging: Effectful<HTMLElement>[] = []
+                const newElementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
+                const newElementsForLogging: Effectful<StylelessElement>[] = []
                 // For each item, determine whether new or already existed
                 items().forEach(key => {
                     const existingElements = elementsCache.get(key)
@@ -950,12 +955,12 @@ function attachChildren(el: Effectful<HTMLElement>, children: HTMLChildren): voi
 }
 
 // Create a HTML element with the given name and attributes. 
-export function element<Keys extends keyof El, El extends HTMLElement>(
+export function element<Keys extends keyof El, El extends StylelessElement>(
     name: string,
     attributes: AttributeSpec<Keys, El>,
     children: HTMLChildren,
 ): Effectful<El> {
-    const el = document.createElement(name) as Effectful<El>
+    const el = document.createElement(name) as unknown as Effectful<El>
     el.$effects = []
     domUpdateJobs.set(el, new Set())
 
@@ -1033,9 +1038,9 @@ export function span<Keys extends keyof HTMLParagraphElement>(
 export function list<KeysL extends keyof HTMLOListElement, KeysI extends keyof HTMLLIElement>(
     listAttributes: AttributeSpec<KeysL, HTMLOListElement>,
     listItemAttributes: AttributeSpec<KeysI, HTMLLIElement>,
-    items: HTMLElement[],
+    items: StylelessElement[],
 ): HTMLOListElement {
-    const htmlItems: HTMLElement[] = []
+    const htmlItems: StylelessElement[] = []
     items.forEach(item => htmlItems.push(element("li", listItemAttributes, [item])))
     return element("ol", listAttributes, htmlItems)
 }
@@ -1048,9 +1053,9 @@ export function button<Keys extends keyof HTMLButtonElement>(
     return element("button", attributes, [])
 }
 
-export function input<Keys extends keyof HTMLInputElement>(
-    attributes: AttributeSpec<Keys, HTMLInputElement> = {} as any,
-): HTMLInputElement { 
+export function input<Keys extends keyof Styleless<HTMLInputElement>>(
+    attributes: AttributeSpec<Keys, Styleless<HTMLInputElement>> = {} as any,
+): Styleless<HTMLInputElement> { 
     const attrs = attributes as AttributeSpec<Keys | "value" | "oninput", HTMLInputElement>
     const valueRef: string | Ref<string> | DerivedAttribute<string> | undefined = attrs.value
     // If the "value" attribute exists and is a Ref, then set up two-way binding
