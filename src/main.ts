@@ -36,27 +36,29 @@ function isComponent(item: ColumnItem): item is Component {
     return (item as RuleCard).rawText === undefined
 }
 
-interface Column {
-    readonly index: number
+interface ColumnLayout {
+    readonly index: "unassigned" | number
     readonly items: Set<ColumnItem> // Intend to iterate in an ordered manner, but discard duplicates
 }
 
 interface State {
-    readonly ruleCard: RuleCard[]
+    readonly ruleCards: RuleCard[]
     selectedRule: RuleCard | null
 // derived state:
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
-    readonly ruleLayoutInfo: Map<RuleCard, Column> // determined from graph info
+    readonly incompleteCards: RuleCard[]
+    readonly ruleLayoutInfo: Map<RuleCard, ColumnLayout> // determined from graph info
     readonly groupsWithInternalNegation: {errorText: string}[] // TODO: include this in RuleGraphInfo
 }
 
 function createState(existingState?: State): WithDerivedProps<State> {
     const essentialState = existingState !== undefined ? existingState : {
-        ruleCard: [],
+        ruleCards: [],
         selectedRule: null,
         // Derived state (to be overwritten):
         ruleGraph: {} as RuleGraphInfo<RuleCard>,
-        ruleLayoutInfo: new Map<RuleCard, Column>(),
+        incompleteCards: [],
+        ruleLayoutInfo: new Map<RuleCard, ColumnLayout>(),
         groupsWithInternalNegation: [],
     }
     return withDerivedProps<State>(essentialState, {
@@ -66,21 +68,24 @@ function createState(existingState?: State): WithDerivedProps<State> {
             // must be inserted into an existing proxied object so that they are not "double-proxied" when
             // their parent is later wrapped in observable(). Rules are tested for equality in Map.get().
             const rawRules = observable(new Map<Rule, RuleCard>())
-            state.ruleCard.forEach(r => {
+            state.ruleCards.forEach(r => {
                 if (r.lastParsed !== null) {
                     rawRules.set(r.lastParsed.rule, r)
                 }
             })
             return analyseRuleGraph(rawRules)
         },
+        incompleteCards: state => {
+            return state.ruleCards.filter(card => card.lastParsed === null)
+        },
         ruleLayoutInfo: state => {
             // IMPORTANT: all proxied (i.e. state) objects which will be tested for equality in the future
             // must be inserted into an existing proxied object so that they are not "double-proxied" when
             // their parent is later wrapped in observable(). Rules are tested for equality in Map.get().
-            const layoutInfo = observable(new Map<RuleCard, Column>())
+            const layoutInfo = observable(new Map<RuleCard, ColumnLayout>())
 
             // Assign the rule (and its whole component, if exists) to the given column
-            function assignComponentToColumn(component: Component, column: Column): void {
+            function assignComponentToColumn(component: Component, column: ColumnLayout): void {
                 if (!column.items.has(component)) {
                     column.items.add(component)
                     for (const relation of component) {
@@ -94,7 +99,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
 
             if (state.selectedRule !== null) {
                 // Put the selected rule's component into its own column
-                const selectedComponentColumn: Column = observable({index: 1, items: new Set()})
+                const selectedComponentColumn: ColumnLayout = observable({index: 1, items: new Set()})
                 if (state.selectedRule.lastParsed === null) {
                     selectedComponentColumn.items.add(state.selectedRule)
                     layoutInfo.set(state.selectedRule, selectedComponentColumn)
@@ -105,8 +110,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     const selectedComponent = state.ruleGraph.components.get(selectedRelation) as Component
                     assignComponentToColumn(selectedComponent, selectedComponentColumn)
                     // Put dependencies and dependent components into adjacent columns
-                    const dependenciesColumn: Column = observable({index: 2, items: new Set()})
-                    const dependentsColumn: Column = observable({index: 0, items: new Set()})
+                    const dependenciesColumn: ColumnLayout = observable({index: 2, items: new Set()})
+                    const dependentsColumn: ColumnLayout = observable({index: 0, items: new Set()})
                     selectedComponent.forEach(relation => {
                         // Dependents
                         relation.dependentRules.forEach(succRule => {
@@ -133,8 +138,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 }
             }
             // Put everything else into a single "far away" column
-            const defaultColumn: Column = observable({index: 3, items: new Set()})
-            state.ruleCard.forEach(r => {
+            const defaultColumn: ColumnLayout = observable({index: "unassigned", items: new Set()})
+            state.ruleCards.forEach(r => {
                 if (!layoutInfo.has(r)) { // Save time by checking if this rule has already been visited
                     if (r.lastParsed === null) { // Display the incomplete rule card by itself
                         defaultColumn.items.add(r)
@@ -234,8 +239,10 @@ const state: WithDerivedProps<State> =
 
 // By default, load the previous state on page load
 localStorage.loadLastState = true
+localStorage.saveState = true
 
 function saveState(): void {
+    if (localStorage.saveState === "false") return
     // If an input element is focused, trigger its blur event
     if (document.activeElement !== null && document.activeElement.tagName === "INPUT") {
         (document.activeElement as unknown as HTMLInputElement).blur()
@@ -280,7 +287,7 @@ function resetState(): void {
 //#region  --- The view & transition logic ----
 
 function newRule(): void {
-    state.ruleCard.push(RuleCard())
+    state.ruleCards.push(RuleCard())
 }
 
 // Insert a static toolbar that will be visible even if the app crashes during creation
@@ -308,15 +315,24 @@ const ruleCardXOffset = ruleCardWidth + 2.5
 const ruleCardYSpacing = 30
 
 function computeLeftPosition(rule: RuleCard): string {
-
     const column = state.ruleLayoutInfo.get(rule)
-    return column === undefined ? px(-123): percent(1 + column.index * ruleCardXOffset)
+    if (column === undefined) {
+        return px(-123)
+    }
+    else {
+        const index = column.index === "unassigned" ? 1 : column.index
+        return percent(1 + index * ruleCardXOffset)
+    }  
 }
 
 function computeTopPosition(thisRuleCard: RuleCard): string {
     const column = state.ruleLayoutInfo.get(thisRuleCard)
     if (column === undefined) {
         return px(-123) // should never happen
+    }
+    else if (column.index === "unassigned") {
+        // Hide the card above the view
+        return px(-2 * thisRuleCard.ruleCardHeight)
     }
     else {
         let y = 0
@@ -354,6 +370,17 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
         // We should never reach here
         return px(-123)
     }
+}
+
+function overviewColor(card: RuleCard): string {
+    if (card === state.selectedRule) {
+        return "#55dd55"
+    }
+    else if (state.ruleLayoutInfo.get(card)?.index === 
+    "unassigned") {
+        return "#bbbbbb"
+    }
+    else return "#ffffff"
 }
 
 // When new rule cards are created, observe and record their height.
@@ -403,126 +430,151 @@ app ("app", state,
                 class: "errorText",
             }),
         ]),
-        button ("Add rule", {onclick: newRule}),
-        div ({class: "ruleView"}, [
-            $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
-                div ({
-                    class: "rule",
-                    left: () => computeLeftPosition(ruleCard),
-                    top: () => computeTopPosition(ruleCard),
-                    "data-1": ruleCard,
-                }, [
-                    button ("✖", {
-                        class: "deleteRuleButton",
-                        visibility: () => state.selectedRule === ruleCard ? "visible" : "hidden",
-                        onclick: () => {
-                            if (ruleCard === state.selectedRule) {
-                                state.selectedRule = null
-                            }
-                            state.ruleCard.removeAt(state.ruleCard.indexOf(ruleCard))
-                        },
+        div ({class: "row"}, [
+            div ({class: "ruleOverview"}, [
+                button ("Add rule", {
+                    class: "addRuleButton",
+                    onclick: newRule,
+                }),
+                div ({class: "ruleList"}, [
+                    $for (() => state.ruleCards, card => [
+                        div ({}, [
+                            p (() => card.lastParsed === null ? "incomplete" : card.lastParsed.rule.head.relationName, {
+                                "background-color": () => overviewColor(card),
+                                onclick: () => state.selectedRule = card,
+                            }),
+
+                        ]),
+                    ]),
+                ]),
+            ]),
+            div ({class: "ruleGraphView"}, [
+                $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
+                    div ({
+                        class: "ruleShadow",
+                        left: () => computeLeftPosition(ruleCard),
+                        top: () => computeTopPosition(ruleCard),
+                        height: () => `${ruleCard.ruleCardHeight}px`,
                     }),
-                    div ({class: "ruleTextWithErrors"}, [
-                        textarea ({
-                            class: "ruleTextArea",
-                            value: toRefs(ruleCard).rawText,
-                            onfocus: () => {
-                                state.selectedRule = ruleCard
-                            },
-                            onkeydown: (event: KeyboardEvent) => {
-                                const el = (event.target as HTMLTextAreaElement)
-                                // React to vanilla key presses only
-                                if (!event.ctrlKey && !event.metaKey) {
-                                    // Do basic autoformatting.
-                                    // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
-                                    if (event.key === ",") {
-                                        event.preventDefault()
-                                        setTimeout(() =>
-                                            document.execCommand("insertText", false, ", "), 0)
-                                    }
-                                    else if (event.key === "Enter") {
-                                        event.preventDefault()
-                                        setTimeout(() =>
-                                            document.execCommand("insertText", false, "\n  "), 0)
-                                    }
-                                    else if (event.key === "-") {
-                                        event.preventDefault()
-                                        setTimeout(() =>
-                                            document.execCommand("insertText", false, "¬"), 0)
-                                    }
-                                    // Disallow spaces next to an existing space, unless at the start of a line
-                                    else if (
-                                        event.key === " " && !(
-                                            el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
-                                        ) && !(
-                                            el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
-                                        ) && (
-                                            (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
-                                        )
-                                    ) {
-                                        event.preventDefault()
-                                    }
+                    div ({
+                        class: "rule",
+                        "z-index": () => state.ruleLayoutInfo.get(ruleCard)?.index === "unassigned" ? 0 : 1,
+                        left: () => computeLeftPosition(ruleCard),
+                        top: () => computeTopPosition(ruleCard),
+                        
+                        "data-1": ruleCard,
+                    }, [
+                        button ("✖", {
+                            class: "deleteRuleButton",
+                            visibility: () => state.selectedRule === ruleCard ? "visible" : "hidden",
+                            onclick: () => {
+                                if (ruleCard === state.selectedRule) {
+                                    state.selectedRule = null
                                 }
-                            },
-                            oninput: (event: Event) => {
-                                const el = (event.target as HTMLTextAreaElement)
-                                const parseResult = parseRule(ruleCard.rawText)
-                                if (parseResult.result === "success") {
-                                    ruleCard.lastParsed = {
-                                        rawText: ruleCard.rawText,
-                                        rule: parseResult.rule,
-                                    }
-                                    ruleCard.errorText = null
-                                }
-                                else if (parseResult.result === "noRule") {
-                                    ruleCard.lastParsed = null
-                                    ruleCard.errorText = null
-                                }
-                                else {
-                                    ruleCard.errorText = parseResult.reason
-                                }
-
-                                const ruleDiv = el.parentElement?.parentElement as HTMLElement
-                                el.style.height = "auto"  // trigger the text box to auto-size
-                                el.style.height = el.scrollHeight + "px" // new stretch it to fit contents
-
-                                // Delay the reading of the rule div height until the
-                                // currently-executing DOM update has fully finished
-                                // (the div's height may change during the update).
-                                setTimeout(() => {
-                                    // Create a new DOM update to finish the work.
-                                    defineDOMUpdate(() => {
-                                        // Record the height of the WHOLE rule div,
-                                        // so we can use it for code-driven layout.
-                                        ruleCard.ruleCardHeight = ruleDiv.offsetHeight
-                                    })({
-                                        type: "Custom update",
-                                        target: ruleDiv,
-                                    })
-                                }, 0)
-                                // TODO: Can I detect which text boxes remain in the same
-                                // column as the one just edited and "skip" their animation?
-                                // This would prevent the mismatch between instant textbox
-                                // resizing, and delayed "making room" for the new size.
-                                // const ruleDivs = document.getElementsByClassName("rule")
-                                // for (let i = 0; i < ruleDivs.length; ++i) {
-                                //     (ruleDivs[i] as HTMLElement).style.transitionDuration = "0s"
-                                // }
+                                state.ruleCards.removeAt(state.ruleCards.indexOf(ruleCard))
                             },
                         }),
-                        $if (() => ruleCard.errorText !== null, {
-                            $then: () => [
-                                p (() => ruleCard.errorText as string, {
-                                    class: "errorText",
-                                }),
-                            ],
-                            $else: () => [],
-                        }),
+                        div ({class: "ruleTextWithErrors"}, [
+                            textarea ({
+                                class: "ruleTextArea",
+                                value: toRefs(ruleCard).rawText,
+                                onfocus: () => {
+                                    state.selectedRule = ruleCard
+                                },
+                                onkeydown: (event: KeyboardEvent) => {
+                                    const el = (event.target as HTMLTextAreaElement)
+                                    // React to vanilla key presses only
+                                    if (!event.ctrlKey && !event.metaKey) {
+                                        // Do basic autoformatting.
+                                        // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
+                                        if (event.key === ",") {
+                                            event.preventDefault()
+                                            setTimeout(() =>
+                                                document.execCommand("insertText", false, ", "), 0)
+                                        }
+                                        else if (event.key === "Enter") {
+                                            event.preventDefault()
+                                            setTimeout(() =>
+                                                document.execCommand("insertText", false, "\n  "), 0)
+                                        }
+                                        else if (event.key === "-") {
+                                            event.preventDefault()
+                                            setTimeout(() =>
+                                                document.execCommand("insertText", false, "¬"), 0)
+                                        }
+                                        // Disallow spaces next to an existing space, unless at the start of a line
+                                        else if (
+                                            event.key === " " && !(
+                                                el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
+                                            ) && !(
+                                                el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
+                                            ) && (
+                                                (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
+                                            )
+                                        ) {
+                                            event.preventDefault()
+                                        }
+                                    }
+                                },
+                                oninput: (event: Event) => {
+                                    const el = (event.target as HTMLTextAreaElement)
+                                    const parseResult = parseRule(ruleCard.rawText)
+                                    if (parseResult.result === "success") {
+                                        ruleCard.lastParsed = {
+                                            rawText: ruleCard.rawText,
+                                            rule: parseResult.rule,
+                                        }
+                                        ruleCard.errorText = null
+                                    }
+                                    else if (parseResult.result === "noRule") {
+                                        ruleCard.lastParsed = null
+                                        ruleCard.errorText = null
+                                    }
+                                    else {
+                                        ruleCard.errorText = parseResult.reason
+                                    }
+    
+                                    const ruleDiv = el.parentElement?.parentElement as HTMLElement
+                                    el.style.height = "auto"  // trigger the text box to auto-size
+                                    el.style.height = el.scrollHeight + "px" // new stretch it to fit contents
+    
+                                    // Delay the reading of the rule div height until the
+                                    // currently-executing DOM update has fully finished
+                                    // (the div's height may change during the update).
+                                    setTimeout(() => {
+                                        // Create a new DOM update to finish the work.
+                                        defineDOMUpdate(() => {
+                                            // Record the height of the WHOLE rule div,
+                                            // so we can use it for code-driven layout.
+                                            ruleCard.ruleCardHeight = ruleDiv.offsetHeight
+                                        })({
+                                            type: "Custom update",
+                                            target: ruleDiv,
+                                        })
+                                    }, 0)
+                                    // TODO: Can I detect which text boxes remain in the same
+                                    // column as the one just edited and "skip" their animation?
+                                    // This would prevent the mismatch between instant textbox
+                                    // resizing, and delayed "making room" for the new size.
+                                    // const ruleDivs = document.getElementsByClassName("rule")
+                                    // for (let i = 0; i < ruleDivs.length; ++i) {
+                                    //     (ruleDivs[i] as HTMLElement).style.transitionDuration = "0s"
+                                    // }
+                                },
+                            }),
+                            $if (() => ruleCard.errorText !== null, {
+                                $then: () => [
+                                    p (() => ruleCard.errorText as string, {
+                                        class: "errorText",
+                                    }),
+                                ],
+                                $else: () => [],
+                            }),
+                        ]),
                     ]),
                 ]),
             ]),
         ]),
-        div ({class: "separator"}),
         div ({class: "viewBottomPadding"}),
     ])
 )

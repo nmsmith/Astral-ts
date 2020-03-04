@@ -1,3 +1,8 @@
+.unstyledButton {
+    border-style: none;
+    background-color: #ffffff00;
+}
+
 .view {
     @extend .fillViewport;
     @extend .col;
@@ -44,15 +49,35 @@ $standard-border-color: #aaaaaa;
     white-space: pre;
 }
 
-.ruleView {
-// create an origin for child "absolute" positioning
-    position: relative;
-    height: 900px;
+$overview-width: 200px;
+
+.ruleOverview {
+    @extend .col;
+    width: $overview-width;
 }
 
-.unstyledButton {
-    border-style: none;
-    background-color: #ffffff00;
+.ruleList {
+    flex-grow: 1;
+    border-style: solid;
+    border-bottom-width: 1px;
+    border-color: $standard-border-color;
+    padding: 6px;
+    line-height: 22px;
+}
+
+.addRuleButton {
+    background-color: #b6d6ff;
+}
+
+.ruleGraphView {
+// create an origin for child "absolute" positioning
+    position: relative;
+    width: calc(100% - #{$overview-width});
+    height: 900px;
+    overflow: hidden;
+    border-style: solid;
+    border-width: 1px;
+    border-color: $standard-border-color;
 }
 
 $box-shadow-color: #979797;
@@ -61,31 +86,33 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 .labelError {
     background-color: #ffbfbf;
 }
+
+$rule-anim-duration: 0.7s;
+
 .rule {
     position: absolute;
     width: 25%;
-    flex-shrink: 0;
     @extend .row;
-    align-self: flex-start;
     background-color: white;
+    z-index: 0;
 // border for delimiting adjacent cards
     border-bottom-style: solid;
     border-width: 1px;
     box-sizing: border-box;
     border-color: $standard-border-color;
 // animation
-    transition-duration: 0.7s; // for movement animation
+    transition-property: z-index left top;
+    transition-duration: $rule-anim-duration; // for movement animation
 }
 
-.rule:before {
-    content: "";
+.ruleShadow {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    width: 25%;
     z-index: -1;
     box-shadow: $standard-box-shadow;
+// animation
+    transition-property: left top;
+    transition-duration: $rule-anim-duration; // for movement animation
 }
 
 .deleteRuleButton {

@@ -643,10 +643,22 @@ declare global {
         "width": string
         "height": string
         "visibility": string
+        "z-index": number
+        "background-color": string
     }
 }
 
-const cssProperties = new Set(["left", "right", "top", "bottom", "width", "height", "visibility"])
+const cssProperties = new Set([
+    "left",
+    "right",
+    "top",
+    "bottom",
+    "width",
+    "height",
+    "visibility",
+    "z-index",
+    "background-color",
+])
 
 // Defines a record of properties that can be assigned to an Element. If the property
 // is an EventHandler, then it must be a plain old function. Otherwise, the property
