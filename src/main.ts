@@ -201,7 +201,7 @@ localStorage.loadLastState = true
 function saveState(): void {
     // If an input element is focused, trigger its blur event
     if (document.activeElement !== null && document.activeElement.tagName === "INPUT") {
-        (document.activeElement as HTMLInputElement).blur()
+        (document.activeElement as unknown as HTMLInputElement).blur()
     }
     localStorage.state = JSON.stringify(Cycle.decycle(state))
 }
@@ -256,19 +256,29 @@ document.body.prepend(
     div ({class: "separator"}),
 )
 
-const ruleCardWidthCSS = 500 // WARNING: Keep this in sync with the CSS file
-const ruleCardSpacing = {x: 50, y: 30}
-const ruleCardColumnWidth = ruleCardWidthCSS + ruleCardSpacing.x
-
-function computeLeftPosition(rule: RuleCard): number {
-    const column = state.ruleLayoutInfo.get(rule)
-    return column === undefined ? -123: column.index * ruleCardColumnWidth
+function px(n: number): string {
+    return `${n}px`
 }
 
-function computeTopPosition(thisRuleCard: RuleCard): number {
+function percent(n: number): string {
+    return `${n}%`
+}
+
+const ruleCardWidth = 30 // WARNING: Keep this in sync with the CSS file
+const ruleCardXOffset = ruleCardWidth + 2.5
+// As pixels:
+const ruleCardYSpacing = 30
+
+function computeLeftPosition(rule: RuleCard): string {
+
+    const column = state.ruleLayoutInfo.get(rule)
+    return column === undefined ? px(-123): percent(1 + column.index * ruleCardXOffset)
+}
+
+function computeTopPosition(thisRuleCard: RuleCard): string {
     const column = state.ruleLayoutInfo.get(thisRuleCard)
     if (column === undefined) {
-        return -123 // should never happen
+        return px(-123) // should never happen
     }
     else {
         let y = 0
@@ -285,7 +295,7 @@ function computeTopPosition(thisRuleCard: RuleCard): number {
                 for (const relation of item) {
                     for (const rule of relation.rules) {
                         if (rule === thisRule) {
-                            return y
+                            return px(y)
                         }
                         else {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
@@ -295,16 +305,16 @@ function computeTopPosition(thisRuleCard: RuleCard): number {
                 }
             }
             else if (item === thisRuleCard) {
-                return y
+                return px(y)
             }
             else {
                 y += item.ruleCardHeight
             }
             // Put space between components
-            y += ruleCardSpacing.y
+            y += ruleCardYSpacing
         }
         // We should never reach here
-        return -123
+        return px(-123)
     }
 }
 
@@ -343,142 +353,138 @@ observer.observe(document, { childList: true, subtree: true })
 
 app ("app", state,
     div ({class: "view"}, [
-        div ({class: "col"}, [
-            h1 ("Design directions"),
-            list ({class: "ideaList"}, {class: "listItem"}, [
-                h3 ("The neighbourhood of an element should always be visible, so that the effects of incremental changes are obvious (Lean on video games e.g. Factorio: inherently local cause-and-effect)."),
-                h3 ("Andy Matuschak (his notes): we learn SKILLS and UNDERSTANDING through doing, and observing/mimicking the tacit knowledge of \"experts\" (craftsmen, Twitch streamers, lecturers explaining)."),
-                h3 ("But how do we develop NEW APPROACHES to (as opposed to understanding of) a problem/task? First, gain a MASTERFUL UNDERSTANDING of the existing problem & approaches, and then develop approaches from there (e.g. reasoning by first principles)."),
-                h3 ("As I keep re-discovering, graphs are crap, and there is no \"magic\" visualisation waiting to be invented. What core visual primitives can communicate data and their relationships? Relative positioning, shape and colour matching... Review literature."),
-            ]),
-            $for (() => state.groupsWithInternalNegation, o => [
-                p (() => `The following recursive group has internal negation: ${o.errorText}`, {
-                    class: "errorText",
-                }),
-            ]),
-            button ("Add rule", {onclick: newRule}),
-            div ({class: "ruleView"}, [
-                $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
-                    div ({
-                        class: "rule",
-                        left: () => computeLeftPosition(ruleCard),
-                        top: () => computeTopPosition(ruleCard),
-                        "data-1": ruleCard,
-                    }, [
-                        button ("✖", {
-                            class: "deleteRuleButton",
-                            onclick: () => {
-                                if (ruleCard === state.selectedRule) {
-                                    state.selectedRule = null
+        h1 ("Design directions"),
+        list ({class: "ideaList"}, {class: "listItem"}, [
+            h3 ("The neighbourhood of an element should always be visible, so that the effects of incremental changes are obvious (Lean on video games e.g. Factorio: inherently local cause-and-effect)."),
+            h3 ("Andy Matuschak (his notes): we learn SKILLS and UNDERSTANDING through doing, and observing/mimicking the tacit knowledge of \"experts\" (craftsmen, Twitch streamers, lecturers explaining)."),
+            h3 ("But how do we develop NEW APPROACHES to (as opposed to understanding of) a problem/task? First, gain a MASTERFUL UNDERSTANDING of the existing problem & approaches, and then develop approaches from there (e.g. reasoning by first principles)."),
+            h3 ("As I keep re-discovering, graphs are crap, and there is no \"magic\" visualisation waiting to be invented. What core visual primitives can communicate data and their relationships? Relative positioning, shape and colour matching... Review literature."),
+        ]),
+        $for (() => state.groupsWithInternalNegation, o => [
+            p (() => `The following recursive group has internal negation: ${o.errorText}`, {
+                class: "errorText",
+            }),
+        ]),
+        button ("Add rule", {onclick: newRule}),
+        div ({class: "ruleView"}, [
+            $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
+                div ({
+                    class: "rule",
+                    left: () => computeLeftPosition(ruleCard),
+                    top: () => computeTopPosition(ruleCard),
+                    "data-1": ruleCard,
+                }, [
+                    button ("✖", {
+                        class: "deleteRuleButton",
+                        onclick: () => {
+                            if (ruleCard === state.selectedRule) {
+                                state.selectedRule = null
+                            }
+                            state.ruleCard.removeAt(state.ruleCard.indexOf(ruleCard))
+                        },
+                    }),
+                    div ({class: "ruleTextWithErrors"}, [
+                        textarea ({
+                            class: "ruleTextArea",
+                            value: toRefs(ruleCard).rawText,
+                            onfocus: () => {
+                                state.selectedRule = ruleCard
+                            },
+                            onkeydown: (event: KeyboardEvent) => {
+                                const el = (event.target as HTMLTextAreaElement)
+                                // React to vanilla key presses only
+                                if (!event.ctrlKey && !event.metaKey) {
+                                    // Do basic autoformatting.
+                                    // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
+                                    if (event.key === ",") {
+                                        event.preventDefault()
+                                        setTimeout(() =>
+                                            document.execCommand("insertText", false, ", "), 0)
+                                    }
+                                    else if (event.key === "Enter") {
+                                        event.preventDefault()
+                                        setTimeout(() =>
+                                            document.execCommand("insertText", false, "\n  "), 0)
+                                    }
+                                    else if (event.key === "-") {
+                                        event.preventDefault()
+                                        setTimeout(() =>
+                                            document.execCommand("insertText", false, "¬"), 0)
+                                    }
+                                    // Disallow spaces next to an existing space, unless at the start of a line
+                                    else if (
+                                        event.key === " " && !(
+                                            el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
+                                        ) && !(
+                                            el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
+                                        ) && (
+                                            (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
+                                        )
+                                    ) {
+                                        event.preventDefault()
+                                    }
                                 }
-                                state.ruleCard.removeAt(state.ruleCard.indexOf(ruleCard))
+                            },
+                            oninput: (event: Event) => {
+                                const el = (event.target as HTMLTextAreaElement)
+                                const parseResult = parseRule(ruleCard.rawText)
+                                if (parseResult.result === "success") {
+                                    ruleCard.lastParsed = {
+                                        rawText: ruleCard.rawText,
+                                        rule: parseResult.rule,
+                                    }
+                                    ruleCard.errorText = null
+                                }
+                                else if (parseResult.result === "noRule") {
+                                    ruleCard.lastParsed = null
+                                    ruleCard.errorText = null
+                                }
+                                else {
+                                    ruleCard.errorText = parseResult.reason
+                                }
+
+                                const ruleDiv = el.parentElement?.parentElement as HTMLElement
+                                el.style.height = "auto"  // trigger the text box to auto-size
+                                el.style.height = el.scrollHeight + "px" // new stretch it to fit contents
+
+                                // Delay the reading of the rule div height until the
+                                // currently-executing DOM update has fully finished
+                                // (the div's height may change during the update).
+                                setTimeout(() => {
+                                    // Create a new DOM update to finish the work.
+                                    defineDOMUpdate(() => {
+                                        // Record the height of the WHOLE rule div,
+                                        // so we can use it for code-driven layout.
+                                        ruleCard.ruleCardHeight = ruleDiv.offsetHeight
+                                    })({
+                                        type: "Custom update",
+                                        target: ruleDiv,
+                                    })
+                                }, 0)
+                                // TODO: Can I detect which text boxes remain in the same
+                                // column as the one just edited and "skip" their animation?
+                                // This would prevent the mismatch between instant textbox
+                                // resizing, and delayed "making room" for the new size.
+                                // const ruleDivs = document.getElementsByClassName("rule")
+                                // for (let i = 0; i < ruleDivs.length; ++i) {
+                                //     (ruleDivs[i] as HTMLElement).style.transitionDuration = "0s"
+                                // }
                             },
                         }),
-                        div ({class: "row"}, [
-                            div ({class: "ruleTextWithErrors"}, [
-                                textarea ({
-                                    class: "ruleTextArea",
-                                    value: toRefs(ruleCard).rawText,
-                                    onfocus: () => {
-                                        state.selectedRule = ruleCard
-                                    },
-                                    onkeydown: (event: KeyboardEvent) => {
-                                        const el = (event.target as HTMLTextAreaElement)
-                                        // React to vanilla key presses only
-                                        if (!event.ctrlKey && !event.metaKey) {
-                                            // Do basic autoformatting.
-                                            // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
-                                            if (event.key === ",") {
-                                                event.preventDefault()
-                                                setTimeout(() =>
-                                                    document.execCommand("insertText", false, ", "), 0)
-                                            }
-                                            else if (event.key === "Enter") {
-                                                event.preventDefault()
-                                                setTimeout(() =>
-                                                    document.execCommand("insertText", false, "\n  "), 0)
-                                            }
-                                            else if (event.key === "-") {
-                                                event.preventDefault()
-                                                setTimeout(() =>
-                                                    document.execCommand("insertText", false, "¬"), 0)
-                                            }
-                                            // Disallow spaces next to an existing space, unless at the start of a line
-                                            else if (
-                                                event.key === " " && !(
-                                                    el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
-                                                ) && !(
-                                                    el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
-                                                ) && (
-                                                    (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
-                                                )
-                                            ) {
-                                                event.preventDefault()
-                                            }
-                                        }
-                                    },
-                                    oninput: (event: Event) => {
-                                        const el = (event.target as HTMLTextAreaElement)
-                                        const parseResult = parseRule(ruleCard.rawText)
-                                        if (parseResult.result === "success") {
-                                            ruleCard.lastParsed = {
-                                                rawText: ruleCard.rawText,
-                                                rule: parseResult.rule,
-                                            }
-                                            ruleCard.errorText = null
-                                        }
-                                        else if (parseResult.result === "noRule") {
-                                            ruleCard.lastParsed = null
-                                            ruleCard.errorText = null
-                                        }
-                                        else {
-                                            ruleCard.errorText = parseResult.reason
-                                        }
-
-                                        const ruleDiv = el.parentElement?.parentElement?.parentElement as HTMLElement
-                                        el.style.height = "auto"  // trigger the text box to auto-size
-                                        el.style.height = el.scrollHeight + "px" // new stretch it to fit contents
-
-                                        // Delay the reading of the rule div height until the
-                                        // currently-executing DOM update has fully finished
-                                        // (the div's height may change during the update).
-                                        setTimeout(() => {
-                                            // Create a new DOM update to finish the work.
-                                            defineDOMUpdate(() => {
-                                                // Record the height of the WHOLE rule div,
-                                                // so we can use it for code-driven layout.
-                                                ruleCard.ruleCardHeight = ruleDiv.offsetHeight
-                                            })({
-                                                type: "Custom update",
-                                                target: ruleDiv,
-                                            })
-                                        }, 0)
-                                        // TODO: Can I detect which text boxes remain in the same
-                                        // column as the one just edited and "skip" their animation?
-                                        // This would prevent the mismatch between instant textbox
-                                        // resizing, and delayed "making room" for the new size.
-                                        // const ruleDivs = document.getElementsByClassName("rule")
-                                        // for (let i = 0; i < ruleDivs.length; ++i) {
-                                        //     (ruleDivs[i] as HTMLElement).style.transitionDuration = "0s"
-                                        // }
-                                    },
+                        $if (() => ruleCard.errorText !== null, {
+                            $then: () => [
+                                p (() => ruleCard.errorText as string, {
+                                    class: "errorText",
                                 }),
-                                $if (() => ruleCard.errorText !== null, {
-                                    $then: () => [
-                                        p (() => ruleCard.errorText as string, {
-                                            class: "errorText",
-                                        }),
-                                    ],
-                                    $else: () => [],
-                                }),
-                            ]),
-                        ]),
+                            ],
+                            $else: () => [],
+                        }),
                     ]),
                 ]),
             ]),
-            div ({class: "separator"}),
-            div ({class: "viewBottomPadding"}),
         ]),
+        div ({class: "separator"}),
+        div ({class: "viewBottomPadding"}),
     ])
 )
 

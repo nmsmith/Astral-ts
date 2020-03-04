@@ -1,6 +1,6 @@
 .view {
     @extend .fillViewport;
-    @extend .row;
+    @extend .col;
 }
 
 .viewBottomPadding {
@@ -47,6 +47,7 @@ $standard-border-color: #aaaaaa;
 .ruleView {
 // create an origin for child "absolute" positioning
     position: relative;
+    height: 900px;
 }
 
 .unstyledButton {
@@ -62,11 +63,9 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 .rule {
     position: absolute;
-    width: 500px;
+    width: 31%;
     flex-shrink: 0;
     @extend .row;
-    margin-left: $main-pad;
-    margin-right: $main-pad;
     align-self: flex-start;
     background-color: white;
 // border for delimiting adjacent cards
