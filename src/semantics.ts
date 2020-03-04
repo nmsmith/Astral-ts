@@ -19,7 +19,8 @@ export type Component = Set<Relation>
 
 export interface Relation {
     readonly name: string
-    rules: Set<Rule>
+    ownRules: Set<Rule>
+    dependentRules: Set<Rule>
 }
 
 export interface Rule {
@@ -52,16 +53,22 @@ export function analyseRuleGraph<T>(rules: Map<Rule, T>): RuleGraphInfo<T> {
         if (entry === undefined) {
             relations.set(rule.head.relationName, {
                 name: rule.head.relationName,
-                rules: new Set<Rule>([rule]),
+                ownRules: new Set<Rule>([rule]),
+                dependentRules: new Set<Rule>(),
             })
         }
-        else entry.rules.add(rule)
-        // Construct relations for the body atoms, if necessary
+        else entry.ownRules.add(rule)
+        // Construct relations for the body atoms, if necessary,
+        // and assign this rule as a dependent of those relations.
         for (const literal of rule.body) {
-            if (!relations.has(literal.relationName)) {
+            if (relations.has(literal.relationName)) {
+                relations.get(literal.relationName)?.dependentRules.add(rule)
+            }
+            else {
                 relations.set(literal.relationName, {
                     name: literal.relationName,
-                    rules: new Set<Rule>(),
+                    ownRules: new Set<Rule>(),
+                    dependentRules: new Set<Rule>([rule]),
                 })
             }
         }
@@ -75,7 +82,7 @@ export function analyseRuleGraph<T>(rules: Map<Rule, T>): RuleGraphInfo<T> {
         depths.set(relationName, myDepth)
         const relation = relations.get(relationName) as Relation
         visitedStack.push(relation)
-        const successors = relation.rules
+        const successors = relation.ownRules
         let lowLink = myDepth
         // Track whether this connected component is trivial (one node, no cycles),
         // or whether there's a cycle.

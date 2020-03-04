@@ -63,7 +63,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 }
 .rule {
     position: absolute;
-    width: 31%;
+    width: 25%;
     flex-shrink: 0;
     @extend .row;
     align-self: flex-start;

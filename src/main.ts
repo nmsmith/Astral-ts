@@ -38,7 +38,7 @@ function isComponent(item: ColumnItem): item is Component {
 
 interface Column {
     readonly index: number
-    readonly items: ColumnItem[]
+    readonly items: Set<ColumnItem> // Intend to iterate in an ordered manner, but discard duplicates
 }
 
 interface State {
@@ -80,18 +80,11 @@ function createState(existingState?: State): WithDerivedProps<State> {
             const layoutInfo = observable(new Map<RuleCard, Column>())
 
             // Assign the rule (and its whole component, if exists) to the given column
-            function assignRuleToColumn(ruleCard: RuleCard, column: Column): void {
-                if (ruleCard.lastParsed === null) { // Display the incomplete rule card by itself
-                    column.items.push(ruleCard)
-                    layoutInfo.set(ruleCard, column)
-                }
-                else { // Display the entire component alongside the given rule
-                    const rule = ruleCard.lastParsed.rule
-                    const relation = state.ruleGraph.relations.get(rule.head.relationName) as Relation
-                    const component = state.ruleGraph.components.get(relation) as Component
-                    column.items.push(component)
+            function assignComponentToColumn(component: Component, column: Column): void {
+                if (!column.items.has(component)) {
+                    column.items.add(component)
                     for (const relation of component) {
-                        for (const rule of relation.rules) {
+                        for (const rule of relation.ownRules) {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
                             layoutInfo.set(ruleCard, column)
                         }
@@ -99,16 +92,60 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 }
             }
 
-            // Put the selected rule into its own column
             if (state.selectedRule !== null) {
-                const column = observable({index: 0, items: []})
-                assignRuleToColumn(state.selectedRule, column)
+                // Put the selected rule's component into its own column
+                const selectedComponentColumn: Column = observable({index: 1, items: new Set()})
+                if (state.selectedRule.lastParsed === null) {
+                    selectedComponentColumn.items.add(state.selectedRule)
+                    layoutInfo.set(state.selectedRule, selectedComponentColumn)
+                }
+                else {
+                    const selectedRule = state.selectedRule.lastParsed.rule
+                    const selectedRelation = state.ruleGraph.relations.get(selectedRule.head.relationName) as Relation
+                    const selectedComponent = state.ruleGraph.components.get(selectedRelation) as Component
+                    assignComponentToColumn(selectedComponent, selectedComponentColumn)
+                    // Put dependencies and dependent components into adjacent columns
+                    const dependenciesColumn: Column = observable({index: 2, items: new Set()})
+                    const dependentsColumn: Column = observable({index: 0, items: new Set()})
+                    selectedComponent.forEach(relation => {
+                        // Dependents
+                        relation.dependentRules.forEach(succRule => {
+                            const succCard = state.ruleGraph.rules.get(succRule) as RuleCard
+                            if (!layoutInfo.has(succCard)) {
+                                const succRelation = state.ruleGraph.relations.get(succRule.head.relationName) as Relation
+                                const succComponent = state.ruleGraph.components.get(succRelation) as Component
+                                if (!selectedComponentColumn.items.has(succComponent)) {
+                                    assignComponentToColumn(succComponent, dependentsColumn)
+                                }
+                            }
+                        })
+                        // Dependencies
+                        relation.ownRules.forEach(ownRule => {
+                            ownRule.body.forEach(lit => {
+                                const predRelation = state.ruleGraph.relations.get(lit.relationName) as Relation
+                                const predComponent = state.ruleGraph.components.get(predRelation) as Component
+                                if (!selectedComponentColumn.items.has(predComponent)) {
+                                    assignComponentToColumn(predComponent, dependenciesColumn)
+                                }
+                            })
+                        })
+                    })
+                }
             }
-            // Put everything else into a single column
-            const defaultColumn = observable({index: 1, items: []})
+            // Put everything else into a single "far away" column
+            const defaultColumn: Column = observable({index: 3, items: new Set()})
             state.ruleCard.forEach(r => {
-                if (layoutInfo.has(r)) return
-                assignRuleToColumn(r, defaultColumn)
+                if (!layoutInfo.has(r)) { // Save time by checking if this rule has already been visited
+                    if (r.lastParsed === null) { // Display the incomplete rule card by itself
+                        defaultColumn.items.add(r)
+                        layoutInfo.set(r, defaultColumn)
+                    }
+                    else { // Display the component
+                        const relation = state.ruleGraph.relations.get(r.lastParsed.rule.head.relationName) as Relation
+                        const component = state.ruleGraph.components.get(relation) as Component
+                        assignComponentToColumn(component, defaultColumn)
+                    }
+                }
             })
             return layoutInfo
         },
@@ -264,7 +301,8 @@ function percent(n: number): string {
     return `${n}%`
 }
 
-const ruleCardWidth = 30 // WARNING: Keep this in sync with the CSS file
+// As percentages:
+const ruleCardWidth = 25 // WARNING: Keep this in sync with the CSS file
 const ruleCardXOffset = ruleCardWidth + 2.5
 // As pixels:
 const ruleCardYSpacing = 30
@@ -293,7 +331,7 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
         for (const item of column.items) {
             if (isComponent(item)) {
                 for (const relation of item) {
-                    for (const rule of relation.rules) {
+                    for (const rule of relation.ownRules) {
                         if (rule === thisRule) {
                             return px(y)
                         }
@@ -376,6 +414,7 @@ app ("app", state,
                 }, [
                     button ("✖", {
                         class: "deleteRuleButton",
+                        visibility: () => state.selectedRule === ruleCard ? "visible" : "hidden",
                         onclick: () => {
                             if (ruleCard === state.selectedRule) {
                                 state.selectedRule = null
