@@ -50,7 +50,9 @@ const rightOffscreenColumn = 3.125
 
 interface State {
     readonly ruleCards: RuleCard[]
-    selectedRule: RuleCard | null
+// Don't serialize these (because they're unserializable, for the mostpart)
+    centeredItem: ColumnItem | null
+    editingRule: RuleCard | null
     lastRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
 // derived state:
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
@@ -59,17 +61,24 @@ interface State {
     readonly groupsWithInternalNegation: {errorText: string}[] // TODO: include this in RuleGraphInfo
 }
 
+
+
 function createState(existingState?: State): WithDerivedProps<State> {
     const essentialState = existingState !== undefined ? existingState : {
         ruleCards: [],
-        selectedRule: null,
     }
-    let lastRuleLayoutInfo = new Map<RuleCard, ColumnLayout>()
-    Object.defineProperty(essentialState, "lastRuleLayoutInfo", {
-        get() {return lastRuleLayoutInfo },
-        set(v: Map<RuleCard, ColumnLayout>) { lastRuleLayoutInfo = v },
-        enumerable: true, // This property can be serialized
-    })
+    function createUnserializableState<T>(propName: string, initialValue: T): void {
+        let value = initialValue
+        Object.defineProperty(essentialState, propName, {
+            get() {return value },
+            set(v: T) { value = v },
+            enumerable: false, // Prevent this property from being serialized
+        })
+    }
+    createUnserializableState("centeredItem", null)
+    createUnserializableState("editingRule", null)
+    createUnserializableState("lastRuleLayoutInfo", new Map<RuleCard, ColumnLayout>())
+
     return withDerivedProps<State>(essentialState as State, {
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
         ruleGraph: state => {
@@ -132,25 +141,11 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 }
             }
 
-            if (state.selectedRule !== null) {
-                // Put the selected rule's component into its own column
+            if (state.centeredItem !== null) {
+                // Put the centered rule/component into the middle column
                 const selectedComponentColumn: ColumnLayout = observable({index: 1, hidden: false, items: new Set()})
-                if (state.selectedRule.lastParsed === null) {
-                    const ruleCard = state.selectedRule
-                    selectedComponentColumn.items.add(ruleCard)
-                    layoutInfo.set(ruleCard, selectedComponentColumn)
-                    if (state.lastRuleLayoutInfo.has(ruleCard)) {
-                        outgoingCards.delete(ruleCard)
-                    }
-                    else {
-                        ruleCard.newlyDisplayed = true
-                        incomingCards.add(ruleCard)
-                    }
-                }
-                else {
-                    const selectedRule = state.selectedRule.lastParsed.rule
-                    const selectedRelation = state.ruleGraph.relations.get(selectedRule.head.relationName) as Relation
-                    const selectedComponent = state.ruleGraph.components.get(selectedRelation) as Component
+                if (state.centeredItem !== null && isComponent(state.centeredItem)) {
+                    const selectedComponent = state.centeredItem
                     assignComponentToColumn(selectedComponent, selectedComponentColumn)
                     // Put dependencies and dependent components into adjacent columns
                     const dependenciesColumn: ColumnLayout = observable({index: 2, hidden: false, items: new Set()})
@@ -178,6 +173,18 @@ function createState(existingState?: State): WithDerivedProps<State> {
                             })
                         })
                     })
+                }
+                else { // an INCOMPLETE rule is centered, so it will be the only thing in the column
+                    const ruleCard = state.centeredItem
+                    selectedComponentColumn.items.add(ruleCard)
+                    layoutInfo.set(ruleCard, selectedComponentColumn)
+                    if (state.lastRuleLayoutInfo.has(ruleCard)) {
+                        outgoingCards.delete(ruleCard)
+                    }
+                    else {
+                        ruleCard.newlyDisplayed = true
+                        incomingCards.add(ruleCard)
+                    }
                 }
             }
             // Transition outgoing cards
@@ -435,18 +442,24 @@ function computeZIndex(card: RuleCard) {
     }
 }
 
-function overviewColor(card: RuleCard): string {
-    // selected
-    if (card === state.selectedRule) {
-        return "#55dd55"
+function overviewColor(component: Component): string {
+    // centered
+    if (component === state.centeredItem) {
+        return "#ffff44"
     }
-    // visible
-    else if (state.ruleLayoutInfo.get(card)?.hidden === 
-    false) {
-        return "#ffffff"
+    else {
+        const firstRule: Rule = component.size > 0
+            ? component.values().next().value.ownRules.values().next().value
+            : undefined
+        const ruleCard = state.ruleGraph.rules.get(firstRule) as RuleCard
+        // visible
+        if (state.ruleLayoutInfo.get(ruleCard)?.hidden === 
+        false) {
+            return "#ffffff"
+        }
+        // not visible
+        else return "#cccccc"
     }
-    // not visible
-    else return "#bbbbbb"
 }
 
 // When new rule cards are created, observe and record their height.
@@ -510,14 +523,17 @@ app ("app", state,
                     class: "addRuleButton",
                     onclick: newRule,
                 }),
-                div ({class: "ruleList"}, [
-                    $for (() => state.ruleCards, card => [
-                        div ({}, [
-                            p (() => card.lastParsed === null ? "incomplete" : card.lastParsed.rule.head.relationName, {
-                                "background-color": () => overviewColor(card),
-                                onclick: () => state.selectedRule = card,
-                            }),
-
+                div ({class: "componentList"}, [
+                    // Iterate over the UNIQUE components stored in the component Map
+                    $for (() => new Set(state.ruleGraph.components.values()).values(), component => [
+                        div ({
+                            class: "component",
+                            "background-color": () => overviewColor(component),
+                            onclick: () => state.centeredItem = component,
+                        }, [
+                            $for (() => component.values(), relation => [
+                                p (relation.name),
+                            ]),
                         ]),
                     ]),
                 ]),
@@ -541,10 +557,10 @@ app ("app", state,
                         }, [
                             button ("✖", {
                                 class: "deleteRuleButton",
-                                visibility: () => state.selectedRule === ruleCard ? "visible" : "hidden",
+                                visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
                                 onclick: () => {
-                                    if (ruleCard === state.selectedRule) {
-                                        state.selectedRule = null
+                                    if (state.editingRule === ruleCard) {
+                                        state.editingRule = null
                                     }
                                     state.ruleCards.removeAt(state.ruleCards.indexOf(ruleCard))
                                 },
@@ -554,7 +570,12 @@ app ("app", state,
                                     class: "ruleTextArea",
                                     value: toRefs(ruleCard).rawText,
                                     onfocus: () => {
-                                        state.selectedRule = ruleCard
+                                        state.editingRule = ruleCard
+                                        if (ruleCard.lastParsed !== null) {
+                                            const relation = state.ruleGraph.relations.get(ruleCard.lastParsed.rule.head.relationName) as Relation
+                                            const component = state.ruleGraph.components.get(relation) as Component
+                                            state.centeredItem = component
+                                        }
                                     },
                                     onkeydown: (event: KeyboardEvent) => {
                                         const el = (event.target as HTMLTextAreaElement)

@@ -56,13 +56,19 @@ $overview-width: 200px;
     width: $overview-width;
 }
 
-.ruleList {
+.componentList {
     flex-grow: 1;
     border-style: solid;
     border-bottom-width: 1px;
     border-color: $standard-border-color;
-    padding: 6px;
     line-height: 22px;
+}
+
+.component {
+    @extend .codeArea;
+    border-style: solid;
+    border-width: 0 0 1px 0;
+    border-color: $standard-border-color;
 }
 
 .addRuleButton {
