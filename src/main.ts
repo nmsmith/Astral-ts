@@ -363,7 +363,10 @@ function computeLeftPosition(card: RuleCard): string {
             if (column.index === 0) {
                 index = -1
             }
-            else {
+            else if (column.index === 1) {
+                index = 1
+            }
+            else { // if (column.index === 2)
                 index = 3
             }
         }
@@ -377,7 +380,7 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
     if (column === undefined) {
         return px(-123) // should never happen
     }
-    else if (column.hidden) {
+    else if (column.hidden || thisRuleCard.newlyDisplayed) {
         // Hide the card above the view
         return px(-2 * thisRuleCard.ruleCardHeight)
     }
@@ -459,7 +462,6 @@ const observer = new MutationObserver(mutations => {
     let foundRule = false
     function findRule(el: HTMLElement) {
         if (el.className === "rule") {
-            // Record the rule card's height
             (el as any)["data-1"].ruleCardHeight = el.offsetHeight
             foundRule = true
         }
