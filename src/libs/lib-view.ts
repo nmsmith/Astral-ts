@@ -517,7 +517,7 @@ export type WithIndex<T extends object> = T & {$index: number}
 
 interface DerivedFromSequence<T, I extends object> {
     type: "fromSequence"
-    items: () => readonly I[]
+    items: () => readonly I[] | IterableIterator<I>
     f: (item: WithIndex<I>) => T
 }
 
@@ -563,7 +563,7 @@ export function $if<T>(
  * determine which elements have changed when the array is updated.
  */
 export function $for<I extends object>(
-    items: () => readonly I[],
+    items: () => readonly I[] | IterableIterator<I>,
     f: (item: WithIndex<I>) => StylelessElement[],
 ): DerivedFromSequence<StylelessElement[], I> {
     return {type: "fromSequence", items: items, f: f}
@@ -836,7 +836,8 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
                 const newElementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
                 const newElementsForLogging: Effectful<StylelessElement>[] = []
                 // For each item, determine whether new or already existed
-                items().forEach((item, index) => {
+                let index = 0
+                for (const item of items()) {
                     const existingElements = elementsCache.get(item)
                     if (existingElements === undefined) {
                         somethingChanged = true
@@ -866,7 +867,8 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
                         elementsCache.delete(item)
                         newElementsCache.set(item, existingElements)
                     }
-                })
+                    ++index
+                }
 
                 // Log each new item that was added
                 if (newElementsForLogging.length > 0) {
