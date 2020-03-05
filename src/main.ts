@@ -442,14 +442,14 @@ function computeZIndex(card: RuleCard) {
     }
 }
 
-function overviewColor(component: Component): string {
+function overviewColor(item: ColumnItem): string {
     // centered
-    if (component === state.centeredItem) {
+    if (item === state.centeredItem) {
         return "#ffff44"
     }
-    else {
-        const firstRule: Rule = component.size > 0
-            ? component.values().next().value.ownRules.values().next().value
+    else if (isComponent(item)) {
+        const firstRule: Rule = item.size > 0
+            ? item.values().next().value.ownRules.values().next().value
             : undefined
         const ruleCard = state.ruleGraph.rules.get(firstRule) as RuleCard
         // visible
@@ -457,9 +457,9 @@ function overviewColor(component: Component): string {
         false) {
             return "#ffffff"
         }
-        // not visible
-        else return "#cccccc"
     }
+    // not visible
+    return "#cccccc"
 }
 
 // When new rule cards are created, observe and record their height.
@@ -524,6 +524,15 @@ app ("app", state,
                     onclick: newRule,
                 }),
                 div ({class: "componentList"}, [
+                    $for (() => state.ruleCards.filter(c => c.lastParsed === null), card => [
+                        div ({
+                            class: "component",
+                            "background-color": () => overviewColor(card),
+                            onclick: () => state.centeredItem = card,
+                        }, [
+                            p ("incomplete"),
+                        ]),
+                    ]),
                     // Iterate over the UNIQUE components stored in the component Map
                     $for (() => new Set(state.ruleGraph.components.values()).values(), component => [
                         div ({
@@ -543,7 +552,7 @@ app ("app", state,
                     $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
                         div ({
                             class: "ruleShadow",
-                            "z-index": () => computeZIndex(ruleCard),
+                            "z-index": () => computeZIndex(ruleCard) - 100, // render behind rules
                             left: () => computeLeftPosition(ruleCard),
                             top: () => computeTopPosition(ruleCard),
                             height: () => `${ruleCard.ruleCardHeight}px`,
@@ -621,10 +630,16 @@ app ("app", state,
                                                 rule: parseResult.rule,
                                             }
                                             ruleCard.errorText = null
+                                            // Center the component of the newly parsed rule
+                                            const relation = state.ruleGraph.relations.get(ruleCard.lastParsed.rule.head.relationName) as Relation
+                                            const component = state.ruleGraph.components.get(relation) as Component
+                                            state.centeredItem = component
                                         }
                                         else if (parseResult.result === "noRule") {
                                             ruleCard.lastParsed = null
                                             ruleCard.errorText = null
+                                            // Center just this rule card as a component
+                                            state.centeredItem = ruleCard
                                         }
                                         else {
                                             ruleCard.errorText = parseResult.reason

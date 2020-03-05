@@ -65,6 +65,7 @@ $overview-width: 200px;
 }
 
 .component {
+    @extend .noSelect;
     @extend .codeArea;
     border-style: solid;
     border-width: 0 0 1px 0;
