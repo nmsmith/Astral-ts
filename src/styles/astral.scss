@@ -69,14 +69,24 @@ $overview-width: 200px;
     background-color: #b6d6ff;
 }
 
+.rightPane {
+    flex-grow: 1;
+    border-style: solid;
+    border-width: 1px;
+    border-color: $standard-border-color;
+}
+
 .ruleGraphView {
 // create an origin for child "absolute" positioning
     position: relative;
-    width: calc(100% - #{$overview-width});
-    height: 900px;
+    height: 800px;
     overflow: hidden;
+}
+
+.dataView {
+    height: 300px;
     border-style: solid;
-    border-width: 1px;
+    border-width: 1px 0 0 0;
     border-color: $standard-border-color;
 }
 
@@ -91,7 +101,7 @@ $rule-anim-duration: 0.6s;
 
 .rule {
     position: absolute;
-    width: 25%;
+    width: 30%;
     @extend .row;
     background-color: white;
     z-index: 0;
@@ -107,7 +117,7 @@ $rule-anim-duration: 0.6s;
 
 .ruleShadow {
     position: absolute;
-    width: 25%;
+    width: 30%;
     z-index: -1;
     box-shadow: $standard-box-shadow;
 // animation
