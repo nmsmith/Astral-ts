@@ -38,12 +38,14 @@ function isComponent(item: ColumnItem): item is Component {
 
 interface ColumnLayout {
     readonly index: "unassigned" | number
+    hidden: boolean // If true, h-align with the column index but transition column off screen
     readonly items: Set<ColumnItem> // Intend to iterate in an ordered manner, but discard duplicates
 }
 
 interface State {
     readonly ruleCards: RuleCard[]
     selectedRule: RuleCard | null
+    lastRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
 // derived state:
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
     readonly incompleteCards: RuleCard[]
@@ -55,13 +57,14 @@ function createState(existingState?: State): WithDerivedProps<State> {
     const essentialState = existingState !== undefined ? existingState : {
         ruleCards: [],
         selectedRule: null,
-        // Derived state (to be overwritten):
-        ruleGraph: {} as RuleGraphInfo<RuleCard>,
-        incompleteCards: [],
-        ruleLayoutInfo: new Map<RuleCard, ColumnLayout>(),
-        groupsWithInternalNegation: [],
     }
-    return withDerivedProps<State>(essentialState, {
+    let lastRuleLayoutInfo = new Map<RuleCard, ColumnLayout>()
+    Object.defineProperty(essentialState, "lastRuleLayoutInfo", {
+        get() {return lastRuleLayoutInfo },
+        set(v: Map<RuleCard, ColumnLayout>) { lastRuleLayoutInfo = v },
+        enumerable: true, // This property can be serialized
+    })
+    return withDerivedProps<State>(essentialState as State, {
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
         ruleGraph: state => {
             // IMPORTANT: all proxied (i.e. state) objects which will be tested for equality in the future
@@ -79,6 +82,9 @@ function createState(existingState?: State): WithDerivedProps<State> {
             return state.ruleCards.filter(card => card.lastParsed === null)
         },
         ruleLayoutInfo: state => {
+            // Track the cards that were previously laid out so
+            // we can transition outgoing cards off the screen.
+            const outgoingCards = new Set(state.lastRuleLayoutInfo.keys())
             // IMPORTANT: all proxied (i.e. state) objects which will be tested for equality in the future
             // must be inserted into an existing proxied object so that they are not "double-proxied" when
             // their parent is later wrapped in observable(). Rules are tested for equality in Map.get().
@@ -92,6 +98,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                         for (const rule of relation.ownRules) {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
                             layoutInfo.set(ruleCard, column)
+                            outgoingCards.delete(ruleCard)
                         }
                     }
                 }
@@ -99,10 +106,11 @@ function createState(existingState?: State): WithDerivedProps<State> {
 
             if (state.selectedRule !== null) {
                 // Put the selected rule's component into its own column
-                const selectedComponentColumn: ColumnLayout = observable({index: 1, items: new Set()})
+                const selectedComponentColumn: ColumnLayout = observable({index: 1, hidden: false, items: new Set()})
                 if (state.selectedRule.lastParsed === null) {
                     selectedComponentColumn.items.add(state.selectedRule)
                     layoutInfo.set(state.selectedRule, selectedComponentColumn)
+                    outgoingCards.delete(state.selectedRule)
                 }
                 else {
                     const selectedRule = state.selectedRule.lastParsed.rule
@@ -110,8 +118,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     const selectedComponent = state.ruleGraph.components.get(selectedRelation) as Component
                     assignComponentToColumn(selectedComponent, selectedComponentColumn)
                     // Put dependencies and dependent components into adjacent columns
-                    const dependenciesColumn: ColumnLayout = observable({index: 2, items: new Set()})
-                    const dependentsColumn: ColumnLayout = observable({index: 0, items: new Set()})
+                    const dependenciesColumn: ColumnLayout = observable({index: 2, hidden: false, items: new Set()})
+                    const dependentsColumn: ColumnLayout = observable({index: 0, hidden: false, items: new Set()})
                     selectedComponent.forEach(relation => {
                         // Dependents
                         relation.dependentRules.forEach(succRule => {
@@ -137,13 +145,22 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     })
                 }
             }
+            // Transition outgoing cards
+            outgoingCards.forEach(card => {
+                const column = state.lastRuleLayoutInfo.get(card)
+                if (column !== undefined) {
+                    column.hidden = true
+                    layoutInfo.set(card, column)
+                }
+            })
             // Put everything else into a single "far away" column
-            const defaultColumn: ColumnLayout = observable({index: "unassigned", items: new Set()})
+            const defaultColumn: ColumnLayout = observable({index: "unassigned", hidden: false, items: new Set()})
             state.ruleCards.forEach(r => {
                 if (!layoutInfo.has(r)) { // Save time by checking if this rule has already been visited
                     if (r.lastParsed === null) { // Display the incomplete rule card by itself
                         defaultColumn.items.add(r)
                         layoutInfo.set(r, defaultColumn)
+                        outgoingCards.delete(r)
                     }
                     else { // Display the component
                         const relation = state.ruleGraph.relations.get(r.lastParsed.rule.head.relationName) as Relation
@@ -152,6 +169,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     }
                 }
             })
+
+            state.lastRuleLayoutInfo = layoutInfo
             return layoutInfo
         },
         groupsWithInternalNegation: state => {
@@ -330,7 +349,7 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
     if (column === undefined) {
         return px(-123) // should never happen
     }
-    else if (column.index === "unassigned") {
+    else if (column.index === "unassigned" || column.hidden) {
         // Hide the card above the view
         return px(-2 * thisRuleCard.ruleCardHeight)
     }
@@ -369,6 +388,16 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
         }
         // We should never reach here
         return px(-123)
+    }
+}
+
+function computeZIndex(card: RuleCard) {
+    const column = state.ruleLayoutInfo.get(card)
+    if (column?.index === "unassigned" || column?.hidden === true) {
+        return 0 // render behind
+    }
+    else {
+        return 100 // render in-front (magnitude > 1 needed for animation purposes)
     }
 }
 
@@ -452,16 +481,16 @@ app ("app", state,
                 $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
                     div ({
                         class: "ruleShadow",
+                        "z-index": () => computeZIndex(ruleCard),
                         left: () => computeLeftPosition(ruleCard),
                         top: () => computeTopPosition(ruleCard),
                         height: () => `${ruleCard.ruleCardHeight}px`,
                     }),
                     div ({
                         class: "rule",
-                        "z-index": () => state.ruleLayoutInfo.get(ruleCard)?.index === "unassigned" ? 0 : 1,
+                        "z-index": () => computeZIndex(ruleCard),
                         left: () => computeLeftPosition(ruleCard),
                         top: () => computeTopPosition(ruleCard),
-                        
                         "data-1": ruleCard,
                     }, [
                         button ("✖", {

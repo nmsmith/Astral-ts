@@ -87,7 +87,7 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     background-color: #ffbfbf;
 }
 
-$rule-anim-duration: 0.7s;
+$rule-anim-duration: 0.6s;
 
 .rule {
     position: absolute;
@@ -101,7 +101,7 @@ $rule-anim-duration: 0.7s;
     box-sizing: border-box;
     border-color: $standard-border-color;
 // animation
-    transition-property: z-index left top;
+    transition-property: z-index, left, top;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
@@ -111,7 +111,7 @@ $rule-anim-duration: 0.7s;
     z-index: -1;
     box-shadow: $standard-box-shadow;
 // animation
-    transition-property: left top;
+    transition-property: z-index, left, top;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
