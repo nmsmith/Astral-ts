@@ -45,6 +45,9 @@ interface ColumnLayout {
     readonly items: Set<ColumnItem> // Intend to iterate in an ordered manner, but discard duplicates
 }
 
+const leftOffscreenColumn = -1.125
+const rightOffscreenColumn = 3.125
+
 interface State {
     readonly ruleCards: RuleCard[]
     selectedRule: RuleCard | null
@@ -182,8 +185,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 const column = state.lastRuleLayoutInfo.get(card)
                 if (column !== undefined) {
                     column.hidden = true
-                    if (column.index === 0) column.index = -1
-                    else if (column.index === 2) column.index = 3
+                    if (column.index === 0) column.index = leftOffscreenColumn
+                    else if (column.index === 2) column.index = rightOffscreenColumn
                     layoutInfo.set(card, column)
                 }
             })
@@ -361,13 +364,13 @@ function computeLeftPosition(card: RuleCard): string {
         if (card.newlyDisplayed) {
             // Animate inwards from one side of the screen
             if (column.index === 0) {
-                index = -1
+                index = leftOffscreenColumn
             }
             else if (column.index === 1) {
                 index = 1
             }
             else { // if (column.index === 2)
-                index = 3
+                index = rightOffscreenColumn
             }
         }
         else index = column.index
@@ -380,7 +383,7 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
     if (column === undefined) {
         return px(-123) // should never happen
     }
-    else if (column.hidden || thisRuleCard.newlyDisplayed) {
+    else if (column.index === 1 && (thisRuleCard.newlyDisplayed || column.hidden)) {
         // Hide the card above the view
         return px(-2 * thisRuleCard.ruleCardHeight)
     }
