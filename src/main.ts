@@ -17,7 +17,9 @@ interface RuleCard {
         readonly rawText: string
         readonly rule: Rule
     }
+// stuff for layout
     ruleCardHeight: number
+    newlyDisplayed: boolean
 }
 
 function RuleCard(): RuleCard {
@@ -26,6 +28,7 @@ function RuleCard(): RuleCard {
         errorText: null,
         lastParsed: null,
         ruleCardHeight: 123, // to be overwritten once page is constructed
+        newlyDisplayed: false,
     }
 }
 
@@ -37,7 +40,7 @@ function isComponent(item: ColumnItem): item is Component {
 }
 
 interface ColumnLayout {
-    index: "unassigned" | number
+    index: number
     hidden: boolean // If true, h-align with the column index but transition column off screen
     readonly items: Set<ColumnItem> // Intend to iterate in an ordered manner, but discard duplicates
 }
@@ -82,15 +85,25 @@ function createState(existingState?: State): WithDerivedProps<State> {
             return state.ruleCards.filter(card => card.lastParsed === null)
         },
         ruleLayoutInfo: state => {
-            // Track the cards that were previously laid out so
-            // we can transition outgoing cards off the screen.
-            const outgoingCards = new Set(state.lastRuleLayoutInfo.keys())
-            // TODO: We can REMOVE cards from the layout set if they're not going to be shown...
-            // but we need a way to animate them immediately upon creation.
-            // const outgoingCards = new Set<RuleCard>()
-            // state.lastRuleLayoutInfo.forEach((column, card) => {
-            //     if (!column.hidden) outgoingCards.add(card)
-            // })
+            // Gather the cards that were visible at the last timestep.
+            // We'll work out which of these are no longer visible, and animate them away.
+            const outgoingCards = new Set<RuleCard>()
+            state.lastRuleLayoutInfo.forEach((column, card) => {
+                if (!column.hidden) outgoingCards.add(card)
+            })
+            // Track which cards are newly displayed: we'll ensure they animate onto the screen.
+            const incomingCards = new Set<RuleCard>()
+            setTimeout(() => {
+                // After this DOM update is complete, and the new cards have been added
+                // to the page, commence their animation by triggering a second DOM update.
+                incomingCards.forEach(card => {
+                    card.newlyDisplayed = false
+                })
+                defineDOMUpdate(() => { /* no work to do */ })({
+                    type: "Custom update",
+                    target: null,
+                })
+            }, 0)
             // IMPORTANT: all proxied (i.e. state) objects which will be tested for equality in the future
             // must be inserted into an existing proxied object so that they are not "double-proxied" when
             // their parent is later wrapped in observable(). Rules are tested for equality in Map.get().
@@ -104,7 +117,13 @@ function createState(existingState?: State): WithDerivedProps<State> {
                         for (const rule of relation.ownRules) {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
                             layoutInfo.set(ruleCard, column)
-                            outgoingCards.delete(ruleCard)
+                            if (state.lastRuleLayoutInfo.has(ruleCard)) {
+                                outgoingCards.delete(ruleCard)
+                            }
+                            else {
+                                ruleCard.newlyDisplayed = true
+                                incomingCards.add(ruleCard)
+                            }
                         }
                     }
                 }
@@ -114,9 +133,16 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 // Put the selected rule's component into its own column
                 const selectedComponentColumn: ColumnLayout = observable({index: 1, hidden: false, items: new Set()})
                 if (state.selectedRule.lastParsed === null) {
-                    selectedComponentColumn.items.add(state.selectedRule)
-                    layoutInfo.set(state.selectedRule, selectedComponentColumn)
-                    outgoingCards.delete(state.selectedRule)
+                    const ruleCard = state.selectedRule
+                    selectedComponentColumn.items.add(ruleCard)
+                    layoutInfo.set(ruleCard, selectedComponentColumn)
+                    if (state.lastRuleLayoutInfo.has(ruleCard)) {
+                        outgoingCards.delete(ruleCard)
+                    }
+                    else {
+                        ruleCard.newlyDisplayed = true
+                        incomingCards.add(ruleCard)
+                    }
                 }
                 else {
                     const selectedRule = state.selectedRule.lastParsed.rule
@@ -161,23 +187,6 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     layoutInfo.set(card, column)
                 }
             })
-            // Put everything else into a single "far away" column
-            const defaultColumn: ColumnLayout = observable({index: "unassigned", hidden: false, items: new Set()})
-            state.ruleCards.forEach(r => {
-                if (!layoutInfo.has(r)) { // Save time by checking if this rule has already been visited
-                    if (r.lastParsed === null) { // Display the incomplete rule card by itself
-                        defaultColumn.items.add(r)
-                        layoutInfo.set(r, defaultColumn)
-                        outgoingCards.delete(r)
-                    }
-                    else { // Display the component
-                        const relation = state.ruleGraph.relations.get(r.lastParsed.rule.head.relationName) as Relation
-                        const component = state.ruleGraph.components.get(relation) as Component
-                        assignComponentToColumn(component, defaultColumn)
-                    }
-                }
-            })
-
             state.lastRuleLayoutInfo = layoutInfo
             return layoutInfo
         },
@@ -342,13 +351,23 @@ const ruleCardXOffset = ruleCardWidth + ruleCardSpacing
 // As pixels:
 const ruleCardYSpacing = 30
 
-function computeLeftPosition(rule: RuleCard): string {
-    const column = state.ruleLayoutInfo.get(rule)
+function computeLeftPosition(card: RuleCard): string {
+    const column = state.ruleLayoutInfo.get(card)
     if (column === undefined) {
         return px(-123)
     }
     else {
-        const index = column.index === "unassigned" ? 1 : column.index
+        let index: number
+        if (card.newlyDisplayed) {
+            // Animate inwards from one side of the screen
+            if (column.index === 0) {
+                index = -1
+            }
+            else {
+                index = 3
+            }
+        }
+        else index = column.index
         return percent(ruleCardSpacing + index * ruleCardXOffset)
     }  
 }
@@ -358,7 +377,7 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
     if (column === undefined) {
         return px(-123) // should never happen
     }
-    else if (column.index === "unassigned" || column.hidden) {
+    else if (column.hidden) {
         // Hide the card above the view
         return px(-2 * thisRuleCard.ruleCardHeight)
     }
@@ -402,7 +421,7 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
 
 function computeZIndex(card: RuleCard) {
     const column = state.ruleLayoutInfo.get(card)
-    if (column?.index === "unassigned" || column?.hidden === true) {
+    if (column?.hidden === true) {
         return 0 // render behind
     }
     else {
@@ -411,24 +430,36 @@ function computeZIndex(card: RuleCard) {
 }
 
 function overviewColor(card: RuleCard): string {
+    // selected
     if (card === state.selectedRule) {
         return "#55dd55"
     }
-    else if (state.ruleLayoutInfo.get(card)?.index === 
-    "unassigned") {
-        return "#bbbbbb"
+    // visible
+    else if (state.ruleLayoutInfo.get(card)?.hidden === 
+    false) {
+        return "#ffffff"
     }
-    else return "#ffffff"
+    // not visible
+    else return "#bbbbbb"
 }
 
 // When new rule cards are created, observe and record their height.
 // We need this to enable JS-driven layout.
 // We also re-record card height during every oninput() event of a rule's text area.
 const observer = new MutationObserver(mutations => {
-    // Traverse the ENTIRE tree of added nodes to check for a "rule" node.
+    // We need to set the height of the cards' text areas first, before we can measure card height.
+    // It's too much work to traverse the DOM trees to find each text area,
+    // so grab them by class name and conservatively set all of their heights.
+    const textAreas = document.getElementsByClassName("ruleTextArea")
+    for (let i = 0; i < textAreas.length; i++) {
+        (textAreas[i] as HTMLElement).style.height = textAreas[i].scrollHeight + "px"
+    }
+    // Traverse the ENTIRE tree of added nodes to check for rule nodes,
+    // measuring the height of each one.
     let foundRule = false
     function findRule(el: HTMLElement) {
         if (el.className === "rule") {
+            // Record the rule card's height
             (el as any)["data-1"].ruleCardHeight = el.offsetHeight
             foundRule = true
         }
@@ -625,12 +656,6 @@ app ("app", state,
 // Disable right-click menu
 window.oncontextmenu = (e: Event): void => {
     e.preventDefault()
-}
-
-// Auto-size the text boxes immediately, since they will be auto-sized after every edit
-const textAreas = document.getElementsByClassName("ruleTextArea")
-for (let i = 0; i < textAreas.length; i++) {
-    (textAreas[i] as HTMLElement).style.height = textAreas[i].scrollHeight + "px"
 }
 
 //#endregion
