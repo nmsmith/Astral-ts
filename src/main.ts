@@ -313,6 +313,82 @@ function newRule(): void {
     state.centeredItem = newRuleCard
 }
 
+function getUnboundVariables(card: RuleCard): Set<string> {
+    if (card.lastParsed !== null) {
+        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
+        const refs = state.ruleGraph.unboundVariables.get(ruleIndex)
+        if (refs === undefined) {
+            return new Set()
+        }
+        else {
+            return refs
+        }
+    }
+    else return new Set()
+}
+
+function getInternalReferences(card: RuleCard): Set<number> {
+    if (card.lastParsed !== null) {
+        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
+        const refs = state.ruleGraph.internalReferences.get(ruleIndex)
+        if (refs === undefined) {
+            return new Set()
+        }
+        else {
+            return refs
+        }
+    }
+    else return new Set()
+}
+
+function getInternalNegations(card: RuleCard): Set<number> {
+    if (card.lastParsed !== null) {
+        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
+        const refs = state.ruleGraph.internalNegations.get(ruleIndex)
+        if (refs === undefined) {
+            return new Set()
+        }
+        else {
+            return refs
+        }
+    }
+    else return new Set()
+}
+
+function hasError(card: RuleCard): boolean {
+    return (card.parseErrorText !== null
+        || getUnboundVariables(card).size > 0
+        || getInternalNegations(card).size > 0
+    )
+}
+
+function getError(card: RuleCard): string {
+    if (card.parseErrorText !== null) {
+        return card.parseErrorText
+    }
+    else {
+        let errorText = ""
+        const unboundVariables = getUnboundVariables(card)
+        const internalNegations = getInternalNegations(card)
+        if (unboundVariables.size > 0) {
+            let errorVars = ""
+            for (const v of unboundVariables) {
+                errorVars += `${v}, `
+            }
+            errorText += `Unbound variables: ${errorVars.slice(0, -2)}.`
+            if (internalNegations.size > 0) errorText += "\n"
+        }
+        if (internalNegations.size > 0) {
+            let errorLines = ""
+            for (const index of internalNegations) {
+                errorLines += `${index+1}, `
+            }
+            errorText += `Internal negation on premise ${errorLines.slice(0, -2)}.`
+        }
+        return errorText
+    }
+}
+
 // Insert a static toolbar that will be visible even if the app crashes during creation
 document.body.prepend(
     div ({class: "toolbar"}, [
@@ -420,11 +496,28 @@ function computeZIndex(card: RuleCard) {
 }
 
 function overviewColor(item: ColumnItem): string {
-    // centered
+    const errorColor = "#ffbfbf"
+    const centeredColor = "#ffff44"
+    const visibleColor = "#ffffff"
+    const notVisibleColor = "#cccccc"
+    // Highest priority color is highlighting to indicate selection
     if (item === state.centeredItem) {
-        return "#ffff44"
+        return centeredColor
     }
-    else if (isComponent(item)) {
+    // Second priority: whether the item has an error.
+    if (!isComponent(item)) {
+        if (hasError(item)) return errorColor
+    }
+    else {
+        for (const relation of item) {
+            for (const rule of relation.ownRules) {
+                const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                if (hasError(ruleCard)) return errorColor
+            }
+        }
+    }
+    // Lowest priority: color based on visibility.
+    if (isComponent(item)) {
         const firstRule: Rule = item.size > 0
             ? item.values().next().value.ownRules.values().next().value
             : undefined
@@ -432,11 +525,11 @@ function overviewColor(item: ColumnItem): string {
         // visible
         if (state.ruleLayoutInfo.get(ruleCard)?.hidden === 
         false) {
-            return "#ffffff"
+            return visibleColor
         }
     }
     // not visible
-    return "#cccccc"
+    return notVisibleColor
 }
 
 function overviewTextForIncompleteCard(card: RuleCard): string {
@@ -455,82 +548,6 @@ function overviewTextForIncompleteCard(card: RuleCard): string {
     }
     else {
         return candidateText.slice(0, maxShownLength - 3) + "…"
-    }
-}
-
-function getUnboundVariables(card: RuleCard): Set<string> {
-    if (card.lastParsed !== null) {
-        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
-        const refs = state.ruleGraph.unboundVariables.get(ruleIndex)
-        if (refs === undefined) {
-            return new Set()
-        }
-        else {
-            return refs
-        }
-    }
-    else return new Set()
-}
-
-function getInternalReferences(card: RuleCard): Set<number> {
-    if (card.lastParsed !== null) {
-        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
-        const refs = state.ruleGraph.internalReferences.get(ruleIndex)
-        if (refs === undefined) {
-            return new Set()
-        }
-        else {
-            return refs
-        }
-    }
-    else return new Set()
-}
-
-function getInternalNegations(card: RuleCard): Set<number> {
-    if (card.lastParsed !== null) {
-        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
-        const refs = state.ruleGraph.internalNegations.get(ruleIndex)
-        if (refs === undefined) {
-            return new Set()
-        }
-        else {
-            return refs
-        }
-    }
-    else return new Set()
-}
-
-function hasError(card: RuleCard): boolean {
-    return (card.parseErrorText !== null
-        || getUnboundVariables(card).size > 0
-        || getInternalNegations(card).size > 0
-    )
-}
-
-function getError(card: RuleCard): string {
-    if (card.parseErrorText !== null) {
-        return card.parseErrorText
-    }
-    else {
-        let errorText = ""
-        const unboundVariables = getUnboundVariables(card)
-        const internalNegations = getInternalNegations(card)
-        if (unboundVariables.size > 0) {
-            let errorVars = ""
-            for (const v of unboundVariables) {
-                errorVars += `${v}, `
-            }
-            errorText += `Unbound variables: ${errorVars.slice(0, -2)}.`
-            if (internalNegations.size > 0) errorText += "\n"
-        }
-        if (internalNegations.size > 0) {
-            let errorLines = ""
-            for (const index of internalNegations) {
-                errorLines += `${index+1}, `
-            }
-            errorText += `Internal negation on premise ${errorLines.slice(0, -2)}.`
-        }
-        return errorText
     }
 }
 
