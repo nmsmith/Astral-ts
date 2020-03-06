@@ -28,8 +28,7 @@ $standard-border-color: #aaaaaa;
     border-color: $standard-border-color;
 }
 
-.codeArea {
-    padding: 6px;
+.codeStyle {
     font-family: "Lucida Console", Monaco, monospace;
     line-height: 140%;
     font-size: 18px;
@@ -66,10 +65,15 @@ $overview-width: 200px;
 
 .component {
     @extend .noSelect;
-    @extend .codeArea;
+    @extend .codeStyle;
+    padding: 6px;
     border-style: solid;
     border-width: 0 0 1px 0;
     border-color: $standard-border-color;
+}
+
+.incompleteCardSummaryText {
+    font-style: italic;
 }
 
 .addRuleButton {
@@ -104,14 +108,15 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
     background-color: #ffbfbf;
 }
 
+$rule-card-width: 29%;
 $rule-anim-duration: 0.6s;
 
-.rule {
+.ruleCard {
     position: absolute;
-    width: 30%;
-    @extend .row;
+    z-index: 0; // manipulated in JS
+    width: $rule-card-width;
+    @extend .col;
     background-color: white;
-    z-index: 0;
 // border for delimiting adjacent cards
     border-bottom-style: solid;
     border-width: 1px;
@@ -122,50 +127,49 @@ $rule-anim-duration: 0.6s;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
-.ruleShadow {
+.ruleCardShadow {
     position: absolute;
-    width: 30%;
-    z-index: -1;
+    z-index: -1; // manipulated in JS
+    width: $rule-card-width;
     box-shadow: $standard-box-shadow;
 // animation
     transition-property: z-index, left, top;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
-.deleteRuleButton {
+.deleteCardButton {
+    position: absolute; // relative to the rule card (parent)
+    left: -30px;
+    top: 8px;
     @extend .unstyledButton;
     @extend .noSelect;
-    color: #aaaaaa;//#414141;
+    color: #aaaaaa;
     font-size: 1.2em;
-    align-self: flex-start;
-    padding: 8px;
 }
 
-.ruleTextWithErrors {
-    @extend .col;
-    width: 100%;
+.ruleCardBody {
+    flex-grow: 1;
+    @extend .row;
 }
 
-.ruleTextArea {
-    @extend .codeArea;
+.ruleCardTextArea {
+    flex-grow: 1;
+    @extend .codeStyle;
     box-sizing: border-box;
-    width: 100%;
     overflow-y: hidden;
-    border-style: none;
     resize: none;
-    padding-bottom: 20px;
+    border-style: none;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 16px;
+}
+
+.ruleCardGlyph {
+    position: absolute;
 }
 
 .errorText {
     padding: 4px;
     background-color: #ffbfbf;
-}
-
-.decompressionPane {
-    width: 40%;
-    @extend .col;
-    @extend .codeArea;
-    border-style: solid;
-    border-width: 0 0 0 1px;
-    border-color: $standard-border-color;
 }

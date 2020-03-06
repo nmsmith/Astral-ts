@@ -4,9 +4,9 @@ import "./globals"
 import Cycle from "json-cycle"
 import { toRefs, reactive as observable } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
-import { h1, h3, $if, $for, app, div, p, button,  textarea, span, list, $set, defineDOMUpdate } from "./libs/lib-view"
+import { h1, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate } from "./libs/lib-view"
 import {parseRule} from "./parser"
-import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation } from "./semantics"
+import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf } from "./semantics"
 
 //#region  --- Essential & derived state ---
 
@@ -49,19 +49,18 @@ const leftOffscreenColumn = -1.125
 const rightOffscreenColumn = 3.125
 
 interface State {
+// Essential, persisted state. MUST be primitive data types (no Sets or Maps).
     readonly ruleCards: RuleCard[]
-// Don't serialize these (because they're unserializable, for the mostpart)
+// Essential, but don't serialize these (because they're unserializable, for the mostpart)
+    // WARNING: this holds onto derived state, and thus needs to be refreshed whenever ruleCards changes
     centeredItem: ColumnItem | null
     editingRule: RuleCard | null
     lastRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
-// derived state:
+// Derived state
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
     readonly incompleteCards: RuleCard[]
     readonly ruleLayoutInfo: Map<RuleCard, ColumnLayout> // determined from graph info
-    readonly groupsWithInternalNegation: {errorText: string}[] // TODO: include this in RuleGraphInfo
 }
-
-
 
 function createState(existingState?: State): WithDerivedProps<State> {
     const essentialState = existingState !== undefined ? existingState : {
@@ -155,8 +154,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                         relation.dependentRules.forEach(succRule => {
                             const succCard = state.ruleGraph.rules.get(succRule) as RuleCard
                             if (!layoutInfo.has(succCard)) {
-                                const succRelation = state.ruleGraph.relations.get(succRule.head.relationName) as Relation
-                                const succComponent = state.ruleGraph.components.get(succRelation) as Component
+                                const succComponent = componentOf(succRule, state.ruleGraph)
                                 if (!selectedComponentColumn.items.has(succComponent)) {
                                     assignComponentToColumn(succComponent, dependentsColumn)
                                 }
@@ -199,29 +197,6 @@ function createState(existingState?: State): WithDerivedProps<State> {
             })
             state.lastRuleLayoutInfo = layoutInfo
             return layoutInfo
-        },
-        groupsWithInternalNegation: state => {
-            return []
-            // TODO: Replace this with an analysis of the RuleGraph within the Semantics module
-            // const badGroups: {errorText: string}[] = []
-            // state.relationDepGraph.forEach(component => {
-            //     if (component.type !== "recursiveGroup") return // try next component
-            //     for (const relation of component.relations) {
-            //         for (const rule of state.rules.keys()) {
-            //             if (rule.lastParsed !== null && rule.lastParsed.rule.head.relation === relation) {
-            //                 for (const fact of rule.lastParsed.rule.body) {
-            //                     if (fact.sign === "negative" && component.relations.has(fact.relation)) {
-            //                         let errorText = ""
-            //                         component.relations.forEach(r => errorText += r + ", ")
-            //                         badGroups.push({errorText})
-            //                         return // Move into next component
-            //                     }
-            //                 }
-            //             }
-            //         }
-            //     }
-            // })
-            // return badGroups
         },
     })
 }
@@ -333,7 +308,9 @@ function resetState(): void {
 //#region  --- The view & transition logic ----
 
 function newRule(): void {
-    state.ruleCards.push(RuleCard())
+    const newRuleCard = RuleCard()
+    state.ruleCards.push(newRuleCard)
+    state.centeredItem = newRuleCard
 }
 
 // Insert a static toolbar that will be visible even if the app crashes during creation
@@ -355,9 +332,9 @@ function percent(n: number): string {
 }
 
 // As percentages:
-const ruleCardWidth = 30 // WARNING: Keep this in sync with the CSS file
-const ruleCardSpacing = 2.5
-const ruleCardXOffset = ruleCardWidth + ruleCardSpacing
+const ruleCardWidth = 29 // WARNING: Keep this in sync with the CSS file
+const ruleCardXSpacing = 13 / 4
+const ruleCardXOffset = ruleCardWidth + ruleCardXSpacing
 // As pixels:
 const ruleCardYSpacing = 30
 
@@ -381,7 +358,7 @@ function computeLeftPosition(card: RuleCard): string {
             }
         }
         else index = column.index
-        return percent(ruleCardSpacing + index * ruleCardXOffset)
+        return percent(ruleCardXSpacing + index * ruleCardXOffset)
     }  
 }
 
@@ -462,6 +439,38 @@ function overviewColor(item: ColumnItem): string {
     return "#cccccc"
 }
 
+function overviewTextForIncompleteCard(card: RuleCard): string {
+    // TODO: This criteria for showing incomplete text is probably silly.
+    // We want cards to only be considered incomplete/not display with their component
+    // if they don't even have a sensible predicate name.
+    
+    // show the first line of text only
+    const candidateText = card.rawText.split("\n")[0].split(":")[0].trim()
+    const maxShownLength = 12
+    if (candidateText.length === 0) {
+        return "empty"
+    }
+    else if (candidateText.length <= maxShownLength) {
+        return candidateText
+    }
+    else {
+        return candidateText.slice(0, maxShownLength - 3) + "…"
+    }
+}
+
+function getInternalReferences(card: RuleCard): Set<number> {
+    if (card.lastParsed !== null) {
+        const refs = state.ruleGraph.internalReferences.get(card.lastParsed.rule)
+        if (refs === undefined) {
+            return new Set()
+        }
+        else {
+            return refs
+        }
+    }
+    else return new Set()
+}
+
 // When new rule cards are created, observe and record their height.
 // We need this to enable JS-driven layout.
 // We also re-record card height during every oninput() event of a rule's text area.
@@ -469,7 +478,7 @@ const observer = new MutationObserver(mutations => {
     // We need to set the height of the cards' text areas first, before we can measure card height.
     // It's too much work to traverse the DOM trees to find each text area,
     // so grab them by class name and conservatively set all of their heights.
-    const textAreas = document.getElementsByClassName("ruleTextArea")
+    const textAreas = document.getElementsByClassName("ruleCardTextArea")
     for (let i = 0; i < textAreas.length; i++) {
         (textAreas[i] as HTMLElement).style.height = textAreas[i].scrollHeight + "px"
     }
@@ -477,7 +486,7 @@ const observer = new MutationObserver(mutations => {
     // measuring the height of each one.
     let foundRule = false
     function findRule(el: HTMLElement) {
-        if (el.className === "rule") {
+        if (el.className === "ruleCard") {
             (el as any)["data-1"].ruleCardHeight = el.offsetHeight
             foundRule = true
         }
@@ -512,11 +521,6 @@ app ("app", state,
             h3 ("But how do we develop NEW APPROACHES to (as opposed to understanding of) a problem/task? First, gain a MASTERFUL UNDERSTANDING of the existing problem & approaches, and then develop approaches from there (e.g. reasoning by first principles)."),
             h3 ("As I keep re-discovering, graphs are crap, and there is no \"magic\" visualisation waiting to be invented. What core visual primitives can communicate data and their relationships? Relative positioning, shape and colour matching... Review literature."),
         ]),
-        $for (() => state.groupsWithInternalNegation, o => [
-            p (() => `The following recursive group has internal negation: ${o.errorText}`, {
-                class: "errorText",
-            }),
-        ]),
         div ({class: "row"}, [
             div ({class: "ruleOverview"}, [
                 button ("Add rule", {
@@ -530,7 +534,9 @@ app ("app", state,
                             "background-color": () => overviewColor(card),
                             onclick: () => state.centeredItem = card,
                         }, [
-                            p ("incomplete"),
+                            p (() => overviewTextForIncompleteCard(card), {
+                                class: "incompleteCardSummaryText",
+                            }),
                         ]),
                     ]),
                     // Iterate over the UNIQUE components stored in the component Map
@@ -551,39 +557,88 @@ app ("app", state,
                 div ({class: "ruleGraphView"}, [
                     $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
                         div ({
-                            class: "ruleShadow",
-                            "z-index": () => computeZIndex(ruleCard) - 100, // render behind rules
+                            class: "ruleCardShadow",
+                            "z-index": () => computeZIndex(ruleCard) - 1, // render behind cards
                             left: () => computeLeftPosition(ruleCard),
                             top: () => computeTopPosition(ruleCard),
                             height: () => `${ruleCard.ruleCardHeight}px`,
                         }),
                         div ({
-                            class: "rule",
+                            class: "ruleCard",
+                            "data-1": ruleCard,
                             "z-index": () => computeZIndex(ruleCard),
                             left: () => computeLeftPosition(ruleCard),
                             top: () => computeTopPosition(ruleCard),
-                            "data-1": ruleCard,
                         }, [
+                            $for (() => makeObjSeq(getInternalReferences(ruleCard).values()), index => [
+                                // Mark literal as internally negated
+                                p ("#", {
+                                    class: "ruleCardGlyph",
+                                    top: () => `${index.value * 30}px`,
+                                }),
+                            ]),
                             button ("✖", {
-                                class: "deleteRuleButton",
+                                class: "deleteCardButton",
                                 visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
                                 onclick: () => {
+                                    state.lastRuleLayoutInfo.delete(ruleCard) // don't animate deletion
+                                    const deletionIndex = state.ruleCards.indexOf(ruleCard)
                                     if (state.editingRule === ruleCard) {
                                         state.editingRule = null
+                                        // Need to release reference to the old component,
+                                        // since it will now be invalid.
+                                        state.centeredItem = null
+                                        // But now we'll need to find another rule in the old
+                                        // component, whose newly-computed component can be centered.
+                                        if (ruleCard.lastParsed !== null) {
+                                            const myRule = ruleCard.lastParsed.rule
+                                            const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
+                                            const myComponent = state.ruleGraph.components.get(myRelation) as Component
+                                            let candidateRuleCard: RuleCard | undefined = undefined
+                                            if (myRelation.ownRules.size > 0) {
+                                                // Select another rule in the relation
+                                                for (const rule of myRelation.ownRules) {
+                                                    if (rule !== myRule) {
+                                                        candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                                                        break
+                                                    }
+                                                }
+                                            }
+                                            else {
+                                                // Select the first rule from another relation in the component
+                                                for (const relation of myComponent) {
+                                                    if (relation !== myRelation && relation.ownRules.size > 0) {
+                                                        const rule = relation.ownRules.values().next().value
+                                                        candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                                                        break
+                                                    }
+                                                }
+                                            }
+
+                                            if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
+                                                // Delete the rule card so that new components can be computed
+                                                state.ruleCards.removeAt(deletionIndex)
+                                                // Find the candidate rule's new component, and center it
+                                                state.centeredItem = componentOf(
+                                                    candidateRuleCard.lastParsed.rule,
+                                                    state.ruleGraph,
+                                                )
+                                                return // finish early, since we already deleted the card
+                                            }
+                                        }
                                     }
-                                    state.ruleCards.removeAt(state.ruleCards.indexOf(ruleCard))
+                                    state.ruleCards.removeAt(deletionIndex)
                                 },
                             }),
-                            div ({class: "ruleTextWithErrors"}, [
+                            div ({class: "ruleCardBody"}, [
                                 textarea ({
-                                    class: "ruleTextArea",
+                                    class: "ruleCardTextArea",
                                     value: toRefs(ruleCard).rawText,
+                                    //"background-color": "#dddddd",
                                     onfocus: () => {
                                         state.editingRule = ruleCard
                                         if (ruleCard.lastParsed !== null) {
-                                            const relation = state.ruleGraph.relations.get(ruleCard.lastParsed.rule.head.relationName) as Relation
-                                            const component = state.ruleGraph.components.get(relation) as Component
-                                            state.centeredItem = component
+                                            state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
                                         }
                                     },
                                     onkeydown: (event: KeyboardEvent) => {
@@ -631,9 +686,7 @@ app ("app", state,
                                             }
                                             ruleCard.errorText = null
                                             // Center the component of the newly parsed rule
-                                            const relation = state.ruleGraph.relations.get(ruleCard.lastParsed.rule.head.relationName) as Relation
-                                            const component = state.ruleGraph.components.get(relation) as Component
-                                            state.centeredItem = component
+                                            state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
                                         }
                                         else if (parseResult.result === "noRule") {
                                             ruleCard.lastParsed = null
@@ -663,25 +716,17 @@ app ("app", state,
                                                 target: ruleDiv,
                                             })
                                         }, 0)
-                                        // TODO: Can I detect which text boxes remain in the same
-                                        // column as the one just edited and "skip" their animation?
-                                        // This would prevent the mismatch between instant textbox
-                                        // resizing, and delayed "making room" for the new size.
-                                        // const ruleDivs = document.getElementsByClassName("rule")
-                                        // for (let i = 0; i < ruleDivs.length; ++i) {
-                                        //     (ruleDivs[i] as HTMLElement).style.transitionDuration = "0s"
-                                        // }
                                     },
                                 }),
-                                $if (() => ruleCard.errorText !== null, {
-                                    $then: () => [
-                                        p (() => ruleCard.errorText as string, {
-                                            class: "errorText",
-                                        }),
-                                    ],
-                                    $else: () => [],
-                                }),
                             ]),
+                            $if (() => ruleCard.errorText !== null, {
+                                $then: () => [
+                                    p (() => ruleCard.errorText as string, {
+                                        class: "errorText",
+                                    }),
+                                ],
+                                $else: () => [],
+                            }),
                         ]),
                     ]),
                 ]),

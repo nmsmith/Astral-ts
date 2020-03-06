@@ -28,10 +28,20 @@ export interface Rule {
     readonly body: Literal[]
 }
 
-export interface RuleGraphInfo<T> {
-    readonly rules: Map<Rule, T>
+export interface RuleGraphInfo<RuleSource> {
+    readonly rules: Map<Rule, RuleSource>
     readonly relations: Map<string, Relation>
     readonly components: Map<Relation, Component>
+    // A map from each rule to the indices of its (positive) literals which
+    // refer to the rule's own component.
+    readonly internalReferences: Map<Rule, Set<number>>
+    // A map from each rule to the indices of its internally-negated literals.
+    readonly internalNegations: Map<Rule, Set<number>>
+}
+
+export function componentOf(rule: Rule, graph: RuleGraphInfo<unknown>): Component {
+    const relation = graph.relations.get(rule.head.relationName) as Relation
+    return graph.components.get(relation) as Component
 }
 
 // We take the set of rules as input, analyse the structure of the the underlying graph,
@@ -44,7 +54,7 @@ export interface RuleGraphInfo<T> {
 // so I don't attempt to do this right now. I just reconstruct all information every
 // time the set of rules changes:
 // https://cs.stackexchange.com/questions/96424/incremental-strongly-connected-components
-export function analyseRuleGraph<T>(rules: Map<Rule, T>): RuleGraphInfo<T> {
+export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): RuleGraphInfo<RuleSource> {
     // Find all the relations defined in the DB
     const relations = new Map<string, Relation>()
     for (const rule of rules.keys()) {
@@ -150,5 +160,42 @@ export function analyseRuleGraph<T>(rules: Map<Rule, T>): RuleGraphInfo<T> {
         }
     }
 
-    return { rules, relations, components }
+    // Now find all the internal references and internal negations within each component
+    const internalReferences = new Map<Rule, Set<number>>()
+    const internalNegations = new Map<Rule, Set<number>>()
+    for (const component of components.values()) {
+        const relationNames = new Set<string>()
+        // Collect all the relation names for this component.
+        // This names should not occur in negated form within the component.
+        for (const relation of component) {
+            relationNames.add(relation.name)
+        }
+        // Check all the rule bodies associated with the component
+        for (const relation of component) {
+            for (const rule of relation.ownRules) {
+                let index = 0
+                for (const literal of rule.body) {
+                    if (relationNames.has(literal.relationName)) {
+                        if (internalReferences.has(rule)) {
+                            internalReferences.get(rule)?.add(index)
+                        }
+                        else {
+                            internalReferences.set(rule, new Set([index]))
+                        }
+                        if (literal.sign === "negative") {
+                            if (internalNegations.has(rule)) {
+                                internalNegations.get(rule)?.add(index)
+                            }
+                            else {
+                                internalNegations.set(rule, new Set([index]))
+                            }
+                        }
+                    }
+                    ++index
+                }
+            }
+        }
+    }
+
+    return { rules, relations, components, internalReferences, internalNegations }
 }
