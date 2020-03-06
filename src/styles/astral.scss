@@ -1,6 +1,6 @@
 .unstyledButton {
     border-style: none;
-    background-color: #ffffff00;
+    background-color: transparent;
 }
 
 .view {
@@ -30,7 +30,7 @@ $standard-border-color: #aaaaaa;
 
 .codeStyle {
     font-family: "Lucida Console", Monaco, monospace;
-    line-height: 140%;
+    line-height: 26px;
     font-size: 18px;
 }
 
@@ -111,65 +111,89 @@ $standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
 $rule-card-width: 29%;
 $rule-anim-duration: 0.6s;
 
-.ruleCard {
+.ruleCardProps {
     position: absolute;
-    z-index: 0; // manipulated in JS
-    width: $rule-card-width;
-    @extend .col;
-    background-color: white;
-// border for delimiting adjacent cards
-    border-bottom-style: solid;
-    border-width: 1px;
     box-sizing: border-box;
-    border-color: $standard-border-color;
+    width: $rule-card-width;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 16px;
 // animation
     transition-property: z-index, left, top;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
+.ruleCard {
+    @extend .ruleCardProps;
+    z-index: 0; // manipulated in JS
+    @extend .col;
+// border for delimiting adjacent cards
+    border-bottom-style: solid;
+    border-width: 1px;
+    border-color: $standard-border-color;
+    background-color: white;
+}
+
+$error-back-color: #ffbfbf;
+
+.ruleCardError {
+    background-color: $error-back-color;
+}
+
 .ruleCardShadow {
-    position: absolute;
+    @extend .ruleCardProps;
     z-index: -1; // manipulated in JS
-    width: $rule-card-width;
     box-shadow: $standard-box-shadow;
-// animation
-    transition-property: z-index, left, top;
-    transition-duration: $rule-anim-duration; // for movement animation
 }
 
 .deleteCardButton {
     position: absolute; // relative to the rule card (parent)
-    left: -30px;
-    top: 8px;
+    left: -37px;
+    top: 1px;
     @extend .unstyledButton;
     @extend .noSelect;
     color: #aaaaaa;
     font-size: 1.2em;
 }
 
-.ruleCardBody {
-    flex-grow: 1;
-    @extend .row;
+.ruleCardTextWrapper {
+    position: relative; // reference point for glyphs
+    @extend .col; // so textarea can fill width
+}
+
+.cardGlyphs {
+    position: absolute;
+    left: -33px;
+    @extend .codeStyle;
+    white-space: pre;
+    pointer-events: none; // prevent invisible glyphs from blocking delete button
+}
+
+.cardGlyph {
+    box-sizing: content-box;
+    padding-left: 5px;
+    padding-right: 5px;
+    border-style: solid;
+    border-width: 1px;
+    border-color: $standard-border-color;
+    color: black;
+    background-color: white;
 }
 
 .ruleCardTextArea {
-    flex-grow: 1;
     @extend .codeStyle;
-    box-sizing: border-box;
     overflow-y: hidden;
     resize: none;
     border-style: none;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 6px;
-    padding-bottom: 16px;
-}
-
-.ruleCardGlyph {
-    position: absolute;
+    padding: 0;
+    background-color: transparent;
 }
 
 .errorText {
-    padding: 4px;
-    background-color: #ffbfbf;
+    padding-top: 8px;
+    margin-bottom: -8px;
+    background-color: $error-back-color;
+    white-space: pre;
+    line-height: 22px;
 }

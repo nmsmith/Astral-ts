@@ -12,7 +12,7 @@ import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf 
 
 interface RuleCard {
     readonly rawText: string
-    errorText: string | null
+    parseErrorText: string | null
     lastParsed: null | {
         readonly rawText: string
         readonly rule: Rule
@@ -25,7 +25,7 @@ interface RuleCard {
 function RuleCard(): RuleCard {
     return {
         rawText: "",
-        errorText: null,
+        parseErrorText: null,
         lastParsed: null,
         ruleCardHeight: 123, // to be overwritten once page is constructed
         newlyDisplayed: false,
@@ -458,9 +458,10 @@ function overviewTextForIncompleteCard(card: RuleCard): string {
     }
 }
 
-function getInternalReferences(card: RuleCard): Set<number> {
+function getUnboundVariables(card: RuleCard): Set<string> {
     if (card.lastParsed !== null) {
-        const refs = state.ruleGraph.internalReferences.get(card.lastParsed.rule)
+        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
+        const refs = state.ruleGraph.unboundVariables.get(ruleIndex)
         if (refs === undefined) {
             return new Set()
         }
@@ -469,6 +470,77 @@ function getInternalReferences(card: RuleCard): Set<number> {
         }
     }
     else return new Set()
+}
+
+function getInternalReferences(card: RuleCard): Set<number> {
+    if (card.lastParsed !== null) {
+        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
+        const refs = state.ruleGraph.internalReferences.get(ruleIndex)
+        if (refs === undefined) {
+            return new Set()
+        }
+        else {
+            return refs
+        }
+    }
+    else return new Set()
+}
+
+function getInternalNegations(card: RuleCard): Set<number> {
+    if (card.lastParsed !== null) {
+        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
+        const refs = state.ruleGraph.internalNegations.get(ruleIndex)
+        if (refs === undefined) {
+            return new Set()
+        }
+        else {
+            return refs
+        }
+    }
+    else return new Set()
+}
+
+function hasError(card: RuleCard): boolean {
+    return (card.parseErrorText !== null
+        || getUnboundVariables(card).size > 0
+        || getInternalNegations(card).size > 0
+    )
+}
+
+function getError(card: RuleCard): string {
+    if (card.parseErrorText !== null) {
+        return card.parseErrorText
+    }
+    else {
+        let errorText = ""
+        const unboundVariables = getUnboundVariables(card)
+        const internalNegations = getInternalNegations(card)
+        if (unboundVariables.size > 0) {
+            let errorVars = ""
+            for (const v of unboundVariables) {
+                errorVars += `${v}, `
+            }
+            errorText += `Unbound variables: ${errorVars.slice(0, -2)}.`
+            if (internalNegations.size > 0) errorText += "\n"
+        }
+        if (internalNegations.size > 0) {
+            let errorLines = ""
+            for (const index of internalNegations) {
+                errorLines += `${index+1}, `
+            }
+            errorText += `Internal negation on premise ${errorLines.slice(0, -2)}.`
+        }
+        return errorText
+    }
+}
+
+function forRange(start: number, end: number | undefined): {value: number}[] {
+    if (end === undefined) return []
+    const result = []
+    for (let i = start; i < end; ++i) {
+        result.push({value: i})
+    }
+    return result
 }
 
 // When new rule cards are created, observe and record their height.
@@ -564,77 +636,90 @@ app ("app", state,
                             height: () => `${ruleCard.ruleCardHeight}px`,
                         }),
                         div ({
-                            class: "ruleCard",
+                            class: () => `ruleCard ${
+                                hasError(ruleCard)
+                                ? "ruleCardError"
+                                : ""
+                            }`,
                             "data-1": ruleCard,
                             "z-index": () => computeZIndex(ruleCard),
                             left: () => computeLeftPosition(ruleCard),
                             top: () => computeTopPosition(ruleCard),
                         }, [
-                            $for (() => makeObjSeq(getInternalReferences(ruleCard).values()), index => [
-                                // Mark literal as internally negated
-                                p ("#", {
-                                    class: "ruleCardGlyph",
-                                    top: () => `${index.value * 30}px`,
-                                }),
-                            ]),
-                            button ("✖", {
-                                class: "deleteCardButton",
-                                visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
-                                onclick: () => {
-                                    state.lastRuleLayoutInfo.delete(ruleCard) // don't animate deletion
-                                    const deletionIndex = state.ruleCards.indexOf(ruleCard)
-                                    if (state.editingRule === ruleCard) {
-                                        state.editingRule = null
-                                        // Need to release reference to the old component,
-                                        // since it will now be invalid.
-                                        state.centeredItem = null
-                                        // But now we'll need to find another rule in the old
-                                        // component, whose newly-computed component can be centered.
-                                        if (ruleCard.lastParsed !== null) {
-                                            const myRule = ruleCard.lastParsed.rule
-                                            const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
-                                            const myComponent = state.ruleGraph.components.get(myRelation) as Component
-                                            let candidateRuleCard: RuleCard | undefined = undefined
-                                            if (myRelation.ownRules.size > 0) {
-                                                // Select another rule in the relation
-                                                for (const rule of myRelation.ownRules) {
-                                                    if (rule !== myRule) {
-                                                        candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                                                        break
+                            div ({class: "ruleCardTextWrapper"}, [
+                                button ("✖", {
+                                    class: "deleteCardButton",
+                                    visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
+                                    onclick: () => {
+                                        state.lastRuleLayoutInfo.delete(ruleCard) // don't animate deletion
+                                        const deletionIndex = state.ruleCards.indexOf(ruleCard)
+                                        if (state.editingRule === ruleCard) {
+                                            state.editingRule = null
+                                            // Need to release reference to the old component,
+                                            // since it will now be invalid.
+                                            state.centeredItem = null
+                                            // But now we'll need to find another rule in the old
+                                            // component, whose newly-computed component can be centered.
+                                            if (ruleCard.lastParsed !== null) {
+                                                const myRule = ruleCard.lastParsed.rule
+                                                const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
+                                                const myComponent = state.ruleGraph.components.get(myRelation) as Component
+                                                let candidateRuleCard: RuleCard | undefined = undefined
+                                                if (myRelation.ownRules.size > 0) {
+                                                    // Select another rule in the relation
+                                                    for (const rule of myRelation.ownRules) {
+                                                        if (rule !== myRule) {
+                                                            candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                                                            break
+                                                        }
                                                     }
                                                 }
-                                            }
-                                            else {
-                                                // Select the first rule from another relation in the component
-                                                for (const relation of myComponent) {
-                                                    if (relation !== myRelation && relation.ownRules.size > 0) {
-                                                        const rule = relation.ownRules.values().next().value
-                                                        candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                                                        break
+                                                else {
+                                                    // Select the first rule from another relation in the component
+                                                    for (const relation of myComponent) {
+                                                        if (relation !== myRelation && relation.ownRules.size > 0) {
+                                                            const rule = relation.ownRules.values().next().value
+                                                            candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                                                            break
+                                                        }
                                                     }
                                                 }
-                                            }
-
-                                            if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
-                                                // Delete the rule card so that new components can be computed
-                                                state.ruleCards.removeAt(deletionIndex)
-                                                // Find the candidate rule's new component, and center it
-                                                state.centeredItem = componentOf(
-                                                    candidateRuleCard.lastParsed.rule,
-                                                    state.ruleGraph,
-                                                )
-                                                return // finish early, since we already deleted the card
+    
+                                                if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
+                                                    // Delete the rule card so that new components can be computed
+                                                    state.ruleCards.removeAt(deletionIndex)
+                                                    // Find the candidate rule's new component, and center it
+                                                    state.centeredItem = componentOf(
+                                                        candidateRuleCard.lastParsed.rule,
+                                                        state.ruleGraph,
+                                                    )
+                                                    return // finish early, since we already deleted the card
+                                                }
                                             }
                                         }
-                                    }
-                                    state.ruleCards.removeAt(deletionIndex)
-                                },
-                            }),
-                            div ({class: "ruleCardBody"}, [
+                                        state.ruleCards.removeAt(deletionIndex)
+                                    },
+                                }),
+                                // Error glyphs
+                                div ({class: "cardGlyphs"}, [
+                                    $for (() => forRange(-1, ruleCard.lastParsed?.rule.body.length), index => [
+                                        div ({class: "nonBlocking"}, [
+                                            $if (() => getInternalReferences(ruleCard).has(index.value), {
+                                                $then: () => [
+                                                    p ("▲", {
+                                                        class: "cardGlyph",
+                                                    }),
+                                                ],
+                                                $else: () => [
+                                                    p (" ", {class: "nonBlocking noSelect"}),
+                                                ],
+                                            }),
+                                        ]),
+                                    ]),
+                                ]),
                                 textarea ({
                                     class: "ruleCardTextArea",
                                     value: toRefs(ruleCard).rawText,
-                                    //"background-color": "#dddddd",
                                     onfocus: () => {
                                         state.editingRule = ruleCard
                                         if (ruleCard.lastParsed !== null) {
@@ -684,23 +769,23 @@ app ("app", state,
                                                 rawText: ruleCard.rawText,
                                                 rule: parseResult.rule,
                                             }
-                                            ruleCard.errorText = null
+                                            ruleCard.parseErrorText = null
                                             // Center the component of the newly parsed rule
                                             state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
                                         }
                                         else if (parseResult.result === "noRule") {
                                             ruleCard.lastParsed = null
-                                            ruleCard.errorText = null
+                                            ruleCard.parseErrorText = null
                                             // Center just this rule card as a component
                                             state.centeredItem = ruleCard
                                         }
                                         else {
-                                            ruleCard.errorText = parseResult.reason
+                                            ruleCard.parseErrorText = parseResult.reason
                                         }
         
                                         const ruleDiv = el.parentElement?.parentElement as HTMLElement
                                         el.style.height = "auto"  // trigger the text box to auto-size
-                                        el.style.height = el.scrollHeight + "px" // new stretch it to fit contents
+                                        el.style.height = el.scrollHeight + "px" // new stretch it to fit contentss
         
                                         // Delay the reading of the rule div height until the
                                         // currently-executing DOM update has fully finished
@@ -719,9 +804,9 @@ app ("app", state,
                                     },
                                 }),
                             ]),
-                            $if (() => ruleCard.errorText !== null, {
+                            $if (() => hasError(ruleCard), {
                                 $then: () => [
-                                    p (() => ruleCard.errorText as string, {
+                                    p (() => getError(ruleCard), {
                                         class: "errorText",
                                     }),
                                 ],

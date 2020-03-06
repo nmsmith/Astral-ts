@@ -34,14 +34,57 @@ export interface RuleGraphInfo<RuleSource> {
     readonly components: Map<Relation, Component>
     // A map from each rule to the indices of its (positive) literals which
     // refer to the rule's own component.
-    readonly internalReferences: Map<Rule, Set<number>>
+    // TODO: The use of "number" instead of "RuleSource" is a temporary
+    // workaround for a Vue bug regarding storing proxied data in a Map/Set.
+    readonly internalReferences: Map<number, Set<number>>
+// Errors:
+    readonly unboundVariables: Map<number, Set<string>>
     // A map from each rule to the indices of its internally-negated literals.
-    readonly internalNegations: Map<Rule, Set<number>>
+    readonly internalNegations: Map<number, Set<number>>
 }
 
 export function componentOf(rule: Rule, graph: RuleGraphInfo<unknown>): Component {
     const relation = graph.relations.get(rule.head.relationName) as Relation
     return graph.components.get(relation) as Component
+}
+
+function findUnboundVariables(rules: IterableIterator<Rule>): Map<number, Set<string>> {
+    const unboundVariables = new Map<number, Set<string>>()
+    let index = 0
+    for (const rule of rules) {
+        // Track potentially-unbound variable names to check rule safety.
+        // Add them to the set if they're seen in the rule head or a negated atom.
+        const potUnboundVariables: Set<string> = new Set()
+        const boundVariables: Set<string> = new Set()
+        // Add vars in the head
+        rule.head.objects.forEach(obj => {
+            if (obj.type === "variable") potUnboundVariables.add(obj.name)
+        })
+        // Classify vars in the body
+        rule.body.forEach(literal => {
+            if (literal.sign === "positive") {
+                literal.objects.forEach(obj => {
+                    if (obj.type === "variable") boundVariables.add(obj.name)
+                })
+            }
+            else {
+                literal.objects.forEach(obj => {
+                    if (obj.type === "variable") potUnboundVariables.add(obj.name)
+                })
+            }
+        })
+        // Filter out the unbound vars
+        const unboundVars = new Set(
+            [...potUnboundVariables].filter(x => !boundVariables.has(x)))
+        // Don't forget about the implicit time variable
+        if (rule.body.length === 0) {
+            unboundVars.add("time")
+        }
+        unboundVariables.set(index, unboundVars)
+
+        ++index
+    }
+    return unboundVariables
 }
 
 // We take the set of rules as input, analyse the structure of the the underlying graph,
@@ -55,6 +98,7 @@ export function componentOf(rule: Rule, graph: RuleGraphInfo<unknown>): Componen
 // time the set of rules changes:
 // https://cs.stackexchange.com/questions/96424/incremental-strongly-connected-components
 export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): RuleGraphInfo<RuleSource> {
+    const unboundVariables = findUnboundVariables(rules.keys())
     // Find all the relations defined in the DB
     const relations = new Map<string, Relation>()
     for (const rule of rules.keys()) {
@@ -161,8 +205,8 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
     }
 
     // Now find all the internal references and internal negations within each component
-    const internalReferences = new Map<Rule, Set<number>>()
-    const internalNegations = new Map<Rule, Set<number>>()
+    const internalReferences = new Map<number, Set<number>>()
+    const internalNegations = new Map<number, Set<number>>()
     for (const component of components.values()) {
         const relationNames = new Set<string>()
         // Collect all the relation names for this component.
@@ -173,29 +217,30 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
         // Check all the rule bodies associated with the component
         for (const relation of component) {
             for (const rule of relation.ownRules) {
-                let index = 0
+                const ruleIndex = Array.from(rules.keys()).indexOf(rule)
+                let bodyIndex = 0
                 for (const literal of rule.body) {
                     if (relationNames.has(literal.relationName)) {
-                        if (internalReferences.has(rule)) {
-                            internalReferences.get(rule)?.add(index)
+                        if (internalReferences.has(ruleIndex)) {
+                            internalReferences.get(ruleIndex)?.add(bodyIndex)
                         }
                         else {
-                            internalReferences.set(rule, new Set([index]))
+                            internalReferences.set(ruleIndex, new Set([bodyIndex]))
                         }
                         if (literal.sign === "negative") {
-                            if (internalNegations.has(rule)) {
-                                internalNegations.get(rule)?.add(index)
+                            if (internalNegations.has(ruleIndex)) {
+                                internalNegations.get(ruleIndex)?.add(bodyIndex)
                             }
                             else {
-                                internalNegations.set(rule, new Set([index]))
+                                internalNegations.set(ruleIndex, new Set([bodyIndex]))
                             }
                         }
                     }
-                    ++index
+                    ++bodyIndex
                 }
             }
         }
     }
 
-    return { rules, relations, components, internalReferences, internalNegations }
+    return { rules, relations, components, internalReferences, unboundVariables, internalNegations }
 }

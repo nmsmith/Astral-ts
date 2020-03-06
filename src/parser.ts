@@ -17,10 +17,6 @@ export function parseRule(s: string): ParseResult {
     // Rule head and body to be constructed
     let head: Atom | undefined = undefined
     const body: Literal[] = []
-    // Track potentially-unsafe variable names to check rule safety.
-    // Add them to the set if they're seen in the rule head or a negated atom.
-    const potUnsafeVariables: Set<string> = new Set()
-    const safeVariables: Set<string> = new Set()
     const lines = s.split("\n") // always guaranteed to be at least one line
     for (let lineNumber = 1; lineNumber <= lines.length; ++lineNumber) {
         const line = lines[lineNumber-1]
@@ -146,12 +142,6 @@ export function parseRule(s: string): ParseResult {
             }
             else {
                 objects.push({type: "variable", name: objectName})
-                 if (lineNumber === 1 || sign === "negative") {
-                     potUnsafeVariables.add(objectName)
-                 }
-                 else {
-                     safeVariables.add(objectName)
-                 }
             }
         }
 
@@ -161,29 +151,6 @@ export function parseRule(s: string): ParseResult {
         else {
             body.push({sign, relationName, objects})
         }
-    }
-
-    // --- The rule was successfully parsed, but we need to check safety criteria
-    const unsafeVariables = new Set(
-        [...potUnsafeVariables].filter(x => !safeVariables.has(x)))
-    if (unsafeVariables.size > 0) {
-        let errorText = "This rule is unsafe, as the following variables do not appear within a positive literal: "
-        let first = true
-        unsafeVariables.forEach(variable => {
-            if (first) {
-                first = false
-            }
-            else {
-                errorText += ", "
-            }
-            errorText += variable
-        })
-        return fail(errorText)
-    }
-
-    // --- All deductive rules MUST have a body, otherwise they're unsafe in the time variable
-    if (body.length === 0) {
-        return fail("This rule is unsafe, because it refers to an implicit time variable that does not appear in the body.")
     }
 
     return {result: "success", rule: {head: head as Atom, body}}
