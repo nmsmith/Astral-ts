@@ -575,7 +575,7 @@ const observer = new MutationObserver(mutations => {
     // measuring the height of each one.
     let foundRule = false
     function findRule(el: HTMLElement) {
-        if (el.className === "ruleCard") {
+        if (el.className.split(" ").indexOf("ruleCard") >= 0) {
             (el as any)["data-1"].ruleCardHeight = el.offsetHeight
             foundRule = true
         }
