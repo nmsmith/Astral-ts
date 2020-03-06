@@ -550,6 +550,9 @@ function isDerivedFromSet(value: unknown): value is DerivedFromSet<unknown, any>
     return (value as DerivedFromSet<unknown, any>).type === "fromSet"
 }
 
+/**
+ * Conditionally render one of two DOM node sequences.
+ */
 export function $if<T>(
     condition: () => boolean,
     branches: {$then: () => T, $else: () => T},
@@ -558,15 +561,30 @@ export function $if<T>(
 }
 
 /**
- * WARNING: The elements of the array MUST be unique object references.
+ * Map a sequence of values to a sequence of DOM node sequences.
+ * WARNING: The elements of the input sequence MUST be unique object references.
  * The DOM update code hashes the elements by their identity in order to
- * determine which elements have changed when the array is updated.
+ * determine which elements have changed when the sequence is updated.
+ * This makes DOM updates more efficient. If you need to pass a sequence
+ * of primitive value as input, you can use the 
  */
 export function $for<I extends object>(
     items: () => readonly I[] | IterableIterator<I>,
     f: (item: WithIndex<I>) => StylelessElement[],
 ): DerivedFromSequence<StylelessElement[], I> {
     return {type: "fromSequence", items: items, f: f}
+}
+
+/**
+ * A helper function to turn a sequence of primitive values (e.g. ints, strings)
+ * into a sequence of objects, so that they can be consumed by $for.
+ */
+export function makeObjSeq<I>(valueSeq: I[] | IterableIterator<I>): {value: I}[] {
+    const result = []
+    for (const value of valueSeq) {
+        result.push({value})
+    }
+    return result
 }
 
 /**
