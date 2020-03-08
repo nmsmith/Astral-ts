@@ -315,8 +315,7 @@ function newRule(): void {
 
 function getUnboundVariables(card: RuleCard): Set<string> {
     if (card.lastParsed !== null) {
-        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
-        const refs = state.ruleGraph.unboundVariables.get(ruleIndex)
+        const refs = state.ruleGraph.unboundVariables.get(card.lastParsed.rule)
         if (refs === undefined) {
             return new Set()
         }
@@ -329,8 +328,7 @@ function getUnboundVariables(card: RuleCard): Set<string> {
 
 function getInternalReferences(card: RuleCard): Set<number> {
     if (card.lastParsed !== null) {
-        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
-        const refs = state.ruleGraph.internalReferences.get(ruleIndex)
+        const refs = state.ruleGraph.internalReferences.get(card.lastParsed.rule)
         if (refs === undefined) {
             return new Set()
         }
@@ -343,8 +341,7 @@ function getInternalReferences(card: RuleCard): Set<number> {
 
 function getInternalNegations(card: RuleCard): Set<number> {
     if (card.lastParsed !== null) {
-        const ruleIndex = state.ruleCards.indexOf(card) // TODO: Temporary workaround to use indices
-        const refs = state.ruleGraph.internalNegations.get(ruleIndex)
+        const refs = state.ruleGraph.internalNegations.get(card.lastParsed.rule)
         if (refs === undefined) {
             return new Set()
         }
@@ -575,7 +572,7 @@ const observer = new MutationObserver(mutations => {
     // measuring the height of each one.
     let foundRule = false
     function findRule(el: HTMLElement) {
-        if (el.className.split(" ").indexOf("ruleCard") >= 0) {
+        if (el.className?.split(" ").indexOf("ruleCard") >= 0) {
             (el as any)["data-1"].ruleCardHeight = el.offsetHeight
             foundRule = true
         }
