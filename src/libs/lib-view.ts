@@ -660,6 +660,8 @@ declare global {
         "bottom": string
         "width": string
         "height": string
+        "flex-grow": string
+        "flex-shrink": string
         "visibility": string
         "z-index": number
         "background-color": string
@@ -673,6 +675,8 @@ const cssProperties = new Set([
     "bottom",
     "width",
     "height",
+    "flex-grow",
+    "flex-shrink",
     "visibility",
     "z-index",
     "background-color",
@@ -1138,4 +1142,12 @@ export function textarea<Keys extends keyof HTMLTextAreaElement>(
     }
 
     return element("textarea", attributes, [])
+}
+
+export function img<Keys extends keyof HTMLParagraphElement>(
+    source: string | DerivedAttribute<string>,
+    attributes: AttributeSpec<Keys, HTMLParagraphElement> = {} as any,
+): HTMLParagraphElement {
+    Object.assign(attributes, {src: source})
+    return element("img", attributes, [])
 }

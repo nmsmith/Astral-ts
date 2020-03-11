@@ -6,6 +6,7 @@
 .view {
     @extend .fillViewport;
     @extend .col;
+    background-color: #eeeeee;
 }
 
 .viewBottomPadding {
@@ -101,33 +102,29 @@ $overview-width: 200px;
     border-color: $standard-border-color;
 }
 
-$box-shadow-color: #979797;
-$standard-box-shadow: 1px 1px 3px 2px $box-shadow-color;
+$standard-box-shadow: 1px 1px 3px 1px #777777;
+$thick-box-shadow: 1px 1px 3px 2px #909090;
 
 .labelError {
     background-color: #ffbfbf;
 }
 
-$rule-card-width: 29%;
+$rule-card-width: 31%;
 $rule-anim-duration: 0.6s;
 
 .ruleCardProps {
     position: absolute;
     box-sizing: border-box;
     width: $rule-card-width;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 6px;
-    padding-bottom: 16px;
 // animation
-    transition-property: z-index, left, top;
+    transition-property: z-index, left, top, height;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
 .ruleCard {
     @extend .ruleCardProps;
     z-index: 0; // manipulated in JS
-    @extend .col;
+    @extend .row;
 // border for delimiting adjacent cards
     border-bottom-style: solid;
     border-width: 1px;
@@ -147,6 +144,82 @@ $error-back-color: #ffbfbf;
     box-shadow: $standard-box-shadow;
 }
 
+.ruleDataSide {
+    @extend .col;
+    width: 80px;
+    margin-right: 36px;
+}
+
+.searchBarStyle {
+    position: relative;
+    z-index: 1; // Render on top of search content
+    box-shadow: $thick-box-shadow;
+    background-color: white;
+}
+
+.dataSearchBar {
+    @extend .searchBarStyle;
+    @extend .row;
+}
+
+.dataSearchIcon {
+    align-self: center;
+    height: 16px;
+    opacity: 70%;
+    padding: 6px 4px 8px 6px;
+}
+
+$data-padding: 4px;
+
+.dataSearchBox {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    border-style: none;
+    @extend .codeStyle;
+    padding: $data-padding;
+}
+
+.dataSearchBottom {
+    @extend .searchBarStyle;
+    padding: 4px;
+    font-style: italic;
+}
+
+.dataScrollPane {
+    // flex-grow: 1; // Grow, with a minimum height as given
+    height: 1px;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: scroll;
+    transition-property: height flex-grow;
+    transition-duration: 0.3s;
+    // border-style: solid;
+    // border-right-width: 1px;
+    // border-color: $standard-border-color;
+}
+
+.data {
+    @extend .codeStyle;
+    box-shadow: $standard-box-shadow;
+    padding: $data-padding;
+    margin: 5px; // margins for display in the results list
+    margin-top: 7px;
+    margin-bottom: 7px;
+    background-color: white;
+    white-space: nowrap;
+}
+
+.ruleCodeSide {
+    align-self: flex-start; // don't stretch; we need to measure true size
+    @extend .col;
+    //width: 200px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 6px;
+    padding-bottom: 16px;
+}
+
 .deleteCardButton {
     position: absolute; // relative to the rule card (parent)
     left: -37px;
@@ -159,7 +232,7 @@ $error-back-color: #ffbfbf;
 
 .ruleCardTextWrapper {
     position: relative; // reference point for glyphs
-    @extend .col; // so textarea can fill width
+    @extend .row; // so textarea can fill width
 }
 
 .cardGlyphs {
@@ -194,6 +267,5 @@ $error-back-color: #ffbfbf;
     padding-top: 8px;
     margin-bottom: -8px;
     background-color: $error-back-color;
-    white-space: pre;
     line-height: 22px;
 }
