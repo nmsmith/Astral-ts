@@ -229,7 +229,9 @@ function arrayWithDerivedProps<Obj extends object>(
                     // Return the proxied array's property unchanged
                     if (typeof value === "function") {
                         return function(this: Obj, ...args: unknown[]): unknown {
-                            return value.apply(this, args)
+                            // Ignore "this", because Vue passes its own proxy in, causing an
+                            // infinite call cycle. This hack shouldn't ever cause a problem.
+                            return value.apply(rawArray, args)
                         }
                     }
                     else {
