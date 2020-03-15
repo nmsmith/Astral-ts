@@ -663,7 +663,9 @@ declare global {
         "flex-grow": string
         "flex-shrink": string
         "visibility": string
+        "display": string
         "z-index": number
+        "color": string
         "background-color": string
     }
 }
@@ -678,7 +680,9 @@ const cssProperties = new Set([
     "flex-grow",
     "flex-shrink",
     "visibility",
+    "display",
     "z-index",
+    "color",
     "background-color",
 ])
 

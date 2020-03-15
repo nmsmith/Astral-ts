@@ -1,3 +1,8 @@
+@font-face {
+    font-family: NotoSans;
+    src: url(NotoSans-Regular.ttf);
+}
+
 .unstyledButton {
     border-style: none;
     background-color: transparent;
@@ -7,6 +12,7 @@
     @extend .fillViewport;
     @extend .col;
     background-color: #eeeeee;
+    font-family: NotoSans, sans-serif; // Do I actually prefer the default (Helvetica?)
 }
 
 .viewBottomPadding {
@@ -31,6 +37,7 @@ $standard-border-color: #aaaaaa;
 
 .codeStyle {
     font-family: "Lucida Console", Monaco, monospace;
+    //font-family: NotoSans, sans-serif;
     line-height: 26px;
     font-size: 18px;
 }
@@ -109,27 +116,30 @@ $thick-box-shadow: 1px 1px 3px 2px #909090;
     background-color: #ffbfbf;
 }
 
-$rule-card-width: 31%;
 $rule-anim-duration: 0.6s;
 
 .ruleCardProps {
     position: absolute;
     box-sizing: border-box;
-    width: $rule-card-width;
 // animation
-    transition-property: z-index, left, top, height;
+    transition-property: z-index, left, top, width, height;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
 .ruleCard {
     @extend .ruleCardProps;
     z-index: 0; // manipulated in JS
-    @extend .row;
+    @extend .col;
 // border for delimiting adjacent cards
     border-bottom-style: solid;
     border-width: 1px;
     border-color: $standard-border-color;
     background-color: white;
+}
+
+.ruleCardBody {
+    flex-grow: 1;
+    @extend .row;
 }
 
 $error-back-color: #ffbfbf;
@@ -146,8 +156,10 @@ $error-back-color: #ffbfbf;
 
 .ruleDataSide {
     @extend .col;
-    width: 80px;
-    margin-right: 36px;
+    width: 140px;
+    margin-right: 8px;
+    transition-property: width;
+    transition-duration: $rule-anim-duration;
 }
 
 .searchBarStyle {
@@ -160,6 +172,7 @@ $error-back-color: #ffbfbf;
 .dataSearchBar {
     @extend .searchBarStyle;
     @extend .row;
+    overflow-x: hidden;
 }
 
 .dataSearchIcon {
@@ -169,29 +182,39 @@ $error-back-color: #ffbfbf;
     padding: 6px 4px 8px 6px;
 }
 
-$data-padding: 4px;
+.dataTextStyle {
+    //@extend .codeStyle;
+    font-family: NotoSans, serif;//, Monaco, monospace;
+    font-size: 18px;
+    padding: 6px 4px 6px 4px;
+}
 
 .dataSearchBox {
     flex-grow: 1;
     flex-shrink: 1;
     min-width: 0;
     border-style: none;
-    @extend .codeStyle;
-    padding: $data-padding;
+    @extend .dataTextStyle;
 }
 
-.dataSearchBottom {
+.dataTuckBar {
+    @extend .row;
     @extend .searchBarStyle;
-    padding: 4px;
     font-style: italic;
 }
 
+.factCount {
+    padding: 4px;
+}
+
 .dataScrollPane {
-    // flex-grow: 1; // Grow, with a minimum height as given
+    direction: rtl; // put scroll bar on LHS
+    flex-grow: 1; // Grow, with a minimum height as given
     height: 1px;
     box-sizing: border-box;
     overflow-x: hidden;
     overflow-y: scroll;
+    padding: 7px 5px 7px 5px;
     transition-property: height flex-grow;
     transition-duration: 0.3s;
     // border-style: solid;
@@ -200,14 +223,14 @@ $data-padding: 4px;
 }
 
 .data {
-    @extend .codeStyle;
+    direction: ltr; // reset direction
+    @extend .dataTextStyle;
     box-shadow: $standard-box-shadow;
-    padding: $data-padding;
-    margin: 5px; // margins for display in the results list
-    margin-top: 7px;
-    margin-bottom: 7px;
     background-color: white;
     white-space: nowrap;
+    overflow-x: hidden;
+    transition-property: color;
+    transition-duration: $rule-anim-duration;
 }
 
 .ruleCodeSide {
@@ -221,9 +244,6 @@ $data-padding: 4px;
 }
 
 .deleteCardButton {
-    position: absolute; // relative to the rule card (parent)
-    left: -37px;
-    top: 1px;
     @extend .unstyledButton;
     @extend .noSelect;
     color: #aaaaaa;
@@ -235,24 +255,24 @@ $data-padding: 4px;
     @extend .row; // so textarea can fill width
 }
 
-.cardGlyphs {
-    position: absolute;
-    left: -33px;
-    @extend .codeStyle;
-    white-space: pre;
-    pointer-events: none; // prevent invisible glyphs from blocking delete button
-}
+// .cardGlyphs {
+//     position: absolute;
+//     left: 150px;
+//     @extend .codeStyle;
+//     white-space: pre;
+//     pointer-events: none; // prevent invisible glyphs from blocking delete button
+// }
 
-.cardGlyph {
-    box-sizing: content-box;
-    padding-left: 5px;
-    padding-right: 5px;
-    border-style: solid;
-    border-width: 1px;
-    border-color: $standard-border-color;
-    color: black;
-    background-color: white;
-}
+// .cardGlyph {
+//     box-sizing: content-box;
+//     padding-left: 5px;
+//     padding-right: 5px;
+//     // border-style: solid;
+//     // border-width: 1px;
+//     // border-color: $standard-border-color;
+//     color: black;
+//     //background-color: white;
+// }
 
 .ruleCardTextArea {
     @extend .codeStyle;

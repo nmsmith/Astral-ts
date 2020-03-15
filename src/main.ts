@@ -22,6 +22,7 @@ interface RuleCard {
     cardHeightUnselected: number
 // derived properties
     cardHeight: number
+    isCentered: boolean
 }
 
 function RuleCard(): RuleCard {
@@ -64,7 +65,7 @@ interface State {
     readonly ruleLayoutInfo: Map<RuleCard, ColumnLayout> // determined from graph info
 }
 
-const selectedCardMinHeight = 132
+const selectedCardMinHeight = 158
 
 function createState(existingState?: State): WithDerivedProps<State> {
     const essentialState = existingState !== undefined ? existingState : {
@@ -90,6 +91,14 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 }
                 else {
                     return card.cardHeightUnselected
+                }
+            },
+            isCentered: (card: RuleCard): boolean => {
+                if (card.lastParsed === null) {
+                    return state.centeredItem === card
+                }
+                else {
+                    return state.centeredItem === componentOf(card.lastParsed.rule, state.ruleGraph)
                 }
             },
         },
@@ -418,13 +427,33 @@ function percent(n: number): string {
     return `${n}%`
 }
 
-// As percentages:
-const ruleCardWidth = 31 // WARNING: Keep this in sync with the CSS file
-const ruleCardXSpacing = 7 / 4
-const ruleCardXOffset = ruleCardWidth + ruleCardXSpacing
-// As pixels:
-const ruleCardYStart = 16
-const ruleCardYSpacing = 30
+function calc(percent: number, pixDiff: number): string {
+    if (pixDiff >= 0) {
+        return `calc(${percent}% + ${pixDiff}px)`
+    }
+    else {
+        return `calc(${percent}% - ${-pixDiff}px)`
+    }
+}
+
+const dataShownWidth = 140 //px
+const dataHiddenWidth = 28 //px
+const dataPaneWidthChange = dataShownWidth - dataHiddenWidth
+const oneThird = 100 / 3 //percent
+const ruleCardXSpacing = 16 //px
+const shrinkForXSpacing = 16 * 4 / 3 //px (the amount each card needs to shrink in width)
+const ruleCardYStart = 16 //px
+const ruleCardYSpacing = 30 //px
+const dataTuckBarHeight = 26 // annoyingly, we have to hardcode this
+
+function computeWidth(card: RuleCard): string {
+    if (card.isCentered) {
+        return calc(oneThird, dataPaneWidthChange * 2 / 3 - shrinkForXSpacing)
+    }
+    else {
+        return calc(oneThird, -dataPaneWidthChange / 3 - shrinkForXSpacing)
+    }
+}
 
 function computeLeftPosition(card: RuleCard): string {
     const column = state.ruleLayoutInfo.get(card)
@@ -446,7 +475,18 @@ function computeLeftPosition(card: RuleCard): string {
             }
         }
         else index = column.index
-        return percent(ruleCardXSpacing + index * ruleCardXOffset)
+        if (index === 0) {
+            return px(ruleCardXSpacing)
+        }
+        else if (index === 1) {
+            return calc(oneThird, ruleCardXSpacing * 2 - dataPaneWidthChange / 3 - shrinkForXSpacing)
+        }
+        else if (index === 2) {
+            return calc(2 * oneThird, ruleCardXSpacing * 3 + dataPaneWidthChange / 3 - 2 * shrinkForXSpacing)
+        }
+        else { // offscreen column
+            return percent(index * oneThird)
+        }
     }  
 }
 
@@ -588,7 +628,7 @@ const observer = new MutationObserver(mutations => {
     let foundRule = false
     function findRule(el: HTMLElement) {
         if (el.className?.split(" ").indexOf("ruleCodeSide") >= 0) {
-            (el as any)["data-1"].cardHeightUnselected = el.offsetHeight
+            (el as any)["data-1"].cardHeightUnselected = el.offsetHeight + dataTuckBarHeight
             foundRule = true
         }
         else if (el.children !== undefined) {
@@ -617,6 +657,8 @@ app ("app", state,
     div ({class: "view"}, [
         h1 ("Design directions"),
         list ({class: "ideaList"}, {class: "listItem"}, [
+            h3 ("Keep interactions tablet-friendly (material design, drag to resize...). Working on a program can be a kinesthetic experience."),
+            h3 ("Information design: show the data, and show comparisons."),
             h3 ("The neighbourhood of an element should always be visible, so that the effects of incremental changes are obvious (Lean on video games e.g. Factorio: inherently local cause-and-effect)."),
             h3 ("Andy Matuschak (his notes): we learn SKILLS and UNDERSTANDING through doing, and observing/mimicking the tacit knowledge of \"experts\" (craftsmen, Twitch streamers, lecturers explaining)."),
             h3 ("But how do we develop NEW APPROACHES to (as opposed to understanding of) a problem/task? First, gain a MASTERFUL UNDERSTANDING of the existing problem & approaches, and then develop approaches from there (e.g. reasoning by first principles)."),
@@ -662,6 +704,7 @@ app ("app", state,
                             "z-index": () => computeZIndex(ruleCard) - 1, // render behind cards
                             left: () => computeLeftPosition(ruleCard),
                             top: () => computeTopPosition(ruleCard),
+                            width: () => computeWidth(ruleCard),
                             height: () => `${ruleCard.cardHeight}px`,
                         }),
                         div ({
@@ -673,198 +716,204 @@ app ("app", state,
                             "z-index": () => computeZIndex(ruleCard),
                             left: () => computeLeftPosition(ruleCard),
                             top: () => computeTopPosition(ruleCard),
+                            width: () => computeWidth(ruleCard),
                             height: () => `${ruleCard.cardHeight}px`,
                         }, [
-                            // Computed conclusions
-                            div ({class: "ruleDataSide"}, [
-                                div ({class: "dataSearchBar"}, [
-                                    img ("./glass-short.svg", {
-                                        class: "dataSearchIcon",
-                                    }),
-                                    input ({class: "dataSearchBox"}),
+                            div ({class: "ruleCardBody"}, [
+                                // Computed conclusions
+                                div ({
+                                    class: "ruleDataSide",
+                                    width: () => ruleCard.isCentered ? px(dataShownWidth) : px(dataHiddenWidth),
+                                }, [
+                                    div ({class: "dataSearchBar"}, [
+                                        img ("./glass-short.svg", {
+                                            class: "dataSearchIcon",
+                                        }),
+                                        input ({class: "dataSearchBox"}),
+                                    ]),
+                                    div ({
+                                        class: "dataScrollPane",
+                                    }, [
+                                        div ({
+                                            class: "data",
+                                            color: () => ruleCard.isCentered ? "black" : "transparent",
+                                        }, [p("3, #apple")]),
+                                        div ({
+                                            class: "data",
+                                            color: () => ruleCard.isCentered ? "black" : "transparent",
+                                        }, [p("7, #banana")]),
+                                        div ({
+                                            class: "data",
+                                            color: () => ruleCard.isCentered ? "black" : "transparent",
+                                        }, [p("4, #orange")]),
+                                        div ({
+                                            class: "data",
+                                            color: () => ruleCard.isCentered ? "black" : "transparent",
+                                        }, [p("8, #pear")]),
+                                        div ({
+                                            class: "data",
+                                            color: () => ruleCard.isCentered ? "black" : "transparent",
+                                        }, [p("8, #mango")]),
+                                    ]),
                                 ]),
                                 div ({
-                                    class: "dataScrollPane",
-                                    "flex-grow": () => state.editingRule === ruleCard ? "1" : "0",
+                                    class: "ruleCodeSide",
+                                    "data-1": ruleCard, // needed elsewhere for JS-driven layout
                                 }, [
-                                    div ({class: "data"}, [p("(3, #apple)")]),
-                                    div ({class: "data"}, [p("(7, #banana)")]),
-                                    div ({class: "data"}, [p("(4, #orange)")]),
-                                    div ({class: "data"}, [p("(8, #pear)")]),
-                                    div ({class: "data"}, [p("(8, #mango)")]),
-                                ]),
-                                div ({class: "dataSearchBottom"}, [p("7 tuples")]),
-                            ]),
-                            div ({
-                                class: "ruleCodeSide",
-                                "data-1": ruleCard, // needed elsewhere for JS-driven layout
-                            }, [
-                                div ({class: "ruleCardTextWrapper"}, [
-                                    button ("✖", {
-                                        class: "deleteCardButton",
-                                        visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
-                                        onclick: () => {
-                                            state.lastRuleLayoutInfo.delete(ruleCard) // don't animate deletion
-                                            const deletionIndex = state.ruleCards.indexOf(ruleCard)
-                                            if (state.editingRule === ruleCard) {
-                                                state.editingRule = null
-                                                // Need to release reference to the old component,
-                                                // since it will now be invalid.
-                                                state.centeredItem = null
-                                                // But now we'll need to find another rule in the old
-                                                // component, whose newly-computed component can be centered.
+                                    div ({class: "ruleCardTextWrapper"}, [
+                                        // Rule text
+                                        textarea ({
+                                            class: "ruleCardTextArea",
+                                            value: toRefs(ruleCard).rawText,
+                                            onfocus: () => {
+                                                state.editingRule = ruleCard
                                                 if (ruleCard.lastParsed !== null) {
-                                                    const myRule = ruleCard.lastParsed.rule
-                                                    const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
-                                                    const myComponent = state.ruleGraph.components.get(myRelation) as Component
-                                                    let candidateRuleCard: RuleCard | undefined = undefined
-                                                    if (myRelation.ownRules.size > 0) {
-                                                        // Select another rule in the relation
-                                                        for (const rule of myRelation.ownRules) {
-                                                            if (rule !== myRule) {
-                                                                candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                                                                break
-                                                            }
-                                                        }
+                                                    state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
+                                                }
+                                            },
+                                            onkeydown: (event: KeyboardEvent) => {
+                                                const el = (event.target as HTMLTextAreaElement)
+                                                // React to vanilla key presses only
+                                                if (!event.ctrlKey && !event.metaKey) {
+                                                    // Do basic autoformatting.
+                                                    // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
+                                                    if (event.key === ",") {
+                                                        event.preventDefault()
+                                                        setTimeout(() =>
+                                                            document.execCommand("insertText", false, ", "), 0)
                                                     }
-                                                    else {
-                                                        // Select the first rule from another relation in the component
-                                                        for (const relation of myComponent) {
-                                                            if (relation !== myRelation && relation.ownRules.size > 0) {
-                                                                const rule = relation.ownRules.values().next().value
-                                                                candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                                                                break
-                                                            }
-                                                        }
+                                                    else if (event.key === "Enter") {
+                                                        event.preventDefault()
+                                                        setTimeout(() =>
+                                                            document.execCommand("insertText", false, "\n  "), 0)
                                                     }
-        
-                                                    if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
-                                                        // Delete the rule card so that new components can be computed
-                                                        state.ruleCards.removeAt(deletionIndex)
-                                                        // Find the candidate rule's new component, and center it
-                                                        state.centeredItem = componentOf(
-                                                            candidateRuleCard.lastParsed.rule,
-                                                            state.ruleGraph,
+                                                    else if (event.key === "-") {
+                                                        event.preventDefault()
+                                                        setTimeout(() =>
+                                                            document.execCommand("insertText", false, "¬"), 0)
+                                                    }
+                                                    // Disallow spaces next to an existing space, unless at the start of a line
+                                                    else if (
+                                                        event.key === " " && !(
+                                                            el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
+                                                        ) && !(
+                                                            el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
+                                                        ) && (
+                                                            (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
                                                         )
-                                                        return // finish early, since we already deleted the card
+                                                    ) {
+                                                        event.preventDefault()
                                                     }
                                                 }
-                                            }
-                                            state.ruleCards.removeAt(deletionIndex)
-                                        },
-                                    }),
-                                    // Error glyphs
-                                    div ({class: "cardGlyphs"}, [
-                                        $for (() => forRange(-1, ruleCard.lastParsed?.rule.body.length), index => [
-                                            div ({class: "nonBlocking"}, [
-                                                $if (() => getInternalReferences(ruleCard).has(index.value), {
-                                                    $then: () => [
-                                                        p ("▲", {
-                                                            class: "cardGlyph",
-                                                        }),
-                                                    ],
-                                                    $else: () => [
-                                                        p (" ", {class: "nonBlocking noSelect"}),
-                                                    ],
-                                                }),
-                                            ]),
-                                        ]),
+                                            },
+                                            oninput: (event: Event) => {
+                                                const el = (event.target as HTMLTextAreaElement)
+                                                const parseResult = parseRule(ruleCard.rawText)
+                                                if (parseResult.result === "success") {
+                                                    ruleCard.lastParsed = {
+                                                        rawText: ruleCard.rawText,
+                                                        rule: parseResult.rule,
+                                                    }
+                                                    ruleCard.parseErrorText = null
+                                                    // Center the component of the newly parsed rule
+                                                    state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
+                                                }
+                                                else if (parseResult.result === "noRule") {
+                                                    ruleCard.lastParsed = null
+                                                    ruleCard.parseErrorText = null
+                                                    // Center just this rule card as a component
+                                                    state.centeredItem = ruleCard
+                                                }
+                                                else {
+                                                    ruleCard.parseErrorText = parseResult.reason
+                                                }
+                
+                                                const codeDiv = el.parentElement?.parentElement as HTMLElement
+                                                el.style.height = "auto"  // trigger the text box to auto-size
+                                                el.style.height = el.scrollHeight + "px" // new stretch it to fit contentss
+                
+                                                // Delay the reading of the rule div height until the
+                                                // currently-executing DOM update has fully finished
+                                                // (the div's height may change during the update).
+                                                setTimeout(() => {
+                                                    // Create a new DOM update to finish the work.
+                                                    defineDOMUpdate(() => {
+                                                        // Record the height of the WHOLE rule div,
+                                                        // so we can use it for code-driven layout.
+                                                        ruleCard.cardHeightUnselected = codeDiv.offsetHeight + dataTuckBarHeight
+                                                    })({
+                                                        type: "Custom update",
+                                                        target: null,
+                                                    })
+                                                }, 0)
+                                            },
+                                        }),
                                     ]),
-                                    // Rule text
-                                    textarea ({
-                                        class: "ruleCardTextArea",
-                                        value: toRefs(ruleCard).rawText,
-                                        onfocus: () => {
-                                            state.editingRule = ruleCard
-                                            if (ruleCard.lastParsed !== null) {
-                                                state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
-                                            }
-                                        },
-                                        onkeydown: (event: KeyboardEvent) => {
-                                            const el = (event.target as HTMLTextAreaElement)
-                                            // React to vanilla key presses only
-                                            if (!event.ctrlKey && !event.metaKey) {
-                                                // Do basic autoformatting.
-                                                // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
-                                                if (event.key === ",") {
-                                                    event.preventDefault()
-                                                    setTimeout(() =>
-                                                        document.execCommand("insertText", false, ", "), 0)
-                                                }
-                                                else if (event.key === "Enter") {
-                                                    event.preventDefault()
-                                                    setTimeout(() =>
-                                                        document.execCommand("insertText", false, "\n  "), 0)
-                                                }
-                                                else if (event.key === "-") {
-                                                    event.preventDefault()
-                                                    setTimeout(() =>
-                                                        document.execCommand("insertText", false, "¬"), 0)
-                                                }
-                                                // Disallow spaces next to an existing space, unless at the start of a line
-                                                else if (
-                                                    event.key === " " && !(
-                                                        el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
-                                                    ) && !(
-                                                        el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
-                                                    ) && (
-                                                        (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
-                                                    )
-                                                ) {
-                                                    event.preventDefault()
-                                                }
-                                            }
-                                        },
-                                        oninput: (event: Event) => {
-                                            const el = (event.target as HTMLTextAreaElement)
-                                            const parseResult = parseRule(ruleCard.rawText)
-                                            if (parseResult.result === "success") {
-                                                ruleCard.lastParsed = {
-                                                    rawText: ruleCard.rawText,
-                                                    rule: parseResult.rule,
-                                                }
-                                                ruleCard.parseErrorText = null
-                                                // Center the component of the newly parsed rule
-                                                state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
-                                            }
-                                            else if (parseResult.result === "noRule") {
-                                                ruleCard.lastParsed = null
-                                                ruleCard.parseErrorText = null
-                                                // Center just this rule card as a component
-                                                state.centeredItem = ruleCard
-                                            }
-                                            else {
-                                                ruleCard.parseErrorText = parseResult.reason
-                                            }
-            
-                                            const codeDiv = el.parentElement?.parentElement as HTMLElement
-                                            el.style.height = "auto"  // trigger the text box to auto-size
-                                            el.style.height = el.scrollHeight + "px" // new stretch it to fit contentss
-            
-                                            // Delay the reading of the rule div height until the
-                                            // currently-executing DOM update has fully finished
-                                            // (the div's height may change during the update).
-                                            setTimeout(() => {
-                                                // Create a new DOM update to finish the work.
-                                                defineDOMUpdate(() => {
-                                                    // Record the height of the WHOLE rule div,
-                                                    // so we can use it for code-driven layout.
-                                                    ruleCard.cardHeightUnselected = codeDiv.offsetHeight
-                                                })({
-                                                    type: "Custom update",
-                                                    target: null,
-                                                })
-                                            }, 0)
-                                        },
+                                    $if (() => hasError(ruleCard), {
+                                        $then: () => [
+                                            p (() => getError(ruleCard), {
+                                                class: "errorText",
+                                            }),
+                                        ],
+                                        $else: () => [],
                                     }),
                                 ]),
-                                $if (() => hasError(ruleCard), {
-                                    $then: () => [
-                                        p (() => getError(ruleCard), {
-                                            class: "errorText",
-                                        }),
-                                    ],
-                                    $else: () => [],
+                            ]),
+                            div ({class: "dataTuckBar"}, [
+                                p ("7 tuples", {class: "factCount"}),
+                                div ({class: "grow"}),
+                                button ("✖", {
+                                    class: "deleteCardButton",
+                                    visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
+                                    onclick: () => {
+                                        state.lastRuleLayoutInfo.delete(ruleCard) // don't animate deletion
+                                        const deletionIndex = state.ruleCards.indexOf(ruleCard)
+                                        if (state.editingRule === ruleCard) {
+                                            state.editingRule = null
+                                            // Need to release reference to the old component,
+                                            // since it will now be invalid.
+                                            state.centeredItem = null
+                                            // But now we'll need to find another rule in the old
+                                            // component, whose newly-computed component can be centered.
+                                            if (ruleCard.lastParsed !== null) {
+                                                const myRule = ruleCard.lastParsed.rule
+                                                const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
+                                                const myComponent = state.ruleGraph.components.get(myRelation) as Component
+                                                let candidateRuleCard: RuleCard | undefined = undefined
+                                                if (myRelation.ownRules.size > 0) {
+                                                    // Select another rule in the relation
+                                                    for (const rule of myRelation.ownRules) {
+                                                        if (rule !== myRule) {
+                                                            candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                                                            break
+                                                        }
+                                                    }
+                                                }
+                                                else {
+                                                    // Select the first rule from another relation in the component
+                                                    for (const relation of myComponent) {
+                                                        if (relation !== myRelation && relation.ownRules.size > 0) {
+                                                            const rule = relation.ownRules.values().next().value
+                                                            candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                                                            break
+                                                        }
+                                                    }
+                                                }
+    
+                                                if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
+                                                    // Delete the rule card so that new components can be computed
+                                                    state.ruleCards.removeAt(deletionIndex)
+                                                    // Find the candidate rule's new component, and center it
+                                                    state.centeredItem = componentOf(
+                                                        candidateRuleCard.lastParsed.rule,
+                                                        state.ruleGraph,
+                                                    )
+                                                    return // finish early, since we already deleted the card
+                                                }
+                                            }
+                                        }
+                                        state.ruleCards.removeAt(deletionIndex)
+                                    },
                                 }),
                             ]),
                         ]),
