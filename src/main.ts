@@ -6,7 +6,7 @@ import { toRefs, reactive as observable } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import { h1, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input } from "./libs/lib-view"
 import {parseRule} from "./parser"
-import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf } from "./semantics"
+import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDeductions, Deduction, Tuple } from "./semantics"
 
 //#region  --- Essential & derived state ---
 
@@ -61,6 +61,7 @@ interface State {
     lastRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
 // Derived state
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
+    readonly deductions: Deductions
     readonly incompleteCards: RuleCard[]
     readonly ruleLayoutInfo: Map<RuleCard, ColumnLayout> // determined from graph info
 }
@@ -114,6 +115,9 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 }
             })
             return analyseRuleGraph(rawRules)
+        },
+        deductions: state => {
+            return computeDeductions(state.ruleGraph)
         },
         incompleteCards: state => {
             return state.ruleCards.filter(card => card.lastParsed === null)
@@ -338,13 +342,7 @@ function newRule(): void {
 
 function getUnboundVariables(card: RuleCard): Set<string> {
     if (card.lastParsed !== null) {
-        const refs = state.ruleGraph.unboundVariables.get(card.lastParsed.rule)
-        if (refs === undefined) {
-            return new Set()
-        }
-        else {
-            return refs
-        }
+        return card.lastParsed.rule.unboundVariables
     }
     else return new Set()
 }
@@ -365,6 +363,19 @@ function getInternalReferences(card: RuleCard): Set<number> {
 function getInternalNegations(card: RuleCard): Set<number> {
     if (card.lastParsed !== null) {
         const refs = state.ruleGraph.internalNegations.get(card.lastParsed.rule)
+        if (refs === undefined) {
+            return new Set()
+        }
+        else {
+            return refs
+        }
+    }
+    else return new Set()
+}
+
+function getDeductions(card: RuleCard): Set<Deduction> {
+    if (card.lastParsed !== null) {
+        const refs = state.deductions.get(card.lastParsed.rule)
         if (refs === undefined) {
             return new Set()
         }
@@ -603,6 +614,14 @@ function overviewTextForIncompleteCard(card: RuleCard): string {
     }
 }
 
+function tupleToString(tuple: Tuple): string {
+    let s = ""
+    for (const value of tuple) {
+        s += `${value}, `
+    }
+    return s.slice(0, -2)
+}
+
 function forRange(start: number, end: number | undefined): {value: number}[] {
     if (end === undefined) return []
     const result = []
@@ -734,26 +753,14 @@ app ("app", state,
                                     div ({
                                         class: "dataScrollPane",
                                     }, [
-                                        div ({
-                                            class: "data",
-                                            color: () => ruleCard.isCentered ? "black" : "transparent",
-                                        }, [p("3, #apple")]),
-                                        div ({
-                                            class: "data",
-                                            color: () => ruleCard.isCentered ? "black" : "transparent",
-                                        }, [p("7, #banana")]),
-                                        div ({
-                                            class: "data",
-                                            color: () => ruleCard.isCentered ? "black" : "transparent",
-                                        }, [p("4, #orange")]),
-                                        div ({
-                                            class: "data",
-                                            color: () => ruleCard.isCentered ? "black" : "transparent",
-                                        }, [p("8, #pear")]),
-                                        div ({
-                                            class: "data",
-                                            color: () => ruleCard.isCentered ? "black" : "transparent",
-                                        }, [p("8, #mango")]),
+                                        $for (() => getDeductions(ruleCard).values(), deduction => [
+                                            div ({
+                                                class: "data",
+                                                color: () => ruleCard.isCentered ? "black" : "transparent",
+                                            }, [
+                                                p (tupleToString(deduction.deduction)),
+                                            ]),
+                                        ]),
                                     ]),
                                 ]),
                                 div ({

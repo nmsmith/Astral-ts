@@ -1,4 +1,4 @@
-import {Obj, Atom, Literal, Rule} from "./semantics"
+import {Obj, Atom, Literal, Rule, rule} from "./semantics"
 
 export type ParseResult =
     {result: "failure", reason: string}
@@ -153,5 +153,5 @@ export function parseRule(s: string): ParseResult {
         }
     }
 
-    return {result: "success", rule: {head: head as Atom, body}}
+    return {result: "success", rule: rule(head as Atom, body)}
 }
