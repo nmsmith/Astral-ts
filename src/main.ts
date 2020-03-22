@@ -6,7 +6,7 @@ import { toRefs, reactive as observable } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import { h1, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input } from "./libs/lib-view"
 import {parseRule} from "./parser"
-import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDeductions, Deduction, Tuple } from "./semantics"
+import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDeductions, TupleLookup, Tuple } from "./semantics"
 
 //#region  --- Essential & derived state ---
 
@@ -61,7 +61,7 @@ interface State {
     lastRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
 // Derived state
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
-    readonly deductions: Deductions
+    readonly deductions: Map<Rule, TupleLookup>
     readonly incompleteCards: RuleCard[]
     readonly ruleLayoutInfo: Map<RuleCard, ColumnLayout> // determined from graph info
 }
@@ -373,17 +373,17 @@ function getInternalNegations(card: RuleCard): Set<number> {
     else return new Set()
 }
 
-function getDeductions(card: RuleCard): Set<Deduction> {
+function getDeductions(card: RuleCard): TupleLookup {
     if (card.lastParsed !== null) {
         const refs = state.deductions.get(card.lastParsed.rule)
         if (refs === undefined) {
-            return new Set()
+            return new Map()
         }
         else {
             return refs
         }
     }
-    else return new Set()
+    else return new Map()
 }
 
 function hasError(card: RuleCard): boolean {
@@ -753,12 +753,12 @@ app ("app", state,
                                     div ({
                                         class: "dataScrollPane",
                                     }, [
-                                        $for (() => getDeductions(ruleCard).values(), deduction => [
+                                        $for (() => getDeductions(ruleCard).values(), tuple => [
                                             div ({
                                                 class: "data",
                                                 color: () => ruleCard.isCentered ? "black" : "transparent",
                                             }, [
-                                                p (tupleToString(deduction.deduction)),
+                                                p (tupleToString(tuple.tuple)),
                                             ]),
                                         ]),
                                     ]),

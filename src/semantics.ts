@@ -1,4 +1,4 @@
-export type Obj = {type: "constant", name: string} | {type: "variable", name: string}
+export type Obj = {type: "literal", name: string} | {type: "variable", name: string}
 
 // ------------------------------------- RULES --------------------------------------
 
@@ -23,21 +23,24 @@ export interface Rule {
     readonly strategy: null | EvaluationStrategy // cached info for evaluation purposes
 }
 
-export type Data = unknown
-export type Tuple = Data[]
+export type PrimitiveData = number | string
+export type Tuple = PrimitiveData[]
 
-/** Creates a unique string for the given tuple. This can be used for hashing. */
-function tupleUniqueString(tuple: Tuple): string {
-    return tuple.map(x => (x as any).toString()).join()
+function tupleEq(t1: Tuple, t2: Tuple): boolean {
+    if (t1.length !== t2.length) return false
+
+    for (let i = 0; i < t1.length; ++i) {
+        if (t1[i] !== t2[i]) return false
+    }
+
+    return true
 }
 
-/**
- * Represents a deduced tuple, and the ground rule instance that led to the deduction.
- */
-export interface Deduction {
-    readonly rule: Rule  // the rule via which the deduction was made
-    readonly deduction: Tuple  // the deduced tuple
-    readonly premiseDeductions: Deduction[][]  // the set of deductions that made each (data source) premise true
+type TupleID = string
+
+/** Creates a unique string for the given tuple. This can be used for hashing. */
+function tupleID(tuple: Tuple): TupleID {
+    return tuple.map(x => (x as any).toString()).join()
 }
 
 function findUnboundVariables(head: Atom, body: Literal[]): Set<string> {
@@ -75,46 +78,68 @@ function findUnboundVariables(head: Atom, body: Literal[]): Set<string> {
 
 
 // -------------------------------- RULE EVALUATION ----------------------------------
+// The method by which we evaluate rules:
+// Instead of binding tuple elements to rule variables, we define "constraints" which
+// are the result of "compiling away" the variables; we check tuple elements directly.
+// This means we don't have to assign all variables in the rule to determine whether
+// the assignment ultimately leads to a true premise; we can abandon an assignment early.
 
 /** A pointer to a tuple element in a list of tuples */
-type TupleElement = {tuple: number, el: number}
+type VarBindingLocation = {tuple: number, el: number}
 
-interface EqConstraint { // between two elements of two tuples
+function isData(x: PrimitiveData | VarBindingLocation): x is PrimitiveData {
+    return (x as VarBindingLocation).tuple === undefined
+}
+
+/// A tuple with this constraint has an element which must match the
+// value of a bound variable.
+interface EqConstraint {
     type: "eq"
-    me: TupleElement
-    other: TupleElement
+    myElement: number // constrainted tuple element
+    binding: VarBindingLocation // location where variable was bound
 }
 
-interface ConstEqConstraint {
-    type: "constEq"
-    me: TupleElement
-    const: Data
+/// A tuple with this constraint has an element which must match a literal.
+interface EqLiteralConstraint {
+    type: "eqLiteral"
+    myElement: number
+    literal: PrimitiveData
 }
 
-type Constant = {type: "constant", value: Data}
+type PredicateArgument = PrimitiveData | VarBindingLocation
 
+/// A tuple with this constraint provides the last variable binding
+/// needed to determine whether a negation is satisfied.
 interface NegConstraint {
     type: "neg"
-    relation: string
-    elements: (Constant | TupleElement)[]
+    relationName: string
+    args: PredicateArgument[]
 }
 
-type Filter = EqConstraint | ConstEqConstraint | NegConstraint
+interface GroundNegConstraint {
+    relationName: string
+    tuple: Tuple
+}
+
+/// A constraint by which a tuple must be filtered.
+type Filter = EqConstraint | EqLiteralConstraint | NegConstraint
 
 /**
  * Represents a positive literal (whose relation is a data source),
  * with a set of filters on which tuples should be chosen.
  */
 interface DataSource {
+    premiseIndex: number
     relationName: string
     filters: Filter[]
 }
 
 interface EvaluationStrategy {
     sources: DataSource[]
+    headArgs: PredicateArgument[]
     // Ground negations can be checked at the beginning of the
     // rule evaluation; they don't depend on local variables.
-    groundNegations: NegConstraint[]
+    groundNegations: GroundNegConstraint[]
 }
 
 /**
@@ -124,45 +149,41 @@ interface EvaluationStrategy {
  * must pass for the implication to remain viable.
  * The ordering of data sources is not optimized; source order is used.
  */
-function computeEvaluationStrategy(ruleBody: Literal[]): EvaluationStrategy {
-    // Collect the atoms whose relations are data sources (the positive literals),
-    // and compute a set of constraints by which their tuples should be filtered.
+function computeEvaluationStrategy(ruleHead: Atom, ruleBody: Literal[]): EvaluationStrategy {
     const sources: DataSource[] = []
-    const varOccurrences = new Map<string, Set<TupleElement>>() // from var name to source indices
+    const varBindings = new Map<string, VarBindingLocation>()
     const negatedAtoms: Atom[] = []
+    // Start by running through the body to set up all the data sources
+    // and collect the negative literals.
     for (const literal of ruleBody) {
         if (literal.sign === "positive") {
-            const sourceIndex = sources.length
+            const premiseIndex = sources.length
             const filters: Filter[] = []
-            sources.push({relationName: literal.relationName, filters})
+            sources.push({premiseIndex, relationName: literal.relationName, filters})
             const objs = literal.objects
             for (let objIndex = 0; objIndex < objs.length; ++objIndex) {
-                const tupleEl = {tuple: sourceIndex, el: objIndex}
+                const tupleEl = {tuple: premiseIndex, el: objIndex}
                 const obj = objs[objIndex]
                 if (obj.type === "variable") {
-                    const pastRefs = varOccurrences.get(obj.name)
-                    if (pastRefs === undefined) {
-                        varOccurrences.set(obj.name, new Set([tupleEl]))
+                    const binding = varBindings.get(obj.name)
+                    if (binding === undefined) {
+                        varBindings.set(obj.name, tupleEl)
                     }
                     else {
                         // must filter tuples from this source by equality
-                        // with past occurrences of this variable
-                        pastRefs.forEach(ref => {
-                            filters.push({
-                                type: "eq",
-                                me: tupleEl,
-                                other: ref,
-                            })
+                        // with the bound variable
+                        filters.push({
+                            type: "eq",
+                            myElement: objIndex,
+                            binding,
                         })
-                        // now track this variable occurrence
-                        pastRefs.add(tupleEl)
                     }
                 }
-                else { // must filter tuples by this constant
+                else { // must filter tuples by this literal
                     filters.push({
-                        type: "constEq",
-                        me: tupleEl,
-                        const: obj.name,
+                        type: "eqLiteral",
+                        myElement: objIndex,
+                        literal: obj.name,
                     })
                 }
             }
@@ -171,39 +192,50 @@ function computeEvaluationStrategy(ruleBody: Literal[]): EvaluationStrategy {
             negatedAtoms.push(literal)
         }
     }
-    // Now that we've gone through the whole body, we can decide when negation
+    // We now know how to fill the variables of the head atom
+    const headArgs: (PrimitiveData | VarBindingLocation)[] = []
+    ruleHead.objects.forEach(obj => headArgs.push(obj.type === "literal"
+        ? obj.name
+        : varBindings.get(obj.name) as VarBindingLocation
+    ))
+    // Now that we've found all the data sources, we can decide when negation
     // constraints should be checked, by finding the point in the list of sources
     // where the last variable referenced in the negation occurs.
     // Some negations may be ground; we track those separately.
-    const groundNegations: NegConstraint[] = []
+    const groundNegations: GroundNegConstraint[] = []
     negatedAtoms.forEach(atom => {
-        const elements: (Constant | TupleElement)[] = []
+        const args: (PrimitiveData | VarBindingLocation)[] = []
         let indexOfLastSource = -1
         atom.objects.forEach(obj => {
-            if (obj.type === "constant") {
-                elements.push({type: "constant", value: obj.name})
+            if (obj.type === "literal") {
+                args.push(obj.name)
             }
-            else { // find first occurrence of the var, and add that to the constraint
-                const t: TupleElement = varOccurrences.get(obj.name)?.values().next().value
-                elements.push(t)
-                indexOfLastSource = Math.max(indexOfLastSource, t.tuple)
+            else {
+                // Store the binding location in the constraint, so it can be looked up.
+                // Note: The existence of a valid binding location depends on the rule
+                // being SAFE. If it isn't, then this arg will be undefined.
+                const loc = varBindings.get(obj.name) as VarBindingLocation
+                args.push(loc)
+                indexOfLastSource = Math.max(indexOfLastSource, loc.tuple)
             }
         })
-        const filter: NegConstraint = {
-            type: "neg",
-            relation: atom.relationName,
-            elements,
-        }
         if (indexOfLastSource >= 0) {
-            // Check this negation constraint when this source is assigned
-            sources[indexOfLastSource].filters.push(filter)
+            // Check this negation constraint when this source binds its element(s)
+            sources[indexOfLastSource].filters.push({
+                type: "neg",
+                relationName: atom.relationName,
+                args,
+            })
         }
         else { // this negated atom is ground
-            groundNegations.push(filter)
+            groundNegations.push({
+                relationName: atom.relationName,
+                tuple: args as PrimitiveData[],
+            })
         }
     })
 
-    return {sources, groundNegations}
+    return {sources, headArgs, groundNegations}
 }
 
 /**
@@ -212,8 +244,8 @@ function computeEvaluationStrategy(ruleBody: Literal[]): EvaluationStrategy {
  */
 export function rule(head: Atom, body: Literal[]): Rule {
     const unboundVariables = findUnboundVariables(head, body)
-    const strategy = unboundVariables.size > 0
-        ? computeEvaluationStrategy(body)
+    const strategy = unboundVariables.size === 0
+        ? computeEvaluationStrategy(head, body)
         : null
     return {head, body, unboundVariables, strategy}
 }
@@ -406,57 +438,151 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
     return { rules, relations, components, internalReferences, internalNegations }
 }
 
-export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Set<Deductions>> {
-    const ruleDeductions = new Map<Rule, Map<string, Deduction>>()         // for return
-    const relationDeductions = new Map<Relation, Map<string, Deduction>>() // for compute convenience
+
+// ---------------------------- RULE GRAPH EVALUATION ---------------------------
+
+/**
+ * A ground instance of a rule. We use this for provenance tracking.
+ */
+export interface GroundRule {
+    readonly ofRule: Rule  // the rule from which this ground instance was instantiated
+    readonly sourcePremises: TupleWithDeductions[] // tuple for each source (positive) premise
+}
+
+// N.B. each tuple has at least ONE deduction, i.e. these arrays have size >= 1.
+export type TupleWithDeductions = {tuple: Tuple, deductions: GroundRule[]}
+
+// For looking up a specific deduced tuple, since we can't rely on reference equality.
+export type TupleLookup = Map<TupleID, TupleWithDeductions>
+
+export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, TupleLookup> {
+    const tuplesOfRules = new Map<Rule, TupleLookup>()         // for return
+    const tuplesOfRelations = new Map<Relation, TupleLookup>() // for compute convenience
+    function relationHasTuple(relationName: string, queryTuple: Tuple): boolean {
+        const relation = graph.relations.get(relationName) as Relation
+        const relationTuples = tuplesOfRelations.get(relation) as TupleLookup
+        for (const t of relationTuples.values()) {
+            if (tupleEq(queryTuple, t.tuple)) {
+                return true
+            }
+        }
+        return false
+    }
+    // Add the given deduction to the lookup table
+    function addDeduction(tuple: Tuple, groundRule: GroundRule, lookup: TupleLookup): void {
+        const id = tupleID(tuple)
+        const existingTuple = lookup.get(id)
+        if (existingTuple === undefined) {
+            lookup.set(id, {tuple, deductions: [groundRule]})
+        }
+        else {
+            existingTuple.deductions.push(groundRule)
+        }
+    }
     function evaluateRuleFull(rule: Rule): void {
+        if (rule.strategy === null) return // Rule isn't executable
+        // First check ground negations
+        for (const neg of rule.strategy.groundNegations) {
+            if (relationHasTuple(neg.relationName, neg.tuple)) return // generate no tuples
+        }
+        // Now iterate over all ground premise (source) sets
         const sources = rule.strategy.sources
-        const tupleCombo: Deduction[] = []
-        const myRelation = graph.relations.get(rule.head.relationName) as Relation
-        const myRelationDeductions = relationDeductions.get(myRelation) as Set<Deduction>
+        const sourceTuples: TupleWithDeductions[] = []
         function enumerateTupleCombos(sourceI: number): void {
             if (sourceI < sources.length) {
                 // Select feasible tuples
                 const source = sources[sourceI]
-                const relation = graph.relations.get(source.relationName) as Relation
-                const deductions = relationDeductions.get(relation) as Set<Deduction>
-                for (const deduction of deductions.values()) {
-                    tupleCombo[sourceI] = deduction
+                const sourceRelation = graph.relations.get(source.relationName) as Relation
+                const sourceRelationTuples = tuplesOfRelations.get(sourceRelation) as TupleLookup
+                selectTuple:
+                for (const t of sourceRelationTuples.values()) {
+                    const tuple = t.tuple
+                    // If we trip one of our filter conditions, skip this tuple
+                    for (const filter of source.filters) {
+                        switch (filter.type) {
+                            case "eqLiteral":
+                                if (tuple[filter.myElement] === filter.literal) {
+                                    continue selectTuple
+                                }
+                                break
+                            case "eq": {
+                                const varValue = sourceTuples[filter.binding.tuple].tuple[filter.binding.el]
+                                if (tuple[filter.myElement] === varValue) {
+                                    continue selectTuple
+                                }
+                                break
+                            }
+                            case "neg": {
+                                const negTuple: Tuple = []
+                                for (const arg of filter.args) {
+                                    if (isData(arg)) {
+                                        negTuple.push(arg)
+                                    } else {
+                                        const varValue = sourceTuples[arg.tuple].tuple[arg.el]
+                                        negTuple.push(varValue)
+                                    }
+                                }
+                                if (relationHasTuple(filter.relationName, negTuple)) {
+                                    continue selectTuple
+                                }
+                                break
+                            }
+                        }
+                    }
+                    // We passed all filters!
+                    sourceTuples[sourceI] = t
+                    enumerateTupleCombos(sourceI + 1)
                 }
             }
             else { // Make a deduction from this tuple combo
-                const deduction = ...
-                // TODO: How to test if the TUPLE is already in the set???
-                // Need value semantics.
-                if (!myRelationDeductions.has(deduction)) {
-                    myRelationDeductions.add(deduction)
+                // Construct the tuple
+                const deducedTuple: Tuple = []
+                for (const arg of (rule.strategy as EvaluationStrategy).headArgs) {
+                    if (isData(arg)) {
+                        deducedTuple.push(arg)
+                    }
+                    else {
+                        const varValue = sourceTuples[arg.tuple].tuple[arg.el]
+                        deducedTuple.push(varValue)
+                    }
                 }
+                // Construct the ground rule that explains the deduction
+                const groundRule: GroundRule = {
+                    ofRule: rule,
+                    sourcePremises: sourceTuples,
+                }
+                // Log the deduction
+                const myRelation = graph.relations.get(rule.head.relationName) as Relation
+                const myRelationTuples = tuplesOfRelations.get(myRelation) as TupleLookup
+                const myRuleTuples = tuplesOfRules.get(rule) as TupleLookup
+                addDeduction(deducedTuple, groundRule, myRelationTuples)
+                addDeduction(deducedTuple, groundRule, myRuleTuples)
             }
         }
         enumerateTupleCombos(0)
     }
-    // for each component, deduce its tuples
+    // For each component, deduce its tuples
     for (const component of graph.components.values()) {
         const rules = []
-        // gather all the component's rules and initialize deductions
+        // Gather all the component's rules and initialize deductions
         for (const relation of component) {
-            relationDeductions.set(relation, new Set())
+            tuplesOfRelations.set(relation, new Map())
             for (const rule of relation.ownRules) {
                 rules.push(rule)
-                ruleDeductions.set(rule, new Set())
+                tuplesOfRules.set(rule, new Map())
             }
         }
-        let lastAddedDeductions = new Map<Relation, Set<Deduction>>()
-        // the first iteration is a full evaluation
+        //let lastAddedDeductions = new Map<Relation, TupleLookup>()
+        // The first iteration is a full evaluation
         for (const rule of rules) {
             evaluateRuleFull(rule)
         }
-        // the remaining iterations are incremental
-        do {
-            const newDeductions = new Map<Relation, Set<Deduction>>()
+        // The remaining iterations are incremental
+        // do {
+        //     const newDeductions = new Map<Relation, Set<Deduction>>()
 
-            lastAddedDeductions = newDeductions
-        } while (lastAddedDeductions.size > 0)
+        //     lastAddedDeductions = newDeductions
+        // } while (lastAddedDeductions.size > 0)
     }
-    return ruleDeductions
+    return tuplesOfRules
 }

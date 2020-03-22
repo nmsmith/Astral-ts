@@ -138,7 +138,7 @@ export function parseRule(s: string): ParseResult {
             }
 
             if (objectName[0] === "#") { // constants start with #
-                objects.push({type: "constant", name: objectName})
+                objects.push({type: "literal", name: objectName})
             }
             else {
                 objects.push({type: "variable", name: objectName})
