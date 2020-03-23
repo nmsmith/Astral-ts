@@ -456,11 +456,11 @@ export type TupleWithDeductions = {tuple: Tuple, deductions: GroundRule[]}
 export type TupleLookup = Map<TupleID, TupleWithDeductions>
 
 export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, TupleLookup> {
-    const tuplesOfRules = new Map<Rule, TupleLookup>()         // for return
-    const tuplesOfRelations = new Map<Relation, TupleLookup>() // for compute convenience
+    const allTuplesOfRules = new Map<Rule, TupleLookup>()         // for return
+    const allTuplesOfRelations = new Map<Relation, TupleLookup>() // for compute convenience
     function relationHasTuple(relationName: string, queryTuple: Tuple): boolean {
         const relation = graph.relations.get(relationName) as Relation
-        const relationTuples = tuplesOfRelations.get(relation) as TupleLookup
+        const relationTuples = allTuplesOfRelations.get(relation) as TupleLookup
         for (const t of relationTuples.values()) {
             if (tupleEq(queryTuple, t.tuple)) {
                 return true
@@ -468,70 +468,91 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
         }
         return false
     }
-    // Add the given deduction to the lookup table
-    function addDeduction(tuple: Tuple, groundRule: GroundRule, lookup: TupleLookup): void {
-        const id = tupleID(tuple)
-        const existingTuple = lookup.get(id)
-        if (existingTuple === undefined) {
-            lookup.set(id, {tuple, deductions: [groundRule]})
-        }
-        else {
-            existingTuple.deductions.push(groundRule)
-        }
-    }
-    function evaluateRuleFull(rule: Rule): void {
+    // Evaluate the rule from scratch (if no "lastIterationTuples" are given), or incrementally.
+    function evaluateRule(
+        rule: Rule,
+        currIterationTuples: TupleLookup,
+        lastIterationTuples: Map<Relation, TupleLookup>,
+    ): void {
         if (rule.strategy === null) return // Rule isn't executable
-        // First check ground negations
+        const fullEvaluation = lastIterationTuples.size === 0
+        // First check ground negations. We need to do this on every evaluation, unless we blacklist
+        // the rule after the full evaluation. As an optimization, we could blacklist if the full
+        // evaluation fails on ground negations OR negations involving only non-component-bound variables.
         for (const neg of rule.strategy.groundNegations) {
             if (relationHasTuple(neg.relationName, neg.tuple)) return // generate no tuples
         }
-        // Now iterate over all ground premise (source) sets
         const sources = rule.strategy.sources
         const sourceTuples: TupleWithDeductions[] = []
-        function enumerateTupleCombos(sourceI: number): void {
-            if (sourceI < sources.length) {
-                // Select feasible tuples
-                const source = sources[sourceI]
-                const sourceRelation = graph.relations.get(source.relationName) as Relation
-                const sourceRelationTuples = tuplesOfRelations.get(sourceRelation) as TupleLookup
-                selectTuple:
-                for (const t of sourceRelationTuples.values()) {
-                    const tuple = t.tuple
-                    // If we trip one of our filter conditions, skip this tuple
-                    for (const filter of source.filters) {
-                        switch (filter.type) {
-                            case "eqLiteral":
-                                if (tuple[filter.myElement] !== filter.literal) {
-                                    continue selectTuple
-                                }
-                                break
-                            case "eq": {
-                                const varValue = sourceTuples[filter.binding.tuple].tuple[filter.binding.el]
-                                if (tuple[filter.myElement] !== varValue) {
-                                    continue selectTuple
-                                }
-                                break
+        let lastNewTupleSourceI = -1
+        if (!fullEvaluation) { // Find out the last source that has new tuples to assign
+            for (let sourceI = 0; sourceI < sources.length; ++sourceI) {
+                const sourceRelation = graph.relations.get(sources[sourceI].relationName) as Relation
+                const lastSourceRelationTuples = lastIterationTuples.get(sourceRelation) as TupleLookup
+                if (lastSourceRelationTuples !== undefined) {
+                    lastNewTupleSourceI = sourceI
+                }
+            }
+        }
+        // Now iterate over all ground premise (source) sequences
+        function enumerateTupleCombos(sourceI: number, newTupleChosen: boolean): void {
+            function passesFilters(tuple: Tuple): boolean { 
+                for (const filter of sources[sourceI].filters) {
+                    switch (filter.type) {
+                        case "eqLiteral":
+                            if (tuple[filter.myElement] !== filter.literal) {
+                                return false
                             }
-                            case "neg": {
-                                const negTuple: Tuple = []
-                                for (const arg of filter.args) {
-                                    if (isData(arg)) {
-                                        negTuple.push(arg)
-                                    } else {
-                                        const varValue = sourceTuples[arg.tuple].tuple[arg.el]
-                                        negTuple.push(varValue)
-                                    }
+                            break
+                        case "eq": {
+                            const varValue = sourceTuples[filter.binding.tuple].tuple[filter.binding.el]
+                            if (tuple[filter.myElement] !== varValue) {
+                                return false
+                            }
+                            break
+                        }
+                        case "neg": {
+                            const negTuple: Tuple = []
+                            for (const arg of filter.args) {
+                                if (isData(arg)) {
+                                    negTuple.push(arg)
+                                } else {
+                                    const varValue = sourceTuples[arg.tuple].tuple[arg.el]
+                                    negTuple.push(varValue)
                                 }
-                                if (relationHasTuple(filter.relationName, negTuple)) {
-                                    continue selectTuple
-                                }
-                                break
+                            }
+                            if (relationHasTuple(filter.relationName, negTuple)) {
+                                return false
+                            }
+                            break
+                        }
+                    }
+                }
+                return true
+            }
+            if (sourceI < sources.length) {
+                const sourceRelation = graph.relations.get(sources[sourceI].relationName) as Relation
+                if (fullEvaluation || newTupleChosen || lastNewTupleSourceI > sourceI) {
+                    // Assign each old tuple
+                    const allSourceRelationTuples = allTuplesOfRelations.get(sourceRelation) as TupleLookup
+                    for (const t of allSourceRelationTuples.values()) {
+                        if (passesFilters(t.tuple)) {
+                            sourceTuples[sourceI] = t
+                            enumerateTupleCombos(sourceI + 1, newTupleChosen)
+                        }
+                    }
+                }
+                if (!fullEvaluation) {
+                    // Assign each new tuple
+                    const lastSourceRelationTuples = lastIterationTuples.get(sourceRelation) as TupleLookup
+                    if (lastSourceRelationTuples !== undefined) {
+                        for (const t of lastSourceRelationTuples.values()) {
+                            if (passesFilters(t.tuple)) {
+                                sourceTuples[sourceI] = t
+                                enumerateTupleCombos(sourceI + 1, true)
                             }
                         }
                     }
-                    // We passed all filters!
-                    sourceTuples[sourceI] = t
-                    enumerateTupleCombos(sourceI + 1)
                 }
             }
             else { // Make a deduction from this tuple combo
@@ -551,38 +572,73 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
                     ofRule: rule,
                     sourcePremises: sourceTuples,
                 }
-                // Log the deduction
-                const myRelation = graph.relations.get(rule.head.relationName) as Relation
-                const myRelationTuples = tuplesOfRelations.get(myRelation) as TupleLookup
-                const myRuleTuples = tuplesOfRules.get(rule) as TupleLookup
-                addDeduction(deducedTuple, groundRule, myRelationTuples)
-                addDeduction(deducedTuple, groundRule, myRuleTuples)
+                // Log the deduction.
+                // If the tuple already existed before this iteration, add the new deduction.
+                // If the tuple is new this iteration, add the tuple (if necessary) and the new deduction.
+                const id = tupleID(deducedTuple)
+                const preIterationTuple = allTuplesOfRelations.get(graph.relations.get(rule.head.relationName) as Relation)?.get(id)
+                if (preIterationTuple === undefined) {
+                    const currIterationTuple = currIterationTuples.get(id)
+                    if (currIterationTuple === undefined) {
+                        currIterationTuples.set(id, {tuple: deducedTuple, deductions: [groundRule]})
+                    }
+                    else {
+                        currIterationTuple.deductions.push(groundRule)
+                    }
+                }
+                else {
+                    preIterationTuple.deductions.push(groundRule)
+                }
+                // Add the deduction to those of the rule.
+                // We can do this immediately since we don't use this info during evaluation.
+                const allRuleTuples = allTuplesOfRules.get(rule) as TupleLookup
+                const existingTuple = allRuleTuples.get(id)
+                if (existingTuple === undefined) {
+                    allRuleTuples.set(id, {tuple: deducedTuple, deductions: [groundRule]})
+                }
+                else {
+                    existingTuple.deductions.push(groundRule)
+                }
             }
         }
-        enumerateTupleCombos(0)
+        enumerateTupleCombos(0, fullEvaluation)
     }
-    // For each component, deduce its tuples
+    // For each component, deduce its tuples.
+    // The components are already topologically sorted,
+    // so they will be evaluated in a correct & reasonable order.
     for (const component of graph.components.values()) {
         const rules = []
         // Gather all the component's rules and initialize deductions
         for (const relation of component) {
-            tuplesOfRelations.set(relation, new Map())
+            allTuplesOfRelations.set(relation, new Map())
             for (const rule of relation.ownRules) {
                 rules.push(rule)
-                tuplesOfRules.set(rule, new Map())
+                allTuplesOfRules.set(rule, new Map())
             }
         }
-        //let lastAddedDeductions = new Map<Relation, TupleLookup>()
-        // The first iteration is a full evaluation
-        for (const rule of rules) {
-            evaluateRuleFull(rule)
-        }
-        // The remaining iterations are incremental
-        // do {
-        //     const newDeductions = new Map<Relation, Set<Deduction>>()
-
-        //     lastAddedDeductions = newDeductions
-        // } while (lastAddedDeductions.size > 0)
+        // The first iteration is a full evaluation, and the remaining ones are incremental
+        let lastAddedTuples = new Map<Relation, TupleLookup>()
+        do {
+            // Compute the tuples for this iteration
+            const newlyAddedTuples = new Map<Relation, TupleLookup>()
+            for (const relation of component) {
+                const newTuplesForRelation: TupleLookup = new Map()
+                for (const rule of relation.ownRules) {
+                    evaluateRule(rule, newTuplesForRelation, lastAddedTuples)
+                }
+                if (newTuplesForRelation.size > 0) {
+                    newlyAddedTuples.set(relation, newTuplesForRelation)
+                }
+            }
+            // Add these tuples to the set of all deduced tuples
+            newlyAddedTuples.forEach((lookup, relation) => {
+                const existingLookup = allTuplesOfRelations.get(relation) as TupleLookup
+                lookup.forEach((tuple, tupleID) => {
+                    existingLookup.set(tupleID, tuple)
+                })
+            })
+            lastAddedTuples = newlyAddedTuples
+        } while (lastAddedTuples.size > 0)
     }
-    return tuplesOfRules
+    return allTuplesOfRules
 }
