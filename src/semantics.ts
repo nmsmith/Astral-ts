@@ -501,13 +501,13 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
                     for (const filter of source.filters) {
                         switch (filter.type) {
                             case "eqLiteral":
-                                if (tuple[filter.myElement] === filter.literal) {
+                                if (tuple[filter.myElement] !== filter.literal) {
                                     continue selectTuple
                                 }
                                 break
                             case "eq": {
                                 const varValue = sourceTuples[filter.binding.tuple].tuple[filter.binding.el]
-                                if (tuple[filter.myElement] === varValue) {
+                                if (tuple[filter.myElement] !== varValue) {
                                     continue selectTuple
                                 }
                                 break
