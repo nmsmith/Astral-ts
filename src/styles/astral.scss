@@ -3,6 +3,9 @@
     src: url(NotoSans-Regular.ttf);
 }
 
+$standard-box-shadow: 1px 1px 3px 1px #777777;
+$thick-box-shadow: 1px 1px 3px 2px #909090;
+
 .unstyledButton {
     border-style: none;
     background-color: transparent;
@@ -69,15 +72,34 @@ $overview-width: 200px;
     border-bottom-width: 1px;
     border-color: $standard-border-color;
     line-height: 22px;
+   // draw the sidebar in front of the graph view
+    position: relative;
+    z-index: 1;
 }
 
+// Box shadows don't work with clip paths, so we have to use a
+// CSS filter that approximates the box shadow parameters.
 .component {
+    position: relative;
+    box-sizing: border-box;
+    width: 105%;
+    margin-bottom: 14px;
+    filter: drop-shadow(1px 1px 3px #777777);
+// animation
+    transition-property: left;
+    transition-duration: 0.2s;
+}
+
+.relation {
     @extend .noSelect;
     @extend .codeStyle;
+    //font-family: NotoSans, serif;
+    font-size: 18px;
     padding: 6px;
-    border-style: solid;
-    border-width: 0 0 1px 0;
-    border-color: $standard-border-color;
+    background-color: #af2b2b;
+    color: white;
+    padding-left: 14px;
+    clip-path: polygon(100% 0%, 94% 50%, 100% 100%, 6% 100%, 0% 50%, 6% 0);
 }
 
 .incompleteCardSummaryText {
@@ -88,16 +110,14 @@ $overview-width: 200px;
     background-color: #b6d6ff;
 }
 
-.rightPane {
+.ruleGraphView {
     flex-grow: 1;
     border-style: solid;
     border-width: 1px;
     border-color: $standard-border-color;
-}
-
-.ruleGraphView {
 // create an origin for child "absolute" positioning
     position: relative;
+    z-index: 0;
     height: 800px;
     overflow: hidden;
 }
@@ -108,9 +128,6 @@ $overview-width: 200px;
     border-width: 1px 0 0 0;
     border-color: $standard-border-color;
 }
-
-$standard-box-shadow: 1px 1px 3px 1px #777777;
-$thick-box-shadow: 1px 1px 3px 2px #909090;
 
 .labelError {
     background-color: #ffbfbf;
