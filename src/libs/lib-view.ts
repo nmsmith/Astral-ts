@@ -918,7 +918,7 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
                 if (!somethingChanged) {
                     console.log(items())
                     console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
-                    console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for body.")
+                    console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for head or body.")
                 }
 
                 // Attach the new nodes
@@ -980,7 +980,7 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
                 if (!somethingChanged) {
                     console.log(items())
                     console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
-                    console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for body.")
+                    console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $set head or body.")
                 }
 
                 // Attach the new nodes
