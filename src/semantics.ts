@@ -1,4 +1,6 @@
-export type Obj = {type: "constant", name: string} | {type: "variable", name: string}
+export type PrimitiveData = number | string
+
+export type Obj = {type: "constant", value: PrimitiveData} | {type: "variable", name: string}
 
 // ------------------------------------- RULES --------------------------------------
 
@@ -23,7 +25,6 @@ export interface Rule {
     readonly strategy: null | EvaluationStrategy // cached info for evaluation purposes
 }
 
-export type PrimitiveData = number | string
 export type Tuple = PrimitiveData[]
 
 function tupleEq(t1: Tuple, t2: Tuple): boolean {
@@ -183,7 +184,7 @@ function computeEvaluationStrategy(ruleHead: Atom, ruleBody: Literal[]): Evaluat
                     filters.push({
                         type: "eqConstant",
                         myElement: objIndex,
-                        constant: obj.name,
+                        constant: obj.value,
                     })
                 }
             }
@@ -195,7 +196,7 @@ function computeEvaluationStrategy(ruleHead: Atom, ruleBody: Literal[]): Evaluat
     // We now know how to fill the variables of the head atom
     const headArgs: (PrimitiveData | VarBindingLocation)[] = []
     ruleHead.objects.forEach(obj => headArgs.push(obj.type === "constant"
-        ? obj.name
+        ? obj.value
         : varBindings.get(obj.name) as VarBindingLocation
     ))
     // Now that we've found all the data sources, we can decide when negation
@@ -208,7 +209,7 @@ function computeEvaluationStrategy(ruleHead: Atom, ruleBody: Literal[]): Evaluat
         let indexOfLastSource = -1
         atom.objects.forEach(obj => {
             if (obj.type === "constant") {
-                args.push(obj.name)
+                args.push(obj.value)
             }
             else {
                 // Store the binding location in the constraint, so it can be looked up.

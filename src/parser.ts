@@ -1,4 +1,4 @@
-import {Obj, Atom, Literal, Rule, rule} from "./semantics"
+import {Obj, Atom, Literal, Rule, rule, PrimitiveData} from "./semantics"
 
 export type ParseResult =
     {result: "failure", reason: string}
@@ -116,32 +116,50 @@ export function parseRule(s: string): ParseResult {
 
         // --- Test object names ---
         const objects: Obj[] = []
-        for (const objectText of objectTexts) {
-            if (objectText.trim().length === 0) {
+        for (const rawObjectText of objectTexts) {
+            if (rawObjectText.trim().length === 0) {
                 return fail(`Line ${lineNumber}: Missing an object name.`)
             }
-            else if (objectText.indexOf("¬") !== -1) {
+            else if (rawObjectText.indexOf("¬") !== -1) {
                 return fail(`Line ${lineNumber}: Unexpected negation symbol in object name.`)
             }
-            else if (/\s\s/.test(objectText)) {
+            else if (/\s\s/.test(rawObjectText)) {
                 return fail(`Line ${lineNumber}: Unexpected double space. Words should be separated with a single space.`)
             }
-            else if (objectText.slice(1).trim() !== objectText.slice(1)) {
+            else if (rawObjectText.slice(1).trim() !== rawObjectText.slice(1)) {
                 return fail(`Line ${lineNumber}: Unexpected whitespace after object name.`)
             }
             
-            const objectName = objectText.trim()
-            if (objectName.indexOf("#") > 0) {
-                console.log(objectName)
-                console.log("FOUND AT ", objectName.indexOf("#"))
-                return fail(`Line ${lineNumber}: The # symbol can only be used as the first character of an object name.`)
+            const objectString = rawObjectText.trim()
+            const objectAsNumber = Number(objectString)
+            const objectIsNumber = !isNaN(objectAsNumber)
+            const objectIsSymbol = objectString.indexOf("#") === 0
+            const objectSymbol = objectString.slice(1)
+            if (objectString.indexOf("#") > 0) {
+                return fail(`Line ${lineNumber}: The '#' symbol can only be used as the first character of an object name.`)
+            }
+            else if (objectIsSymbol && objectSymbol.length === 0) {
+                return fail(`Line ${lineNumber}: The '#' symbol must be followed by an object name.`)
+            }
+            if (!objectIsNumber) {
+                for (const symbol of ".+-") {
+                    if (objectString.indexOf(symbol) > 0) {
+                        return fail(`Line ${lineNumber}: The '${symbol}' symbol can only be used in number objects.`)
+                    }
+                }
+                if ((objectIsSymbol && !isNaN(Number(objectSymbol[0]))) || !isNaN(Number(objectString[0]))) {
+                    return fail(`Line ${lineNumber}: Only number objects can start with a digit.`)
+                }
             }
 
-            if (objectName[0] === "#") { // constants start with #
-                objects.push({type: "constant", name: objectName})
+            if (objectIsSymbol) { // string/symbolic constants start with #
+                objects.push({type: "constant", value: objectSymbol})
+            }
+            else if (objectIsNumber) {
+                objects.push({type: "constant", value: objectAsNumber})
             }
             else {
-                objects.push({type: "variable", name: objectName})
+                objects.push({type: "variable", name: objectString})
             }
         }
 
