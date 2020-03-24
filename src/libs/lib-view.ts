@@ -1,5 +1,9 @@
 import { Ref, isRef, effect, ReactiveEffect, stop , pauseTracking, resetTracking} from "@vue/reactivity"
 
+const logDomMutations = false
+function log(...args: unknown[]): void {
+    if (logDomMutations) console.log(...args)
+}
 // Styles for debug printing
 const updateMsgStyle = "font-size: 110%; font-weight: bold; color: blue; padding-top: 12px"
 const elementStyle = "font-weight: bold"
@@ -708,7 +712,7 @@ function prettifyClassName(name: string): string {
 }
 
 function logChangeStart(el: StylelessElement): void {
-    console.log(`%c${el.nodeName}${prettifyClassName(el.className)}`, elementStyle)
+    log(`%c${el.nodeName}${prettifyClassName(el.className)}`, elementStyle)
 }
 
 // Assign attribute values and attach listeners to re-assign observable values when they change
@@ -726,7 +730,7 @@ function assignReactiveAttributes<AssKeys extends keyof El, El extends Styleless
     }
     function logAttributeChange(key: string, value: unknown): void {
         logChangeStart(el)
-        console.log(`  %c${key} = "${value}"`, attributeChangedStyle)
+        log(`  %c${key} = "${value}"`, attributeChangedStyle)
     }
     for (let key in assignment) {
         const attrValue: unknown | Ref<unknown> | DerivedAttribute<unknown> = assignment[key]
@@ -791,10 +795,10 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
         return markerChild
     }
     function logAdd(child: Effectful<StylelessElement>): void {
-        console.log(`  %c+ ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
+        log(`  %c+ ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
     }
     function logRemove(child: Effectful<StylelessElement>): void {
-        console.log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
+        log(`  %c- ${child.nodeName}${prettifyClassName(child.className)} %c${child.children.length === 0 ? child.textContent : ""}`, elementStyle, textContentStyle)
     }
     function remove(child: Effectful<StylelessElement>): void {
         pauseTracking()

@@ -1,5 +1,10 @@
 import { reactive as observable, ReactiveEffect, computed, stop } from "@vue/reactivity"
 
+const logDerivedState = false
+function log(...args: unknown[]): void {
+    if (logDerivedState) console.log(...args)
+}
+
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
 export type WithDerivedProps<T> = T & {
@@ -42,8 +47,8 @@ function constructDerivedProperties<T extends object>(
             // This is a derived property
             const c = computed(() => {
                 const currentValue = (propSpec as (obj: T) => unknown)(currObj)
-                console.log("%cObject", "font-weight: bold")
-                console.log(`  %c${propName} =`, "color: #7700ff", currentValue)
+                log("%cObject", "font-weight: bold")
+                log(`  %c${propName} =`, "color: #7700ff", currentValue)
                 return currentValue
             })
             maintainers.push(c.effect)
@@ -141,7 +146,7 @@ function arrayWithDerivedProps<Obj extends object>(
             // All references to the object have been removed from the array
             derivedData.delete(obj)
             destroyMaintainedObject(obj, derivedProps, data.maintainers)
-            console.log("Removed derived props from", obj)
+            log("Removed derived props from", obj)
         }
         else {
             data.copies -= 1
@@ -156,7 +161,7 @@ function arrayWithDerivedProps<Obj extends object>(
         if (data === undefined) {
             const maintainers: PropMaintainers = []      
             constructDerivedProperties(obj, derivedProps, maintainers)
-            console.log("Added derived props to", obj)
+            log("Added derived props to", obj)
             derivedData.set(obj, {
                 copies: 1,
                 maintainers,
