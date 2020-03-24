@@ -15,7 +15,7 @@ interface RuleCard {
     parseErrorText: string | null
     lastParsed: null | {
         readonly rawText: string
-        readonly rule: Rule
+        rule: Rule
     }
 // stuff for layout
     newlyDisplayed: boolean
@@ -68,9 +68,34 @@ interface State {
 
 const selectedCardMinHeight = 158
 
+function parseRuleCardFromText(card: RuleCard, text: string): void {
+    const parseResult = parseRule(text)
+    if (parseResult.result === "success") {
+        card.lastParsed = {
+            rawText: card.rawText,
+            rule: parseResult.rule,
+        }
+    }
+    else if (parseResult.result === "noRule") {
+        card.lastParsed = null
+        card.parseErrorText = null
+    }
+    else {
+        card.lastParsed = null
+        card.parseErrorText = parseResult.reason
+    }
+}
+
 function createState(existingState?: State): WithDerivedProps<State> {
-    const essentialState = existingState !== undefined ? existingState : {
-        ruleCards: [],
+    let essentialState: State
+    if (existingState !== undefined) {
+        // Re-parse rule cards, because our "essential" parsed rules are actually derived
+        existingState.ruleCards.forEach(card => {
+            parseRuleCardFromText(card, card.lastParsed === null ? card.rawText : card.lastParsed.rawText)
+        })
+        essentialState = existingState
+    } else {
+        essentialState = {ruleCards: []} as any
     }
     function createUnserializableState<T>(propName: string, initialValue: T): void {
         let value = initialValue
@@ -84,7 +109,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
     createUnserializableState("editingRule", null)
     createUnserializableState("lastRuleLayoutInfo", new Map<RuleCard, ColumnLayout>())
 
-    return withDerivedProps<State>(essentialState as State, {
+    return withDerivedProps<State>(essentialState, {
         ruleCards: {
             cardHeight: (card: RuleCard): number => {
                 if (state.editingRule === card) {
@@ -755,24 +780,14 @@ app ("app", state,
                                         },
                                         oninput: (event: Event) => {
                                             const el = (event.target as HTMLTextAreaElement)
-                                            const parseResult = parseRule(ruleCard.rawText)
-                                            if (parseResult.result === "success") {
-                                                ruleCard.lastParsed = {
-                                                    rawText: ruleCard.rawText,
-                                                    rule: parseResult.rule,
-                                                }
-                                                ruleCard.parseErrorText = null
+                                            parseRuleCardFromText(ruleCard, ruleCard.rawText)
+                                            if (ruleCard.lastParsed !== null) {
                                                 // Center the component of the newly parsed rule
-                                                state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
-                                            }
-                                            else if (parseResult.result === "noRule") {
-                                                ruleCard.lastParsed = null
-                                                ruleCard.parseErrorText = null
-                                                // Center just this rule card as a component
-                                                state.centeredItem = ruleCard
+                                                state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
                                             }
                                             else {
-                                                ruleCard.parseErrorText = parseResult.reason
+                                                // Center just this rule card as a component
+                                                state.centeredItem = ruleCard
                                             }
             
                                             const codeDiv = el.parentElement?.parentElement as HTMLElement
