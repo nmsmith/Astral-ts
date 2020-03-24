@@ -75,13 +75,13 @@ function parseRuleCardFromText(card: RuleCard, text: string): void {
             rawText: card.rawText,
             rule: parseResult.rule,
         }
+        card.parseErrorText = null
     }
     else if (parseResult.result === "noRule") {
         card.lastParsed = null
         card.parseErrorText = null
     }
     else {
-        card.lastParsed = null
         card.parseErrorText = parseResult.reason
     }
 }
@@ -91,7 +91,9 @@ function createState(existingState?: State): WithDerivedProps<State> {
     if (existingState !== undefined) {
         // Re-parse rule cards, because our "essential" parsed rules are actually derived
         existingState.ruleCards.forEach(card => {
-            parseRuleCardFromText(card, card.lastParsed === null ? card.rawText : card.lastParsed.rawText)
+            const sourceText = card.lastParsed === null ? card.rawText : card.lastParsed.rawText
+            card.lastParsed = null
+            parseRuleCardFromText(card, sourceText)
         })
         essentialState = existingState
     } else {
