@@ -1,4 +1,4 @@
-export type Obj = {type: "literal", name: string} | {type: "variable", name: string}
+export type Obj = {type: "constant", name: string} | {type: "variable", name: string}
 
 // ------------------------------------- RULES --------------------------------------
 
@@ -99,11 +99,11 @@ interface EqConstraint {
     binding: VarBindingLocation // location where variable was bound
 }
 
-/// A tuple with this constraint has an element which must match a literal.
-interface EqLiteralConstraint {
-    type: "eqLiteral"
+/// A tuple with this constraint has an element which must match a constant.
+interface EqConstantConstraint {
+    type: "eqConstant"
     myElement: number
-    literal: PrimitiveData
+    constant: PrimitiveData
 }
 
 type PredicateArgument = PrimitiveData | VarBindingLocation
@@ -122,7 +122,7 @@ interface GroundNegConstraint {
 }
 
 /// A constraint by which a tuple must be filtered.
-type Filter = EqConstraint | EqLiteralConstraint | NegConstraint
+type Filter = EqConstraint | EqConstantConstraint | NegConstraint
 
 /**
  * Represents a positive literal (whose relation is a data source),
@@ -179,11 +179,11 @@ function computeEvaluationStrategy(ruleHead: Atom, ruleBody: Literal[]): Evaluat
                         })
                     }
                 }
-                else { // must filter tuples by this literal
+                else { // must filter tuples by this constant
                     filters.push({
-                        type: "eqLiteral",
+                        type: "eqConstant",
                         myElement: objIndex,
-                        literal: obj.name,
+                        constant: obj.name,
                     })
                 }
             }
@@ -194,7 +194,7 @@ function computeEvaluationStrategy(ruleHead: Atom, ruleBody: Literal[]): Evaluat
     }
     // We now know how to fill the variables of the head atom
     const headArgs: (PrimitiveData | VarBindingLocation)[] = []
-    ruleHead.objects.forEach(obj => headArgs.push(obj.type === "literal"
+    ruleHead.objects.forEach(obj => headArgs.push(obj.type === "constant"
         ? obj.name
         : varBindings.get(obj.name) as VarBindingLocation
     ))
@@ -207,7 +207,7 @@ function computeEvaluationStrategy(ruleHead: Atom, ruleBody: Literal[]): Evaluat
         const args: (PrimitiveData | VarBindingLocation)[] = []
         let indexOfLastSource = -1
         atom.objects.forEach(obj => {
-            if (obj.type === "literal") {
+            if (obj.type === "constant") {
                 args.push(obj.name)
             }
             else {
@@ -530,8 +530,8 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
             function passesFilters(tuple: Tuple): boolean { 
                 for (const filter of sources[sourceI].filters) {
                     switch (filter.type) {
-                        case "eqLiteral":
-                            if (tuple[filter.myElement] !== filter.literal) {
+                        case "eqConstant":
+                            if (tuple[filter.myElement] !== filter.constant) {
                                 return false
                             }
                             break
