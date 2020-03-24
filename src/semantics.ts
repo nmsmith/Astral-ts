@@ -255,8 +255,9 @@ export function rule(head: Atom, body: Literal[]): Rule {
 
 export interface Relation {
     readonly name: string
-    ownRules: Set<Rule>
-    dependentRules: Set<Rule>
+    arity: number // number of terms in the relation's tuples
+    readonly ownRules: Set<Rule>
+    readonly dependentRules: Set<Rule>
 }
 
 /** A strongly connected component. */
@@ -270,6 +271,8 @@ export interface RuleGraphInfo<RuleSource> {
     // refer to the rule's own component.
     readonly internalReferences: Map<Rule, Set<number>>
 // Errors:
+    // A map from each rule to the indices of its literals with incorrect arity.
+    readonly incorrectArities: Map<Rule, Set<number>>
     // A map from each rule to the indices of its internally-negated literals.
     readonly internalNegations: Map<Rule, Set<number>>
 }
@@ -297,30 +300,58 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
     const relations = new Map<string, Relation>()
     for (const rule of rules.keys()) {
         // Construct or add to the rule's relation
-        const entry = relations.get(rule.head.relationName)
-        if (entry === undefined) {
+        const myRelation = relations.get(rule.head.relationName)
+        if (myRelation === undefined) {
             relations.set(rule.head.relationName, {
                 name: rule.head.relationName,
+                arity: rule.head.objects.length,
                 ownRules: new Set<Rule>([rule]),
                 dependentRules: new Set<Rule>(),
             })
         }
-        else entry.ownRules.add(rule)
+        else {
+            // Update arity in case it was set wrong by a premise.
+            // TODO: Relations and their arities should be defined/fixed at
+            // first use, rather than determined in this ad-hoc manner.
+            myRelation.arity = rule.head.objects.length
+            myRelation.ownRules.add(rule)
+        }
         // Construct relations for the body atoms, if necessary,
         // and assign this rule as a dependent of those relations.
         for (const literal of rule.body) {
-            if (relations.has(literal.relationName)) {
-                relations.get(literal.relationName)?.dependentRules.add(rule)
-            }
-            else {
+            const premiseRelation = relations.get(literal.relationName)
+            if (premiseRelation === undefined) {
                 relations.set(literal.relationName, {
                     name: literal.relationName,
+                    arity: literal.objects.length,
                     ownRules: new Set<Rule>(),
                     dependentRules: new Set<Rule>([rule]),
                 })
-            }
+            } else premiseRelation.dependentRules.add(rule)
         }
     }
+    // Now check that each relation is referenced with correct arities
+    const incorrectArities = new Map<Rule, Set<number>>()
+    for (const rule of rules.keys()) {
+        const mismatches = new Set<number>()
+        // Check for arity mismatch
+        const headRelationArity = relations.get(rule.head.relationName)?.arity
+        if (headRelationArity !== rule.head.objects.length) {
+            mismatches.add(0)
+        }
+        let i = 1
+        for (const premise of rule.body) {
+            const relationArity = relations.get(premise.relationName)?.arity
+            if (relationArity !== premise.objects.length) {
+                mismatches.add(i)
+            }
+            ++i
+        }
+        if (mismatches.size > 0) {
+            incorrectArities.set(rule, mismatches)
+        }
+    }
+
     // For keeping track of the "depth" at which we saw a node in the active call stack.
     const depths = new Map<string, number>()
     const visitedStack: Relation[] = []
@@ -435,7 +466,7 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
         }
     }
 
-    return { rules, relations, components, internalReferences, internalNegations }
+    return { rules, relations, components, internalReferences, incorrectArities, internalNegations }
 }
 
 
@@ -474,7 +505,7 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
         currIterationTuples: TupleLookup,
         lastIterationTuples: Map<Relation, TupleLookup>,
     ): void {
-        if (rule.strategy === null) return // Rule isn't executable
+        if (rule.strategy === null || graph.incorrectArities.has(rule)) return // Rule isn't executable
         const fullEvaluation = lastIterationTuples.size === 0
         // First check ground negations. We need to do this on every evaluation, unless we blacklist
         // the rule after the full evaluation. As an optimization, we could blacklist if the full

@@ -347,9 +347,9 @@ function getUnboundVariables(card: RuleCard): Set<string> {
     else return new Set()
 }
 
-function getInternalReferences(card: RuleCard): Set<number> {
+function getSetForRule<T>(card: RuleCard, sets: Map<Rule, Set<T>>): Set<T> {
     if (card.lastParsed !== null) {
-        const refs = state.ruleGraph.internalReferences.get(card.lastParsed.rule)
+        const refs = sets.get(card.lastParsed.rule)
         if (refs === undefined) {
             return new Set()
         }
@@ -360,17 +360,16 @@ function getInternalReferences(card: RuleCard): Set<number> {
     else return new Set()
 }
 
+function getInternalReferences(card: RuleCard): Set<number> {
+    return getSetForRule(card, state.ruleGraph.internalReferences)
+}
+
+function getIncorrectArities(card: RuleCard): Set<number> {
+    return getSetForRule(card, state.ruleGraph.incorrectArities)
+}
+
 function getInternalNegations(card: RuleCard): Set<number> {
-    if (card.lastParsed !== null) {
-        const refs = state.ruleGraph.internalNegations.get(card.lastParsed.rule)
-        if (refs === undefined) {
-            return new Set()
-        }
-        else {
-            return refs
-        }
-    }
-    else return new Set()
+    return getSetForRule(card, state.ruleGraph.internalNegations)
 }
 
 function getDeductions(card: RuleCard): TupleLookup {
@@ -389,6 +388,7 @@ function getDeductions(card: RuleCard): TupleLookup {
 function hasError(card: RuleCard): boolean {
     return (card.parseErrorText !== null
         || getUnboundVariables(card).size > 0
+        || getIncorrectArities(card).size > 0
         || getInternalNegations(card).size > 0
     )
 }
@@ -400,6 +400,7 @@ function getError(card: RuleCard): string {
     else {
         let errorText = ""
         const unboundVariables = getUnboundVariables(card)
+        const incorrectArities = getIncorrectArities(card)
         const internalNegations = getInternalNegations(card)
         if (unboundVariables.size > 0) {
             let errorVars = ""
@@ -408,6 +409,13 @@ function getError(card: RuleCard): string {
             }
             errorText += `Unbound variables: ${errorVars.slice(0, -2)}.`
             if (internalNegations.size > 0) errorText += "\n"
+        }
+        if (incorrectArities.size > 0) {
+            let errorLines = ""
+            for (const index of incorrectArities) {
+                errorLines += `${index+1}, `
+            }
+            errorText += `Incorrect arity on line ${errorLines.slice(0, -2)}.`
         }
         if (internalNegations.size > 0) {
             let errorLines = ""
