@@ -58,7 +58,7 @@ interface State {
     // WARNING: this holds onto derived state, and thus needs to be refreshed whenever ruleCards changes
     centeredItem: ColumnItem | null
     editingRule: RuleCard | null
-    lastRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
+    cachedRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
 // Derived state
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
     readonly deductions: Map<Rule, TupleLookup>
@@ -150,10 +150,15 @@ function createState(existingState?: State): WithDerivedProps<State> {
             return state.ruleCards.filter(card => card.lastParsed === null)
         },
         ruleLayoutInfo: state => {
+            // Clone the last layout so we can use it as a point of comparison
+            const lastLayoutInfo = new Map(state.cachedRuleLayoutInfo)
+            // Re-use the existing Map to preserve identity
+            const layoutInfo = state.cachedRuleLayoutInfo
+            layoutInfo.clear()
             // Gather the cards that were visible at the last timestep.
             // We'll work out which of these are no longer visible, and animate them away.
             const outgoingCards = new Set<RuleCard>()
-            state.lastRuleLayoutInfo.forEach((column, card) => {
+            lastLayoutInfo.forEach((column, card) => {
                 if (!column.hidden) outgoingCards.add(card)
             })
             // Track which cards are newly displayed: we'll ensure they animate onto the screen.
@@ -169,10 +174,6 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     target: null,
                 })
             }, 0)
-            // IMPORTANT: all proxied (i.e. state) objects which will be tested for equality in the future
-            // must be inserted into an existing proxied object so that they are not "double-proxied" when
-            // their parent is later wrapped in observable(). Rules are tested for equality in Map.get().
-            const layoutInfo = observable(new Map<RuleCard, ColumnLayout>())
 
             // Assign the rule (and its whole component, if exists) to the given column
             function assignComponentToColumn(component: Component, column: ColumnLayout): void {
@@ -182,7 +183,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                         for (const rule of relation.ownRules) {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
                             layoutInfo.set(ruleCard, column)
-                            if (state.lastRuleLayoutInfo.has(ruleCard)) {
+                            if (lastLayoutInfo.has(ruleCard)) {
                                 outgoingCards.delete(ruleCard)
                             }
                             else {
@@ -230,7 +231,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     const ruleCard = state.centeredItem
                     selectedComponentColumn.items.add(ruleCard)
                     layoutInfo.set(ruleCard, selectedComponentColumn)
-                    if (state.lastRuleLayoutInfo.has(ruleCard)) {
+                    if (lastLayoutInfo.has(ruleCard)) {
                         outgoingCards.delete(ruleCard)
                     }
                     else {
@@ -241,7 +242,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
             }
             // Transition outgoing cards
             outgoingCards.forEach(card => {
-                const column = state.lastRuleLayoutInfo.get(card)
+                const column = lastLayoutInfo.get(card)
                 if (column !== undefined) {
                     column.hidden = true
                     if (column.index === 0) column.index = leftOffscreenColumn
@@ -249,7 +250,6 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     layoutInfo.set(card, column)
                 }
             })
-            state.lastRuleLayoutInfo = layoutInfo
             return layoutInfo
         },
     })
@@ -684,7 +684,7 @@ app ("app", state,
         ]),
         div ({class: "row"}, [
             div ({class: "ruleGraphView"}, [
-                $set (() => new Set(state.ruleLayoutInfo.keys()), ruleCard => [
+                $set (() => state.ruleLayoutInfo, ruleCard => [
                     div ({
                         class: "ruleCardShadow",
                         "z-index": () => computeZIndex(ruleCard) - 1, // render behind cards
@@ -830,7 +830,7 @@ app ("app", state,
                                 class: "deleteCardButton",
                                 visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
                                 onclick: () => {
-                                    state.lastRuleLayoutInfo.delete(ruleCard) // don't animate deletion
+                                    state.cachedRuleLayoutInfo.delete(ruleCard) // don't animate deletion
                                     const deletionIndex = state.ruleCards.indexOf(ruleCard)
                                     if (state.editingRule === ruleCard) {
                                         state.editingRule = null
