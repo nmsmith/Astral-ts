@@ -1,5 +1,6 @@
 import { Ref, isRef, effect, ReactiveEffect, stop , pauseTracking, resetTracking} from "@vue/reactivity"
 
+const logDomUpdates = false
 const logDomMutations = false
 function log(...args: unknown[]): void {
     if (logDomMutations) console.log(...args)
@@ -493,7 +494,7 @@ export function app<State>(rootNodeID: string, stateForDebugPrint: State | undef
 // this map when they are deleted to avoid a memory leak. A WeakMap cannot be used since
 // it does not support iteration.
 const domUpdateJobs: Map<StylelessElement, Set<ReactiveEffect>> = new Map()
-console.log("Watch this for memory leaks: ", domUpdateJobs)
+console.log("Watch this for memory leaks:", domUpdateJobs)
 
 type Effectful<E> = E & {
     // Effects that need to be disabled
@@ -627,10 +628,12 @@ let midUpdate = false
 export function defineDOMUpdate(stateUpdate: Function): Function {
     return (...args: unknown[]): void => {
         const event = args[0] as Event
-        console.log(`%cDOM update ${++updateNumber}`, updateMsgStyle)
-        console.log("Event:", event.type)
-        console.log("Target:", event.target)
-        console.log("Current state:", appStateForDebugPrint)
+        if (logDomUpdates) {
+            console.log(`%cDOM update ${++updateNumber}`, updateMsgStyle)
+            console.log("Event:", event.type)
+            console.log("Target:", event.target)
+            console.log("Current state:", appStateForDebugPrint)
+        }
         if (midUpdate) {
             console.error("WARNING: Something has triggered a nested DOM update (such as the browser engine calling onblur() during child management). The nested update call will be nullified.")
             return

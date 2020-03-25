@@ -109,7 +109,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
     }
     createUnserializableState("centeredItem", null)
     createUnserializableState("editingRule", null)
-    createUnserializableState("lastRuleLayoutInfo", new Map<RuleCard, ColumnLayout>())
+    createUnserializableState("cachedRuleLayoutInfo", new Map<RuleCard, ColumnLayout>())
 
     return withDerivedProps<State>(essentialState, {
         ruleCards: {
@@ -170,7 +170,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     card.newlyDisplayed = false
                 })
                 defineDOMUpdate(() => { /* no work to do */ })({
-                    type: "Custom update",
+                    type: "Start card animation",
                     target: null,
                 })
             }, 0)
@@ -311,6 +311,7 @@ const state: WithDerivedProps<State> =
     )
     ? createState(Cycle.retrocycle(JSON.parse(localStorage.state)))
     : createState()
+console.log("App state:", state)
 
 // By default, load the previous state on page load
 localStorage.loadLastState = true
@@ -663,7 +664,7 @@ const observer = new MutationObserver(mutations => {
     if (foundRule) {
         // Create a new DOM update to apply the effect of the new ruleCardHeight(s)
         defineDOMUpdate(() => { /* no work to do */ })({
-            type: "Custom update",
+            type: "Apply new card height",
             target: null,
         })
     }
@@ -806,7 +807,7 @@ app ("app", state,
                                                     // so we can use it for code-driven layout.
                                                     ruleCard.cardHeightUnselected = codeDiv.offsetHeight + dataTuckBarHeight
                                                 })({
-                                                    type: "Custom update",
+                                                    type: "Measure card height",
                                                     target: null,
                                                 })
                                             }, 0)
