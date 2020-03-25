@@ -527,7 +527,7 @@ interface DerivedFromSequence<T, I extends object> {
 
 interface DerivedFromSet<T, I> {
     type: "fromSet"
-    items: () => Set<I>
+    items: () => Set<I> | Map<I, unknown>
     f: (item: I) => T
 }
 
@@ -600,7 +600,7 @@ export function makeObjSeq<I>(valueSeq: I[] | IterableIterator<I>): {value: I}[]
  * can be animated using CSS animations.
  */
 export function $set<I>(
-    items: () => Set<I>,
+    items: () => Set<I> | Map<I, unknown>,
     f: (item: I) => StylelessElement[],
 ): DerivedFromSet<StylelessElement[], I> {
     return {type: "fromSet", items: items, f: f}
@@ -860,65 +860,71 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
 
             scheduleDOMUpdate(el, () => {
                 const fragment = document.createDocumentFragment()
-                // Keep track of whether something changed. Something should ALWAYS change during a run.
+                // Keep track of whether something changed. Something should ALWAYS change during a run,
+                // EXCEPT if the sequence we're working with is the result of computed(), since computed() is lazy.
                 // If this is our first run (or we have no children), consider this to be a change.
                 let somethingChanged = elementsCache.size === 0
                 const newElementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
                 const newElementsForLogging: Effectful<StylelessElement>[] = []
-                // For each item, determine whether new or already existed
-                let index = 0
-                for (const item of items()) {
-                    const existingElements = elementsCache.get(item)
-                    if (existingElements === undefined) {
-                        somethingChanged = true
-                        // Associate the item with a reactive index (it may be moved later)
-                        const itemWithIndex = item as WithIndex<object>
-                        itemWithIndex.$index = index
-                        // Item is new; create and cache its DOM elements
-                        const newElements = f(itemWithIndex)
-                        pauseTracking()
-                        fragment.append(...newElements)
-                        resetTracking()
-                        newElementsCache.set(item, newElements)
-                        newElementsForLogging.push(...newElements)
-                    }
-                    else { // Item is old; use its existing elements
-                        // Update the item's index
-                        if ((item as WithIndex<object>).$index !== index) {
-                            (item as WithIndex<object>).$index = index
+
+                const currItems = Array.from(items())
+                // Only attempt to update the children if there is something new in the sequence.
+                if (currItems.length !== elementsCache.size
+                    || !currItems.reduce((same, x, i) => same && elementsCache.has(x) && i === (x as any).$index, true)
+                ) {
+                    // For each item, determine whether new or already existed
+                    let index = 0
+                    for (const item of currItems) {
+                        const existingElements = elementsCache.get(item)
+                        if (existingElements === undefined) {
                             somethingChanged = true
+                            // Associate the item with a reactive index (it may be moved later)
+                            const itemWithIndex = item as WithIndex<object>
+                            itemWithIndex.$index = index
+                            // Item is new; create and cache its DOM elements
+                            const newElements = f(itemWithIndex)
+                            pauseTracking()
+                            fragment.append(...newElements)
+                            resetTracking()
+                            newElementsCache.set(item, newElements)
+                            newElementsForLogging.push(...newElements)
                         }
-                        // Need to pause tracking since moving elements can
-                        // cause onBlur() to be called.
-                        pauseTracking()
-                        fragment.append(...existingElements)
-                        resetTracking()
-                        // Put the item in the new cache
-                        elementsCache.delete(item)
-                        newElementsCache.set(item, existingElements)
+                        else { // Item is old; use its existing elements
+                            // Update the item's index
+                            if ((item as WithIndex<object>).$index !== index) {
+                                (item as WithIndex<object>).$index = index
+                                somethingChanged = true
+                            }
+                            // Need to pause tracking since moving elements can
+                            // cause onBlur() to be called.
+                            pauseTracking()
+                            fragment.append(...existingElements)
+                            resetTracking()
+                            // Put the item in the new cache
+                            elementsCache.delete(item)
+                            newElementsCache.set(item, existingElements)
+                        }
+                        ++index
                     }
-                    ++index
-                }
 
-                // Log each new item that was added
-                if (newElementsForLogging.length > 0) {
-                    logChangeStart(el)
-                    newElementsForLogging.forEach(logAdd)
-                }
+                    // Log each new item that was added
+                    if (newElementsForLogging.length > 0) {
+                        logChangeStart(el)
+                        newElementsForLogging.forEach(logAdd)
+                    }
 
-                // Remove the elements for the items which were removed
-                if (elementsCache.size > 0) {
-                    somethingChanged = true
-                    logChangeStart(el)
-                    elementsCache.forEach(oldElements => {
-                        oldElements.forEach(remove)
-                    })
+                    // Remove the elements for the items which were removed
+                    if (elementsCache.size > 0) {
+                        somethingChanged = true
+                        logChangeStart(el)
+                        elementsCache.forEach(oldElements => {
+                            oldElements.forEach(remove)
+                        })
+                    }
                 }
                 
                 if (!somethingChanged) {
-                    console.log(items())
-                    console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
-                    console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $for head or body.")
+                    console.log("The following element ran an unnecessary update of children, possibly because its items() are lazily computed():", el)
                 }
 
                 // Attach the new nodes
@@ -937,13 +943,14 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
 
             scheduleDOMUpdate(el, () => {
                 const fragment = document.createDocumentFragment()
-                // Keep track of whether something changed. Something should ALWAYS change during a run.
+                // Keep track of whether something changed. Something should ALWAYS change during a run,
+                // EXCEPT if the Set we're working with is the result of computed(), since computed() is lazy.
                 // If this is our first run (or we have no children), consider this to be a change.
                 let somethingChanged = elementsCache.size === 0
                 const newElementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
                 const newElementsForLogging: Effectful<StylelessElement>[] = []
                 // For each item, determine whether new or already existed
-                items().forEach(key => {
+                for (const key of items().keys()) {
                     const existingElements = elementsCache.get(key)
                     if (existingElements === undefined) {
                         somethingChanged = true
@@ -960,7 +967,7 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
                         elementsCache.delete(key)
                         newElementsCache.set(key, existingElements)
                     }
-                })
+                }
 
                 // Log each new item that was added
                 if (newElementsForLogging.length > 0) {
@@ -978,9 +985,7 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
                 }
                 
                 if (!somethingChanged) {
-                    console.log(items())
-                    console.error("WARNING: the following element had a child update triggered, but the children didn't need to be updated:", el)
-                    console.error("This element is erroneously reacting to a change in a piece of state that was accessed in the $set head or body.")
+                    console.log("The following element ran an unnecessary update of children, possibly because its items() are lazily computed():", el)
                 }
 
                 // Attach the new nodes
