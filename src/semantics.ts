@@ -481,8 +481,18 @@ export interface GroundRule {
     readonly sourcePremises: TupleWithDeductions[] // tuple for each source (positive) premise
 }
 
+// TODO: We can reduce provenance memory overhead to just 16 bytes per tuple by storing merely
+// the "minimal proof tree height" and the generating rule, then searching for the deduction
+// from scratch (just the one rule) when the user asks for it. See the paper "Provenance for
+// Large-Scale Datalog".
+// The minimal proof tree is guaranteed to involve no circular reasoning.
+export interface Deduction {
+    readonly groundRule: GroundRule
+    validated: boolean // whether the deduction has been checked for circularity (e.g. P => P)
+}
+
 // N.B. each tuple has at least ONE deduction, i.e. these arrays have size >= 1.
-export type TupleWithDeductions = {tuple: Tuple, deductions: GroundRule[]}
+export type TupleWithDeductions = {tuple: Tuple, deductions: Deduction[]}
 
 // For looking up a specific deduced tuple, since we can't rely on reference equality.
 export type TupleLookup = Map<TupleID, TupleWithDeductions>
@@ -608,28 +618,38 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
                 // If the tuple already existed before this iteration, add the new deduction.
                 // If the tuple is new this iteration, add the tuple (if necessary) and the new deduction.
                 const id = tupleID(deducedTuple)
+                let isNewTuple: boolean
                 const preIterationTuple = allTuplesOfRelations.get(graph.relations.get(rule.head.relationName) as Relation)?.get(id)
                 if (preIterationTuple === undefined) {
                     const currIterationTuple = currIterationTuples.get(id)
                     if (currIterationTuple === undefined) {
-                        currIterationTuples.set(id, {tuple: deducedTuple, deductions: [groundRule]})
+                        currIterationTuples.set(id, {
+                            tuple: deducedTuple,
+                            deductions: [{groundRule, validated: true}],
+                        })
+                        isNewTuple = true
                     }
                     else {
-                        currIterationTuple.deductions.push(groundRule)
+                        currIterationTuple.deductions.push({groundRule, validated: false})
+                        isNewTuple = false
                     }
                 }
                 else {
-                    preIterationTuple.deductions.push(groundRule)
+                    preIterationTuple.deductions.push({groundRule, validated: false})
+                    isNewTuple = false
                 }
                 // Add the deduction to those of the rule.
                 // We can do this immediately since we don't use this info during evaluation.
                 const allRuleTuples = allTuplesOfRules.get(rule) as TupleLookup
                 const existingTuple = allRuleTuples.get(id)
                 if (existingTuple === undefined) {
-                    allRuleTuples.set(id, {tuple: deducedTuple, deductions: [groundRule]})
+                    allRuleTuples.set(id, {
+                        tuple: deducedTuple,
+                        deductions: [{groundRule, validated: isNewTuple}],
+                    })
                 }
                 else {
-                    existingTuple.deductions.push(groundRule)
+                    existingTuple.deductions.push({groundRule, validated: isNewTuple})
                 }
             }
         }

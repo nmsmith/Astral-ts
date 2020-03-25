@@ -66,7 +66,7 @@ interface State {
     readonly ruleLayoutInfo: Map<RuleCard, ColumnLayout> // determined from graph info
 }
 
-const selectedCardMinHeight = 158
+const selectedCardMinHeight = 186
 
 function parseRuleCardFromText(card: RuleCard, text: string): void {
     const parseResult = parseRule(text)
@@ -403,11 +403,44 @@ function getInternalNegations(card: RuleCard): Set<number> {
 function getDeductions(card: RuleCard): TupleLookup {
     if (card.lastParsed !== null) {
         const refs = state.deductions.get(card.lastParsed.rule)
+        return (refs === undefined) ? new Map() : refs
+    }
+    else return new Map()
+}
+
+function getValidatedDeductions(card: RuleCard): TupleLookup {
+    if (card.lastParsed !== null) {
+        const refs = state.deductions.get(card.lastParsed.rule)
         if (refs === undefined) {
             return new Map()
         }
         else {
-            return refs
+            const validated = new Map()
+            refs.forEach((value, key) => {
+                if (value.deductions[0].validated) {
+                    validated.set(key, value)
+                }
+            })
+            return validated
+        }
+    }
+    else return new Map()
+}
+
+function getNonValidatedDeductions(card: RuleCard): TupleLookup {
+    if (card.lastParsed !== null) {
+        const refs = state.deductions.get(card.lastParsed.rule)
+        if (refs === undefined) {
+            return new Map()
+        }
+        else {
+            const nonValidated = new Map()
+            refs.forEach((value, key) => {
+                if (!value.deductions[0].validated) {
+                    nonValidated.set(key, value)
+                }
+            })
+            return nonValidated
         }
     }
     else return new Map()
@@ -621,6 +654,19 @@ function tupleToString(tuple: Tuple): string {
     return s.slice(0, -2)
 }
 
+function tuckBarText(card: RuleCard): string {
+    if (card.lastParsed === null) {
+        return "not executed"
+    }
+    else {
+        const tuples = state.deductions.get(card.lastParsed.rule) as TupleLookup
+        if (tuples.size === 1) {
+            return "1 tuple"
+        }
+        else return `${tuples.size} tuples`
+    }
+}
+
 function forRange(start: number, end: number | undefined): {value: number}[] {
     if (end === undefined) return []
     const result = []
@@ -675,6 +721,7 @@ app ("app", state,
     div ({class: "view"}, [
         h1 ("Design directions"),
         list ({class: "ideaList"}, {class: "listItem"}, [
+            h3 ("By default, when I ask \"how do I implement this feature?\", start by looking at Soufflé, which is the only modern, scalable, \"production-ready\" Datalog system."),
             h3 ("Keep interactions tablet-friendly (material design, drag to resize...). Working on a program can be a kinesthetic experience."),
             h3 ("Information design: show the data, and show comparisons."),
             h3 ("The neighbourhood of an element should always be visible, so that the effects of incremental changes are obvious (Lean on video games e.g. Factorio: inherently local cause-and-effect)."),
@@ -721,10 +768,20 @@ app ("app", state,
                                 div ({
                                     class: "dataScrollPane",
                                 }, [
-                                    $for (() => getDeductions(ruleCard).values(), tuple => [
+                                    $for (() => getValidatedDeductions(ruleCard).values(), tuple => [
                                         div ({
                                             class: "data",
                                             color: () => ruleCard.isCentered ? "black" : "transparent",
+                                            "background-color": "white",
+                                        }, [
+                                            p (tupleToString(tuple.tuple)),
+                                        ]),
+                                    ]),
+                                    $for (() => getNonValidatedDeductions(ruleCard).values(), tuple => [
+                                        div ({
+                                            class: "data",
+                                            color: () => ruleCard.isCentered ? "black" : "transparent",
+                                            "background-color": "#cccccc",
                                         }, [
                                             p (tupleToString(tuple.tuple)),
                                         ]),
@@ -825,7 +882,7 @@ app ("app", state,
                             ]),
                         ]),
                         div ({class: "dataTuckBar"}, [
-                            p ("7 tuples", {class: "factCount"}),
+                            p (() => tuckBarText(ruleCard), {class: "factCount"}),
                             div ({class: "grow"}),
                             button ("✖", {
                                 class: "deleteCardButton",
