@@ -364,9 +364,6 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
         visitedStack.push(relation)
         const successors = relation.ownRules
         let lowLink = myDepth
-        // Track whether this connected component is trivial (one node, no cycles),
-        // or whether there's a cycle.
-        let cycleFound = false
         if (successors !== undefined) {
             for (const rule of successors) {
                 for (const fact of rule.body) {
@@ -377,7 +374,6 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
                         if (itsLowLink <= myDepth) {
                             // It's part of the same connected component as me
                             lowLink = Math.min(lowLink, itsLowLink)
-                            cycleFound = true
                         }
                         else {
                             // It's in a newly formed connected component
@@ -387,7 +383,6 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
                     else if (itsDepth >= 0) {
                         // It's currently on the stack
                         lowLink = Math.min(lowLink, itsDepth)
-                        cycleFound = true
                     }
                     else { // depth is NaN
                         // It's in another pre-connected component
@@ -400,24 +395,15 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
         if (lowLink === myDepth) {
             // This node started a strongly connected component.
             const component = new Set<Relation>()
-            if (cycleFound) {
-                // Gather all the other nodes.
-                let rel: Relation
-                do {
-                    rel = visitedStack.pop() as Relation
-                    depths.set(rel.name, NaN)
-                    component.add(rel)
-                    components.set(rel, component)
-                }
-                while (rel !== relation)
-            }
-            else {
-                // The current node is the whole component.
-                const rel = visitedStack.pop() as Relation
+            // Gather all the other nodes.
+            let rel: Relation
+            do {
+                rel = visitedStack.pop() as Relation
                 depths.set(rel.name, NaN)
                 component.add(rel)
                 components.set(rel, component)
             }
+            while (rel !== relation)
         }
         
         return lowLink
@@ -478,26 +464,26 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
  */
 export interface GroundRule {
     readonly ofRule: Rule  // the rule from which this ground instance was instantiated
-    readonly sourcePremises: TupleWithDeductions[] // tuple for each source (positive) premise
+    readonly sourcePremises: TupleWithDerivations[] // tuple for each source (positive) premise
 }
 
 // TODO: We can reduce provenance memory overhead to just 16 bytes per tuple by storing merely
-// the "minimal proof tree height" and the generating rule, then searching for the deduction
+// the "minimal proof tree height" and the generating rule, then searching for the derivation
 // from scratch (just the one rule) when the user asks for it. See the paper "Provenance for
 // Large-Scale Datalog".
 // The minimal proof tree is guaranteed to involve no circular reasoning.
-export interface Deduction {
+export interface Derivation {
     readonly groundRule: GroundRule
-    validated: boolean // whether the deduction has been checked for circularity (e.g. P => P)
+    validated: boolean // whether the derivation has been checked for circularity (e.g. P => P)
 }
 
-// N.B. each tuple has at least ONE deduction, i.e. these arrays have size >= 1.
-export type TupleWithDeductions = {tuple: Tuple, deductions: Deduction[]}
+// N.B. each tuple has at least ONE derivation, i.e. these arrays have size >= 1.
+export type TupleWithDerivations = {tuple: Tuple, derivations: Derivation[]}
 
-// For looking up a specific deduced tuple, since we can't rely on reference equality.
-export type TupleLookup = Map<TupleID, TupleWithDeductions>
+// For looking up a specific derived tuple, since we can't rely on reference equality.
+export type TupleLookup = Map<TupleID, TupleWithDerivations>
 
-export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, TupleLookup> {
+export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, TupleLookup> {
     const allTuplesOfRules = new Map<Rule, TupleLookup>()         // for return
     const allTuplesOfRelations = new Map<Relation, TupleLookup>() // for compute convenience
     function relationHasTuple(relationName: string, queryTuple: Tuple): boolean {
@@ -525,7 +511,7 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
             if (relationHasTuple(neg.relationName, neg.tuple)) return // generate no tuples
         }
         const sources = rule.strategy.sources
-        const sourceTuples: TupleWithDeductions[] = []
+        const sourceTuples: TupleWithDerivations[] = []
         let lastNewTupleSourceI = -1
         if (!fullEvaluation) { // Find out the last source that has new tuples to assign
             for (let sourceI = 0; sourceI < sources.length; ++sourceI) {
@@ -597,70 +583,64 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
                     }
                 }
             }
-            else { // Make a deduction from this tuple combo
+            else { // Make a derivation from this tuple combo
                 // Construct the tuple
-                const deducedTuple: Tuple = []
+                const derivedTuple: Tuple = []
                 for (const arg of (rule.strategy as EvaluationStrategy).headArgs) {
                     if (isData(arg)) {
-                        deducedTuple.push(arg)
+                        derivedTuple.push(arg)
                     }
                     else {
                         const varValue = sourceTuples[arg.tuple].tuple[arg.el]
-                        deducedTuple.push(varValue)
+                        derivedTuple.push(varValue)
                     }
                 }
-                // Construct the ground rule that explains the deduction
+                // Construct the ground rule that explains the derivation
                 const groundRule: GroundRule = {
                     ofRule: rule,
                     sourcePremises: sourceTuples,
                 }
-                // Log the deduction.
-                // If the tuple already existed before this iteration, add the new deduction.
-                // If the tuple is new this iteration, add the tuple (if necessary) and the new deduction.
-                const id = tupleID(deducedTuple)
-                let isNewTuple: boolean
+                // Log the derivation.
+                const derivation = {groundRule, validated: false}
+                // If the tuple already existed before this iteration, add the new derivation.
+                // If the tuple is new this iteration, add the tuple (if necessary) and the new derivation.
+                const id = tupleID(derivedTuple)
                 const preIterationTuple = allTuplesOfRelations.get(graph.relations.get(rule.head.relationName) as Relation)?.get(id)
                 if (preIterationTuple === undefined) {
                     const currIterationTuple = currIterationTuples.get(id)
                     if (currIterationTuple === undefined) {
+                        derivation.validated = true
                         currIterationTuples.set(id, {
-                            tuple: deducedTuple,
-                            deductions: [{groundRule, validated: true}],
+                            tuple: derivedTuple,
+                            derivations: [derivation],
                         })
-                        isNewTuple = true
                     }
-                    else {
-                        currIterationTuple.deductions.push({groundRule, validated: false})
-                        isNewTuple = false
-                    }
+                    else currIterationTuple.derivations.push(derivation)
                 }
-                else {
-                    preIterationTuple.deductions.push({groundRule, validated: false})
-                    isNewTuple = false
-                }
-                // Add the deduction to those of the rule.
+                else preIterationTuple.derivations.push(derivation)
+                // Add the derivation to those of the rule.
                 // We can do this immediately since we don't use this info during evaluation.
                 const allRuleTuples = allTuplesOfRules.get(rule) as TupleLookup
                 const existingTuple = allRuleTuples.get(id)
                 if (existingTuple === undefined) {
                     allRuleTuples.set(id, {
-                        tuple: deducedTuple,
-                        deductions: [{groundRule, validated: isNewTuple}],
+                        tuple: derivedTuple,
+                        derivations: [derivation],
                     })
                 }
                 else {
-                    existingTuple.deductions.push({groundRule, validated: isNewTuple})
+                    existingTuple.derivations.push(derivation)
                 }
             }
         }
         enumerateTupleCombos(0, fullEvaluation)
     }
-    // For each component, deduce its tuples.
+    // For each component, derive its tuples.
     // The components are already topologically sorted,
     // so they will be evaluated in a correct & reasonable order.
     for (const component of graph.components.values()) {
         const rules = []
-        // Gather all the component's rules and initialize deductions
+        // Gather all the component's rules and initialize derivations
         for (const relation of component) {
             allTuplesOfRelations.set(relation, new Map())
             for (const rule of relation.ownRules) {
@@ -682,7 +662,7 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
                     newlyAddedTuples.set(relation, newTuplesForRelation)
                 }
             }
-            // Add these tuples to the set of all deduced tuples
+            // Add these tuples to the set of all derived tuples
             newlyAddedTuples.forEach((lookup, relation) => {
                 const existingLookup = allTuplesOfRelations.get(relation) as TupleLookup
                 lookup.forEach((tuple, tupleID) => {
@@ -693,4 +673,9 @@ export function computeDeductions(graph: RuleGraphInfo<unknown>): Map<Rule, Tupl
         } while (lastAddedTuples.size > 0)
     }
     return allTuplesOfRules
+}
+
+export function validateDerivation(tuple: TupleWithDerivations, index: number): void {
+    // TODO: Check that this derivation is well-founded through analysis of its dependency graph.
+    tuple.derivations[index].validated = true
 }

@@ -4,9 +4,9 @@ import "./globals"
 import Cycle from "json-cycle"
 import { toRefs, reactive as observable } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
-import { h1, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input } from "./libs/lib-view"
+import { h1, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input, br } from "./libs/lib-view"
 import {parseRule} from "./parser"
-import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDeductions, TupleLookup, Tuple } from "./semantics"
+import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDerivations, TupleLookup, Tuple } from "./semantics"
 
 //#region  --- Essential & derived state ---
 
@@ -61,7 +61,7 @@ interface State {
     cachedRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
 // Derived state
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
-    readonly deductions: Map<Rule, TupleLookup>
+    readonly derivations: Map<Rule, TupleLookup>
     readonly incompleteCards: RuleCard[]
     readonly ruleLayoutInfo: Map<RuleCard, ColumnLayout> // determined from graph info
 }
@@ -143,8 +143,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
             })
             return analyseRuleGraph(rawRules)
         },
-        deductions: state => {
-            return computeDeductions(state.ruleGraph)
+        derivations: state => {
+            return computeDerivations(state.ruleGraph)
         },
         incompleteCards: state => {
             return state.ruleCards.filter(card => card.lastParsed === null)
@@ -400,24 +400,24 @@ function getInternalNegations(card: RuleCard): Set<number> {
     return getSetForRule(card, state.ruleGraph.internalNegations)
 }
 
-function getDeductions(card: RuleCard): TupleLookup {
+function getDerivations(card: RuleCard): TupleLookup {
     if (card.lastParsed !== null) {
-        const refs = state.deductions.get(card.lastParsed.rule)
+        const refs = state.derivations.get(card.lastParsed.rule)
         return (refs === undefined) ? new Map() : refs
     }
     else return new Map()
 }
 
-function getValidatedDeductions(card: RuleCard): TupleLookup {
+function getValidatedDerivations(card: RuleCard): TupleLookup {
     if (card.lastParsed !== null) {
-        const refs = state.deductions.get(card.lastParsed.rule)
+        const refs = state.derivations.get(card.lastParsed.rule)
         if (refs === undefined) {
             return new Map()
         }
         else {
             const validated = new Map()
             refs.forEach((value, key) => {
-                if (value.deductions[0].validated) {
+                if (value.derivations[0].validated) {
                     validated.set(key, value)
                 }
             })
@@ -427,16 +427,16 @@ function getValidatedDeductions(card: RuleCard): TupleLookup {
     else return new Map()
 }
 
-function getNonValidatedDeductions(card: RuleCard): TupleLookup {
+function getNonValidatedDerivations(card: RuleCard): TupleLookup {
     if (card.lastParsed !== null) {
-        const refs = state.deductions.get(card.lastParsed.rule)
+        const refs = state.derivations.get(card.lastParsed.rule)
         if (refs === undefined) {
             return new Map()
         }
         else {
             const nonValidated = new Map()
             refs.forEach((value, key) => {
-                if (!value.deductions[0].validated) {
+                if (!value.derivations[0].validated) {
                     nonValidated.set(key, value)
                 }
             })
@@ -659,7 +659,7 @@ function tuckBarText(card: RuleCard): string {
         return "not executed"
     }
     else {
-        const tuples = state.deductions.get(card.lastParsed.rule) as TupleLookup
+        const tuples = state.derivations.get(card.lastParsed.rule) as TupleLookup
         if (tuples.size === 1) {
             return "1 tuple"
         }
@@ -721,7 +721,6 @@ app ("app", state,
     div ({class: "view"}, [
         h1 ("Design directions"),
         list ({class: "ideaList"}, {class: "listItem"}, [
-            h3 ("By default, when I ask \"how do I implement this feature?\", start by looking at Soufflé, which is the only modern, scalable, \"production-ready\" Datalog system."),
             h3 ("Keep interactions tablet-friendly (material design, drag to resize...). Working on a program can be a kinesthetic experience."),
             h3 ("Information design: show the data, and show comparisons."),
             h3 ("The neighbourhood of an element should always be visible, so that the effects of incremental changes are obvious (Lean on video games e.g. Factorio: inherently local cause-and-effect)."),
@@ -730,6 +729,15 @@ app ("app", state,
             h3 ("As I keep re-discovering, graphs are crap, and there is no \"magic\" visualisation waiting to be invented. What core visual primitives can communicate data and their relationships? Relative positioning, shape and colour matching... Review literature."),
             h3 ("Let the person who defines a relation label its meaning, and show it in tooltips: http://worrydream.com/#!/LearnableProgramming"),
         ]),
+        br(),
+        h1 ("Implementation approach"),
+        list ({class: "ideaList"}, {class: "listItem"}, [
+            h3 ("By default, when I ask \"how do I implement this feature?\", start by looking at Soufflé, which is the only modern, scalable, \"production-ready\" Datalog system."),
+            h3 ("Only worry about finding efficient EVALUATION SCHEMES for generic Datalog programs. All other computations (e.g. statics, debug info) can be encoded as Datalog programs."),
+            h3 ("Principle: debugging is \"always on\", even for end-users. At minimum this means recording event history, but if exploring a single moment in time, it means storing all tuples."),
+            h3 ("Top-down execution is not parallelizable, since it requires coordination on caches to prevent work duplication (and it relies on a sequential call stack). Top-down ≡ lazy bottom-up. Ideal world: parallel array iteration & message passing, not sequential recursion & synchronization (\"DFS is hard to parallelize\")."),
+        ]),
+        br(),
         div ({class: "row"}, [
             div ({class: "ruleGraphView"}, [
                 $set (() => state.ruleLayoutInfo, ruleCard => [
@@ -768,7 +776,7 @@ app ("app", state,
                                 div ({
                                     class: "dataScrollPane",
                                 }, [
-                                    $for (() => getValidatedDeductions(ruleCard).values(), tuple => [
+                                    $for (() => getValidatedDerivations(ruleCard).values(), tuple => [
                                         div ({
                                             class: "data",
                                             color: () => ruleCard.isCentered ? "black" : "transparent",
@@ -777,7 +785,7 @@ app ("app", state,
                                             p (tupleToString(tuple.tuple)),
                                         ]),
                                     ]),
-                                    $for (() => getNonValidatedDeductions(ruleCard).values(), tuple => [
+                                    $for (() => getNonValidatedDerivations(ruleCard).values(), tuple => [
                                         div ({
                                             class: "data",
                                             color: () => ruleCard.isCentered ? "black" : "transparent",
