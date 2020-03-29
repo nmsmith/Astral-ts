@@ -258,7 +258,7 @@ export interface Relation {
     readonly name: string
     arity: number // number of terms in the relation's tuples
     readonly rules: Set<Rule>
-    readonly dependentRules: Set<Rule>
+    //readonly dependentRules: Set<Rule>
 }
 
 /** A strongly connected component. */
@@ -311,7 +311,7 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
                 name: rule.head.relationName,
                 arity: rule.head.objects.length,
                 rules: new Set<Rule>([rule]),
-                dependentRules: new Set<Rule>(),
+                //dependentRules: new Set<Rule>(),
             })
         }
         else {
@@ -330,9 +330,9 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
                     name: literal.relationName,
                     arity: literal.objects.length,
                     rules: new Set<Rule>(),
-                    dependentRules: new Set<Rule>([rule]),
+                    //dependentRules: new Set<Rule>([rule]),
                 })
-            } else premiseRelation.dependentRules.add(rule)
+            }// else premiseRelation.dependentRules.add(rule)
         }
     }
     // Now check that each relation is referenced with correct arities
