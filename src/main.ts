@@ -179,8 +179,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
             function assignComponentToColumn(component: Component, column: ColumnLayout): void {
                 if (!column.items.has(component)) {
                     column.items.add(component)
-                    for (const relation of component) {
-                        for (const rule of relation.ownRules) {
+                    for (const relation of component.relations) {
+                        for (const rule of relation.rules) {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
                             layoutInfo.set(ruleCard, column)
                             if (lastLayoutInfo.has(ruleCard)) {
@@ -204,27 +204,11 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     // Put dependencies and dependent components into adjacent columns
                     const dependenciesColumn: ColumnLayout = observable({index: 2, hidden: false, items: new Set()})
                     const dependentsColumn: ColumnLayout = observable({index: 0, hidden: false, items: new Set()})
-                    selectedComponent.forEach(relation => {
-                        // Dependents
-                        relation.dependentRules.forEach(succRule => {
-                            const succCard = state.ruleGraph.rules.get(succRule) as RuleCard
-                            if (!layoutInfo.has(succCard)) {
-                                const succComponent = componentOf(succRule, state.ruleGraph)
-                                if (!selectedComponentColumn.items.has(succComponent)) {
-                                    assignComponentToColumn(succComponent, dependentsColumn)
-                                }
-                            }
-                        })
-                        // Dependencies
-                        relation.ownRules.forEach(ownRule => {
-                            ownRule.body.forEach(lit => {
-                                const predRelation = state.ruleGraph.relations.get(lit.relationName) as Relation
-                                const predComponent = state.ruleGraph.components.get(predRelation) as Component
-                                if (!selectedComponentColumn.items.has(predComponent)) {
-                                    assignComponentToColumn(predComponent, dependenciesColumn)
-                                }
-                            })
-                        })
+                    selectedComponent.dependents.forEach(dependent => {
+                        assignComponentToColumn(dependent, dependentsColumn)
+                    })
+                    selectedComponent.dependencies.forEach(dependency => {
+                        assignComponentToColumn(dependency, dependenciesColumn)
                     })
                 }
                 else { // an INCOMPLETE rule is centered, so it will be the only thing in the column
@@ -526,16 +510,20 @@ const ruleCardYStart = 16 //px
 const ruleCardYSpacing = 30 //px
 const dataTuckBarHeight = 26 // annoyingly, we have to hardcode this
 
-function computeWidth(card: RuleCard): string {
-    if (card.isCentered) {
-        return calc(oneThird, dataPaneWidthChange * 2 / 3 - shrinkForXSpacing)
-    }
-    else {
-        return calc(oneThird, -dataPaneWidthChange / 3 - shrinkForXSpacing)
-    }
+const centerColumnWidth = calc(oneThird, dataPaneWidthChange * 2 / 3 - shrinkForXSpacing)
+const sideColumnWidth = calc(oneThird, -dataPaneWidthChange / 3 - shrinkForXSpacing)
+
+function computeCardWidth(card: RuleCard): string {
+    return card.isCentered ? centerColumnWidth : sideColumnWidth
 }
 
-function computeLeftPosition(card: RuleCard): string {
+function computeRelationWidth(relationName: string): string {
+    const relation = state.ruleGraph.relations.get(relationName) as Relation
+    const isCentered = state.ruleGraph.components.get(relation) === state.centeredItem
+    return isCentered ? centerColumnWidth : sideColumnWidth
+}
+
+function computeCardLeft(card: RuleCard): string {
     const column = state.ruleLayoutInfo.get(card)
     if (column === undefined) {
         return px(-123)
@@ -570,7 +558,7 @@ function computeLeftPosition(card: RuleCard): string {
     }  
 }
 
-function computeTopPosition(thisRuleCard: RuleCard): string {
+function computeCardTop(thisRuleCard: RuleCard): string {
     const column = state.ruleLayoutInfo.get(thisRuleCard)
     if (column === undefined) {
         return px(-123) // should never happen
@@ -591,8 +579,8 @@ function computeTopPosition(thisRuleCard: RuleCard): string {
         // card, calculating the y-distance to the card as we go.
         for (const item of column.items) {
             if (isComponent(item)) {
-                for (const relation of item) {
-                    for (const rule of relation.ownRules) {
+                for (const relation of item.relations) {
+                    for (const rule of relation.rules) {
                         if (rule === thisRule) {
                             return px(y)
                         }
@@ -740,15 +728,26 @@ app ("app", state,
         br(),
         div ({class: "row"}, [
             div ({class: "ruleGraphView"}, [
-                $set (() => state.ruleLayoutInfo, ruleCard => [
+                $set (() => state.ruleGraph.relations, relationName => [
                     div ({
-                        class: "ruleCardShadow",
-                        "z-index": () => computeZIndex(ruleCard) - 1, // render behind cards
-                        left: () => computeLeftPosition(ruleCard),
-                        top: () => computeTopPosition(ruleCard),
-                        width: () => computeWidth(ruleCard),
-                        height: () => `${ruleCard.cardHeight}px`,
-                    }),
+                        class: "relationBanner",
+                        // left: () => computeRelationLeft(relationName),
+                        // top: () => computeRelationTop(relationName),
+                        // width: () => computeRelationWidth(relationName),
+                        // height: () => computeRelationHeight(relationName),
+                    }, [
+                        //p (relationName, {class: "relation"}),
+                    ]),
+                ]),
+                $set (() => state.ruleLayoutInfo, ruleCard => [
+                    // div ({
+                    //     class: "ruleCardShadow",
+                    //     "z-index": () => computeZIndex(ruleCard) - 1, // render behind cards
+                    //     left: () => computeLeftPosition(ruleCard),
+                    //     top: () => computeTopPosition(ruleCard),
+                    //     width: () => computeWidth(ruleCard),
+                    //     height: () => `${ruleCard.cardHeight}px`,
+                    // }),
                     div ({
                         class: () => `ruleCard ${
                             hasError(ruleCard)
@@ -756,9 +755,9 @@ app ("app", state,
                             : ""
                         }`,
                         "z-index": () => computeZIndex(ruleCard),
-                        left: () => computeLeftPosition(ruleCard),
-                        top: () => computeTopPosition(ruleCard),
-                        width: () => computeWidth(ruleCard),
+                        left: () => computeCardLeft(ruleCard),
+                        top: () => computeCardTop(ruleCard),
+                        width: () => computeCardWidth(ruleCard),
                         height: () => `${ruleCard.cardHeight}px`,
                     }, [
                         div ({class: "ruleCardBody"}, [
@@ -910,9 +909,9 @@ app ("app", state,
                                             const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
                                             const myComponent = state.ruleGraph.components.get(myRelation) as Component
                                             let candidateRuleCard: RuleCard | undefined = undefined
-                                            if (myRelation.ownRules.size > 0) {
+                                            if (myRelation.rules.size > 0) {
                                                 // Select another rule in the relation
-                                                for (const rule of myRelation.ownRules) {
+                                                for (const rule of myRelation.rules) {
                                                     if (rule !== myRule) {
                                                         candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
                                                         break
@@ -921,9 +920,9 @@ app ("app", state,
                                             }
                                             else {
                                                 // Select the first rule from another relation in the component
-                                                for (const relation of myComponent) {
-                                                    if (relation !== myRelation && relation.ownRules.size > 0) {
-                                                        const rule = relation.ownRules.values().next().value
+                                                for (const relation of myComponent.relations) {
+                                                    if (relation !== myRelation && relation.rules.size > 0) {
+                                                        const rule = relation.rules.values().next().value
                                                         candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
                                                         break
                                                     }
@@ -971,7 +970,7 @@ app ("app", state,
                             onclick: () => state.centeredItem = component,
                             left: () => state.centeredItem === component ? px(-12) : px(8),
                         }, [
-                            $for (() => component.values(), relation => [
+                            $for (() => component.relations.values(), relation => [
                                 p (relation.name, {class: "relation"}),
                             ]),
                         ]),

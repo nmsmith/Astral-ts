@@ -257,12 +257,16 @@ export function rule(head: Atom, body: Literal[]): Rule {
 export interface Relation {
     readonly name: string
     arity: number // number of terms in the relation's tuples
-    readonly ownRules: Set<Rule>
+    readonly rules: Set<Rule>
     readonly dependentRules: Set<Rule>
 }
 
 /** A strongly connected component. */
-export type Component = Set<Relation>
+export type Component = {
+    readonly relations: Set<Relation>
+    readonly dependencies: Set<Component>
+    readonly dependents: Set<Component>
+}
 
 export interface RuleGraphInfo<RuleSource> {
     readonly rules: Map<Rule, RuleSource>
@@ -306,7 +310,7 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
             relations.set(rule.head.relationName, {
                 name: rule.head.relationName,
                 arity: rule.head.objects.length,
-                ownRules: new Set<Rule>([rule]),
+                rules: new Set<Rule>([rule]),
                 dependentRules: new Set<Rule>(),
             })
         }
@@ -315,7 +319,7 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
             // TODO: Relations and their arities should be defined/fixed at
             // first use, rather than determined in this ad-hoc manner.
             myRelation.arity = rule.head.objects.length
-            myRelation.ownRules.add(rule)
+            myRelation.rules.add(rule)
         }
         // Construct relations for the body atoms, if necessary,
         // and assign this rule as a dependent of those relations.
@@ -325,7 +329,7 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
                 relations.set(literal.relationName, {
                     name: literal.relationName,
                     arity: literal.objects.length,
-                    ownRules: new Set<Rule>(),
+                    rules: new Set<Rule>(),
                     dependentRules: new Set<Rule>([rule]),
                 })
             } else premiseRelation.dependentRules.add(rule)
@@ -353,40 +357,38 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
         }
     }
 
-    // For keeping track of the "depth" at which we saw a node in the active call stack.
-    const depths = new Map<string, number>()
-    const visitedStack: Relation[] = []
+    // If a node is in the component currently being explored, nodeStatus stores its depth.
+    // Otherwise, nodeStatus stores the component that the node belongs to.
+    const nodeStatus = new Map<string, number | Component>()
+    // Nodes in the component currently being explored.
+    const currentComponent: Relation[] = []
+    // Components reachable by the component currently being explored.
+    let componentDependencies = new Set<Component>()
+    // For output.
     const components = new Map<Relation, Component>()
 
-    function tarjan(myDepth: number, relationName: string): number {
-        depths.set(relationName, myDepth)
+    function tarjan(myDepth: number, relationName: string): number | Component {
+        nodeStatus.set(relationName, myDepth)
         const relation = relations.get(relationName) as Relation
-        visitedStack.push(relation)
-        const successors = relation.ownRules
+        currentComponent.push(relation)
+        const successors = relation.rules
         let lowLink = myDepth
         if (successors !== undefined) {
             for (const rule of successors) {
                 for (const fact of rule.body) {
-                    const itsDepth = depths.get(fact.relationName)
-                    if (itsDepth === undefined) {
-                        // It's not yet visited
-                        const itsLowLink = tarjan(myDepth + 1, fact.relationName)
-                        if (itsLowLink <= myDepth) {
-                            // It's part of the same connected component as me
-                            lowLink = Math.min(lowLink, itsLowLink)
-                        }
-                        else {
-                            // It's in a newly formed connected component
-                            // (and therefore a topological successor)
-                        }
+                    let itsStatus = nodeStatus.get(fact.relationName)
+                    if (itsStatus === undefined) {
+                        // It's not yet visited. Get its lowlink/component.
+                        itsStatus = tarjan(myDepth + 1, fact.relationName)
                     }
-                    else if (itsDepth >= 0) {
-                        // It's currently on the stack
-                        lowLink = Math.min(lowLink, itsDepth)
+
+                    if (typeof itsStatus === "number") {
+                        // It's part of the same connected component as me.
+                        lowLink = Math.min(lowLink, itsStatus)
                     }
-                    else { // depth is NaN
-                        // It's in another pre-connected component
-                        // (and therefore a topological successor)
+                    else {
+                        // It's part of a component that has already been constructed.
+                        componentDependencies.add(itsStatus)
                     }
                 }
             }
@@ -394,24 +396,33 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
 
         if (lowLink === myDepth) {
             // This node started a strongly connected component.
-            const component = new Set<Relation>()
-            // Gather all the other nodes.
+            const component = {
+                relations: new Set<Relation>(),
+                dependencies: componentDependencies,
+                dependents: new Set<Component>(),
+            }
+            for (const dependency of componentDependencies) {
+                dependency.dependents.add(component)
+            }
+            componentDependencies = new Set() // reset for the next component
+
+            // Gather all the relations that belong to this component.
             let rel: Relation
             do {
-                rel = visitedStack.pop() as Relation
-                depths.set(rel.name, NaN)
-                component.add(rel)
+                rel = currentComponent.pop() as Relation
+                nodeStatus.set(rel.name, component)
+                component.relations.add(rel)
                 components.set(rel, component)
             }
             while (rel !== relation)
+            return component
         }
-        
-        return lowLink
+        else return lowLink
     }
 
     // Start a depth-first search from each yet-to-be-visited node
     for (const relName of relations.keys()) {
-        if (depths.get(relName) === undefined) {
+        if (nodeStatus.get(relName) === undefined) {
             tarjan(0, relName)
         }
     }
@@ -423,12 +434,12 @@ export function analyseRuleGraph<RuleSource>(rules: Map<Rule, RuleSource>): Rule
         const relationNames = new Set<string>()
         // Collect all the relation names for this component.
         // This names should not occur in negated form within the component.
-        for (const relation of component) {
+        for (const relation of component.relations) {
             relationNames.add(relation.name)
         }
         // Check all the rule bodies associated with the component
-        for (const relation of component) {
-            for (const rule of relation.ownRules) {
+        for (const relation of component.relations) {
+            for (const rule of relation.rules) {
                 let bodyIndex = 0
                 for (const literal of rule.body) {
                     if (relationNames.has(literal.relationName)) {
@@ -649,9 +660,9 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
     for (const component of graph.components.values()) {
         const rules = []
         // Gather all the component's rules and initialize derivations
-        for (const relation of component) {
+        for (const relation of component.relations) {
             allTuplesOfRelations.set(relation, new Map())
-            for (const rule of relation.ownRules) {
+            for (const rule of relation.rules) {
                 rules.push(rule)
                 allTuplesOfRules.set(rule, new Map())
             }
@@ -661,9 +672,9 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
         do {
             // Compute the tuples for this iteration
             const newlyAddedTuples = new Map<Relation, TupleLookup>()
-            for (const relation of component) {
+            for (const relation of component.relations) {
                 const newTuplesForRelation: TupleLookup = new Map()
-                for (const rule of relation.ownRules) {
+                for (const rule of relation.rules) {
                     evaluateRule(rule, newTuplesForRelation, lastAddedTuples)
                 }
                 if (newTuplesForRelation.size > 0) {
