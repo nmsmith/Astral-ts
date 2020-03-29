@@ -862,19 +862,18 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
             const f = (child as DerivedFromSequence<Effectful<StylelessElement>[], object>).f
 
             scheduleDOMUpdate(el, () => {
-                const fragment = document.createDocumentFragment()
                 // Keep track of whether something changed. Something should ALWAYS change during a run,
                 // EXCEPT if the sequence we're working with is the result of computed(), since computed() is lazy.
                 // If this is our first run (or we have no children), consider this to be a change.
                 let somethingChanged = elementsCache.size === 0
-                const newElementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
-                const newElementsForLogging: Effectful<StylelessElement>[] = []
-
                 const currItems = Array.from(items())
                 // Only attempt to update the children if there is something new in the sequence.
                 if (currItems.length !== elementsCache.size
                     || !currItems.reduce((same, x, i) => same && elementsCache.has(x) && i === (x as any).$index, true)
                 ) {
+                    const fragment = document.createDocumentFragment()
+                    const newElementsCache: Map<unknown, Effectful<StylelessElement>[]> = new Map()
+                    const newElementsForLogging: Effectful<StylelessElement>[] = []
                     // For each item, determine whether new or already existed
                     let index = 0
                     for (const item of currItems) {
@@ -924,17 +923,17 @@ function attachChildren(el: Effectful<StylelessElement>, children: HTMLChildren)
                             oldElements.forEach(remove)
                         })
                     }
+
+                    // Attach the new nodes
+                    pauseTracking()
+                    el.insertBefore(fragment, marker)
+                    resetTracking()
+                    elementsCache = newElementsCache
                 }
                 
                 if (!somethingChanged) {
                     console.log("The following element ran an unnecessary update of children, possibly because its items() are lazily computed():", el)
                 }
-
-                // Attach the new nodes
-                pauseTracking()
-                el.insertBefore(fragment, marker)
-                resetTracking()
-                elementsCache = newElementsCache
             })
         }
         else if (isDerivedFromSet(child)) {
