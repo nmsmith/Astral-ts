@@ -521,6 +521,7 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
                     lastNewTupleSourceI = sourceI
                 }
             }
+            if (lastNewTupleSourceI === -1) return // no work to do
         }
         // Now iterate over all ground premise (source) sequences
         function enumerateTupleCombos(sourceI: number, newTupleChosen: boolean): void {
@@ -560,18 +561,8 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
             }
             if (sourceI < sources.length) {
                 const sourceRelation = graph.relations.get(sources[sourceI].relationName) as Relation
-                if (fullEvaluation || newTupleChosen || lastNewTupleSourceI > sourceI) {
-                    // Assign each old tuple
-                    const allSourceRelationTuples = allTuplesOfRelations.get(sourceRelation) as TupleLookup
-                    for (const t of allSourceRelationTuples.values()) {
-                        if (passesFilters(t.tuple)) {
-                            sourceTuples[sourceI] = t
-                            enumerateTupleCombos(sourceI + 1, newTupleChosen)
-                        }
-                    }
-                }
-                if (!fullEvaluation) {
-                    // Assign each new tuple
+                if (!fullEvaluation && sourceI === lastNewTupleSourceI && !newTupleChosen) {
+                    // Only assign each tuple derived in the last iteration
                     const lastSourceRelationTuples = lastIterationTuples.get(sourceRelation) as TupleLookup
                     if (lastSourceRelationTuples !== undefined) {
                         for (const t of lastSourceRelationTuples.values()) {
@@ -579,6 +570,21 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
                                 sourceTuples[sourceI] = t
                                 enumerateTupleCombos(sourceI + 1, true)
                             }
+                        }
+                    }
+                }
+                else {
+                    // Assign each tuple from all previous iterations (including new ones)
+                    const allSourceRelationTuples = allTuplesOfRelations.get(sourceRelation) as TupleLookup
+                    const lastSourceRelationTuples = lastIterationTuples.get(sourceRelation) as TupleLookup
+                    for (const t of allSourceRelationTuples.values()) {
+                        if (passesFilters(t.tuple)) {
+                            sourceTuples[sourceI] = t
+                            enumerateTupleCombos(sourceI + 1,
+                                (fullEvaluation || newTupleChosen)
+                                    ? true
+                                    : lastSourceRelationTuples.has(tupleID(t.tuple))
+                            )
                         }
                     }
                 }
@@ -607,9 +613,11 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
                 const id = tupleID(derivedTuple)
                 const preIterationTuple = allTuplesOfRelations.get(graph.relations.get(rule.head.relationName) as Relation)?.get(id)
                 if (preIterationTuple === undefined) {
+                    // The derivation of this tuple can't be unfounded if the tuple
+                    // isn't in the list of input tuples for this iteration.
+                    derivation.validated = true
                     const currIterationTuple = currIterationTuples.get(id)
                     if (currIterationTuple === undefined) {
-                        derivation.validated = true
                         currIterationTuples.set(id, {
                             tuple: derivedTuple,
                             derivations: [derivation],
