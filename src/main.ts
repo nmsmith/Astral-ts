@@ -6,7 +6,7 @@ import { toRefs, reactive as observable } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import { h1, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input, br } from "./libs/lib-view"
 import {parseRule} from "./parser"
-import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDerivations, TupleLookup, Tuple, Derivations } from "./semantics"
+import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDerivations, TupleLookup, Tuple, Derivations, TupleWithDerivations } from "./semantics"
 
 //#region  --- Essential & derived state ---
 
@@ -384,11 +384,11 @@ function getInternalNegations(card: RuleCard): Set<number> {
     return getSetForRule(card, state.ruleGraph.internalNegations)
 }
 
-function getDerivations(card: RuleCard): TupleLookup {
+function getDerivations(card: RuleCard): Set<TupleWithDerivations> {
     if (card.lastParsed !== null) {
-        return state.derivations.perRule.get(card.lastParsed.rule) as TupleLookup
+        return state.derivations.perRule.get(card.lastParsed.rule) as Set<TupleWithDerivations>
     }
-    else return new Map()
+    else return new Set()
 }
 
 function getDerivationCount(relation: Relation): number {
@@ -626,7 +626,7 @@ function tuckBarText(card: RuleCard): string {
         return "not executed"
     }
     else {
-        const tuples = state.derivations.perRule.get(card.lastParsed.rule) as TupleLookup
+        const tuples = state.derivations.perRule.get(card.lastParsed.rule) as Set<TupleWithDerivations>
         if (tuples.size === 1) {
             return "1 tuple"
         }

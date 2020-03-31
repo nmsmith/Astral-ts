@@ -500,7 +500,7 @@ export interface TupleWithDerivations {
 export type TupleLookup = Map<TupleID, TupleWithDerivations>
 
 export interface Derivations {
-    perRule: Map<Rule, TupleLookup>
+    perRule: Map<Rule, Set<TupleWithDerivations>>
     perRelation: Map<Relation, TupleLookup>
 }
 
@@ -573,7 +573,7 @@ export function validateDerivations(targetTuple: TupleWithDerivations, graph: Ru
 
 export function computeDerivations(graph: RuleGraphInfo<unknown>): Derivations {
     const allTuplesOfRelations = new Map<Relation, TupleLookup>()
-    const allTuplesOfRules = new Map<Rule, TupleLookup>() // populated post-evaluation
+    const allTuplesOfRules = new Map<Rule, Set<TupleWithDerivations>>() // populated post-evaluation
     function relationHasTuple(relationName: string, queryTuple: Tuple): boolean {
         const relation = graph.relations.get(relationName) as Relation
         const relationTuples = allTuplesOfRelations.get(relation) as TupleLookup
@@ -715,8 +715,8 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Derivations {
                         currIterationTuples.set(id, twd)
                         // Associate EDB tuples with their rules immediately
                         if (sources.length === 0) {
-                            const allRuleTuples = allTuplesOfRules.get(rule) as TupleLookup
-                            allRuleTuples.set(id, twd)
+                            const allRuleTuples = allTuplesOfRules.get(rule)
+                            allRuleTuples?.add(twd)
                         }
                     }
                     else currIterationTuple.derivations.push(derivation)
@@ -736,7 +736,7 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Derivations {
             allTuplesOfRelations.set(relation, new Map())
             for (const rule of relation.rules) {
                 rules.push(rule)
-                allTuplesOfRules.set(rule, new Map())
+                allTuplesOfRules.set(rule, new Set())
             }
         }
         // The first iteration is a full evaluation, and the remaining ones are incremental
@@ -772,7 +772,7 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Derivations {
             const id = tupleID(tuple.tuple)
             tuple.derivations.forEach(derivation => {
                 const rule = derivation.groundRule.ofRule
-                ;(allTuplesOfRules.get(rule) as TupleLookup).set(id, tuple)
+                allTuplesOfRules.get(rule)?.add(tuple)
             })
         })
     })
