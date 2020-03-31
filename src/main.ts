@@ -6,7 +6,7 @@ import { toRefs, reactive as observable } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import { h1, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input, br } from "./libs/lib-view"
 import {parseRule} from "./parser"
-import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDerivations, TupleLookup, Tuple } from "./semantics"
+import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDerivations, TupleLookup, Tuple, Derivations } from "./semantics"
 
 //#region  --- Essential & derived state ---
 
@@ -61,7 +61,7 @@ interface State {
     cachedRuleLayoutInfo: Map<RuleCard, ColumnLayout> // cached so we can base next layout on last layout
 // Derived state
     readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
-    readonly derivations: Map<Rule, TupleLookup>
+    readonly derivations: Derivations
     readonly incompleteCards: RuleCard[]
     readonly ruleLayoutInfo: Map<RuleCard, ColumnLayout> // determined from graph info
 }
@@ -386,48 +386,27 @@ function getInternalNegations(card: RuleCard): Set<number> {
 
 function getDerivations(card: RuleCard): TupleLookup {
     if (card.lastParsed !== null) {
-        const refs = state.derivations.get(card.lastParsed.rule)
-        return (refs === undefined) ? new Map() : refs
+        return state.derivations.perRule.get(card.lastParsed.rule) as TupleLookup
     }
     else return new Map()
 }
 
-function getValidatedDerivations(card: RuleCard): TupleLookup {
-    if (card.lastParsed !== null) {
-        const refs = state.derivations.get(card.lastParsed.rule)
-        if (refs === undefined) {
-            return new Map()
-        }
-        else {
-            const validated = new Map()
-            refs.forEach((value, key) => {
-                if (value.derivations[0].validated) {
-                    validated.set(key, value)
-                }
-            })
-            return validated
-        }
-    }
-    else return new Map()
+function getDerivationCount(relation: Relation): number {
+    const refs = state.derivations.perRelation.get(relation) as TupleLookup
+    let count = 0
+    refs.forEach((tuple, id) => {
+        count += tuple.derivations.length
+    })
+    return count
 }
 
-function getNonValidatedDerivations(card: RuleCard): TupleLookup {
-    if (card.lastParsed !== null) {
-        const refs = state.derivations.get(card.lastParsed.rule)
-        if (refs === undefined) {
-            return new Map()
-        }
-        else {
-            const nonValidated = new Map()
-            refs.forEach((value, key) => {
-                if (!value.derivations[0].validated) {
-                    nonValidated.set(key, value)
-                }
-            })
-            return nonValidated
-        }
-    }
-    else return new Map()
+function getUnfoundedDerivationCount(relation: Relation): number {
+    const refs = state.derivations.perRelation.get(relation) as TupleLookup
+    let count = 0
+    refs.forEach((tuple, id) => {
+        count += tuple.unfoundedDerivations.length
+    })
+    return count
 }
 
 function hasError(card: RuleCard): boolean {
@@ -647,7 +626,7 @@ function tuckBarText(card: RuleCard): string {
         return "not executed"
     }
     else {
-        const tuples = state.derivations.get(card.lastParsed.rule) as TupleLookup
+        const tuples = state.derivations.perRule.get(card.lastParsed.rule) as TupleLookup
         if (tuples.size === 1) {
             return "1 tuple"
         }
@@ -775,20 +754,10 @@ app ("app", state,
                                 div ({
                                     class: "dataScrollPane",
                                 }, [
-                                    $for (() => getValidatedDerivations(ruleCard).values(), tuple => [
+                                    $for (() => getDerivations(ruleCard).values(), tuple => [
                                         div ({
                                             class: "data",
                                             color: () => ruleCard.isCentered ? "black" : "transparent",
-                                            "background-color": "white",
-                                        }, [
-                                            p (tupleToString(tuple.tuple)),
-                                        ]),
-                                    ]),
-                                    $for (() => getNonValidatedDerivations(ruleCard).values(), tuple => [
-                                        div ({
-                                            class: "data",
-                                            color: () => ruleCard.isCentered ? "black" : "transparent",
-                                            "background-color": "#cccccc",
                                         }, [
                                             p (tupleToString(tuple.tuple)),
                                         ]),

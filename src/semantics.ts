@@ -489,14 +489,91 @@ export interface Derivation {
 }
 
 // N.B. each tuple has at least ONE derivation, i.e. these arrays have size >= 1.
-export type TupleWithDerivations = {tuple: Tuple, derivations: Derivation[]}
+export interface TupleWithDerivations {
+    tuple: Tuple
+    derivations: Derivation[]
+    unfoundedDerivations: Derivation[] // derivations that were removed for being unfounded
+    tag: number // for traversal metadata
+}
 
 // For looking up a specific derived tuple, since we can't rely on reference equality.
 export type TupleLookup = Map<TupleID, TupleWithDerivations>
 
-export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, TupleLookup> {
-    const allTuplesOfRules = new Map<Rule, TupleLookup>()         // for return
-    const allTuplesOfRelations = new Map<Relation, TupleLookup>() // for compute convenience
+export interface Derivations {
+    perRule: Map<Rule, TupleLookup>
+    perRelation: Map<Relation, TupleLookup>
+}
+
+let tagStart = 0 // UUID generator
+
+export function validateDerivations(targetTuple: TupleWithDerivations, graph: RuleGraphInfo<unknown>): void {
+    if (targetTuple.derivations.length === 0) return
+    // Use fresh values for traversal metadata
+    const tagInPath = tagStart++
+    const tagFalse = tagStart++
+    const tagTrue = tagStart++
+    const targetTupleRelationName = targetTuple.derivations[0].groundRule.ofRule.head.relationName
+    const targetTupleComponent = graph.components.get(graph.relations.get(targetTupleRelationName) as Relation)
+    function allDerivationsRequireTuple(twd: TupleWithDerivations): boolean {
+        if (twd.derivations.length === 0) {
+            twd.tag = tagFalse
+            return false
+        }
+        twd.tag = tagInPath
+        // If this tuple isn't in the strong component of the target tuple,
+        // we don't need to consider it.
+        const relationName = twd.derivations[0].groundRule.ofRule.head.relationName
+        const component = graph.components.get(graph.relations.get(relationName) as Relation)
+        if (component !== targetTupleComponent) return false
+        // Check if we've been here before. If so, return the result immediately.
+        if (twd.tag === tagFalse) return false
+        if (twd.tag === tagTrue) return true
+        nextDerivation:
+        for (const derivation of twd.derivations) {
+            // If we discover this derivation requires the target tuple,
+            // we immediately stop and try the next derivation.
+            for (const premise of derivation.groundRule.sourcePremises) {
+                if (premise.tag === tagInPath || tupleEq(premise.tuple, targetTuple.tuple) || allDerivationsRequireTuple(premise)) {
+                    continue nextDerivation
+                }
+            }
+            // If we get here, this derivation didn't require the target tuple.
+            twd.tag = tagFalse
+            return false
+        }
+        twd.tag = tagTrue
+        return true
+    }
+    // For each derivation of the target tuple (beyond the first, which must be well-founded),
+    // the derivation is unfounded if all derivations of the PREMISE TUPLES depend on the target
+    // tuple.
+    const wellFoundedDerivations: Derivation[] = []
+    for (const derivation of targetTuple.derivations) {
+        if (derivation.validated) {
+            wellFoundedDerivations.push(derivation)
+        }
+        else {
+            let isWellFounded = true
+            for (const premise of derivation.groundRule.sourcePremises) {
+                if (tupleEq(premise.tuple, targetTuple.tuple) || allDerivationsRequireTuple(premise)) {
+                    isWellFounded = false
+                    break
+                }
+            }
+            if (isWellFounded) {
+                wellFoundedDerivations.push(derivation)
+            }
+            else {
+                targetTuple.unfoundedDerivations.push(derivation)
+            }
+        }
+    }
+    targetTuple.derivations = wellFoundedDerivations
+}
+
+export function computeDerivations(graph: RuleGraphInfo<unknown>): Derivations {
+    const allTuplesOfRelations = new Map<Relation, TupleLookup>()
+    const allTuplesOfRules = new Map<Rule, TupleLookup>() // populated post-evaluation
     function relationHasTuple(relationName: string, queryTuple: Tuple): boolean {
         const relation = graph.relations.get(relationName) as Relation
         const relationTuples = allTuplesOfRelations.get(relation) as TupleLookup
@@ -615,10 +692,10 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
                 // Construct the ground rule that explains the derivation
                 const groundRule: GroundRule = {
                     ofRule: rule,
-                    sourcePremises: sourceTuples,
+                    sourcePremises: Array.from(sourceTuples),
                 }
                 // Log the derivation.
-                const derivation = {groundRule, validated: false}
+                const derivation: Derivation = {groundRule, validated: false}
                 // If the tuple already existed before this iteration, add the new derivation.
                 // If the tuple is new this iteration, add the tuple (if necessary) and the new derivation.
                 const id = tupleID(derivedTuple)
@@ -629,27 +706,22 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
                     derivation.validated = true
                     const currIterationTuple = currIterationTuples.get(id)
                     if (currIterationTuple === undefined) {
-                        currIterationTuples.set(id, {
+                        const twd = {
                             tuple: derivedTuple,
                             derivations: [derivation],
-                        })
+                            unfoundedDerivations: [],
+                            tag: -1,
+                        }
+                        currIterationTuples.set(id, twd)
+                        // Associate EDB tuples with their rules immediately
+                        if (sources.length === 0) {
+                            const allRuleTuples = allTuplesOfRules.get(rule) as TupleLookup
+                            allRuleTuples.set(id, twd)
+                        }
                     }
                     else currIterationTuple.derivations.push(derivation)
                 }
                 else preIterationTuple.derivations.push(derivation)
-                // Add the derivation to those of the rule.
-                // We can do this immediately since we don't use this info during evaluation.
-                const allRuleTuples = allTuplesOfRules.get(rule) as TupleLookup
-                const existingTuple = allRuleTuples.get(id)
-                if (existingTuple === undefined) {
-                    allRuleTuples.set(id, {
-                        tuple: derivedTuple,
-                        derivations: [derivation],
-                    })
-                }
-                else {
-                    existingTuple.derivations.push(derivation)
-                }
             }
         }
         enumerateTupleCombos(0, fullEvaluation)
@@ -691,10 +763,19 @@ export function computeDerivations(graph: RuleGraphInfo<unknown>): Map<Rule, Tup
             lastAddedTuples = newlyAddedTuples
         } while (lastAddedTuples.size > 0)
     }
-    return allTuplesOfRules
-}
+    // Validate the derivations before we return them, and group the
+    // tuples by the rules which have a valid derivation for them.
+    allTuplesOfRelations.forEach(tupleLookup => {
+        tupleLookup.forEach(tuple => {
+            validateDerivations(tuple, graph)
+            // Assign this tuple to the rules that derived it
+            const id = tupleID(tuple.tuple)
+            tuple.derivations.forEach(derivation => {
+                const rule = derivation.groundRule.ofRule
+                ;(allTuplesOfRules.get(rule) as TupleLookup).set(id, tuple)
+            })
+        })
+    })
 
-export function validateDerivation(tuple: TupleWithDerivations, index: number): void {
-    // TODO: Check that this derivation is well-founded through analysis of its dependency graph.
-    tuple.derivations[index].validated = true
+    return {perRule: allTuplesOfRules, perRelation: allTuplesOfRelations}
 }
