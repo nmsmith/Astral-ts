@@ -62,6 +62,7 @@ $standard-border-color: #aaaaaa;
 $overview-width: 200px;
 
 .ruleOverview {
+    flex-shrink: 0;
     @extend .col;
     width: $overview-width;
 }
