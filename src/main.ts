@@ -4,7 +4,7 @@ import "./globals"
 import Cycle from "json-cycle"
 import { toRefs, reactive as observable } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
-import { h1, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input, br } from "./libs/lib-view"
+import { h1, h2, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input, br } from "./libs/lib-view"
 import {parseRule} from "./parser"
 import {Rule, analyseRuleGraph, Component, RuleGraphInfo, Relation, componentOf, computeDerivations, TupleLookup, Tuple, Derivations, TupleWithDerivations } from "./semantics"
 
@@ -17,10 +17,10 @@ interface RuleCard {
         readonly rawText: string
         rule: Rule
     }
-// stuff for layout
-    newlyDisplayed: boolean
+    // stuff for layout
+    animationState: "incoming" | "onScreen" | "outgoing" | "offScreen"
     cardHeight: number
-// derived properties
+    // derived properties
     readonly isCentered: boolean
 }
 
@@ -29,50 +29,63 @@ function RuleCard(): RuleCard {
         rawText: "",
         parseErrorText: null,
         lastParsed: null,
-        newlyDisplayed: false,
+        animationState: "offScreen",
         cardHeight: 123, // to be overwritten once page is constructed
     } as RuleCard
 }
 
+function isRuleCard(item: unknown): item is RuleCard {
+    return (item as RuleCard).rawText !== undefined
+}
+
 // -------------------------- Layout calculation -------------------------
 
-type ColumnViewState = "DataShown" | "DataHidden"
-
-// Group whole connected components or (if a rule hasn't been parsed yet) a single rule card.
-type ColumnItem = Component | RuleCard
-
-function isComponent(item: ColumnItem): item is Component {
-    return (item as RuleCard).rawText === undefined
-}
-
-interface ColumnLayout {
-    readonly isRuleColumn: boolean // whether the column is one where rules are visible
-    // We align column members to the right edge of their column
-    // (since relation banners and rules both sit on this edge).
-    readonly right:  string  // as a CSS number (possibly calc())
-    readonly width: string  // as a CSS number (possibly calc())
-}
-
-interface Column {
-    readonly layout: ColumnLayout
-    readonly items: Set<ColumnItem>
-}
-
-function px(n: number): string { return `${n}px` }
-function percent(n: number): string { return `${n}%` }
-function calc(percent: number, pixDiff: number): string {
+type CssLength = string
+function px(n: number): CssLength { return `${n}px` }
+function percent(n: number): CssLength { return `${n}%` }
+function calc(percent: number, pixDiff: number): CssLength {
     return (pixDiff >= 0) ? `calc(${percent}% + ${pixDiff}px)` : `calc(${percent}% - ${-pixDiff}px)`
 }
 
+type ColumnViewState = {
+    dataVisible: boolean
+    rulesVisible: boolean
+}
+
+interface ColumnLayoutInfo {
+    // We align column members to the right edge of their column
+    // (since relation banners and rules both sit on this edge).
+    readonly right: CssLength
+    readonly width: CssLength
+}
+
+interface ColumnElementLayoutInfo {
+    readonly isCardColumn: boolean
+    readonly right: CssLength
+    readonly top: CssLength
+    readonly width: CssLength
+}
+
+const relationCardHeight = 40
 const sideBannerWidth = 180 // px   This is the width of the "side bars"
-const dataShownWidth = 140 //px   Data column
+const dataVisibleWidth = 140 //px   Data column
 const dataHiddenWidth = 28 //px
 const oneThird = 100 / 3 //percent
 const columnSpacing = 16 //px
+const componentSpacing = 16
+
+const nonCausalArea: ColumnElementLayoutInfo = {
+    isCardColumn: false,
+    right: percent(40),
+    top: px(0),
+    width: px(sideBannerWidth),
+}
 
 // Essential, persisted state. MUST be primitive data types (no Sets or Maps).
 interface EssentialState {
+    // Source code state
     readonly ruleCards: RuleCard[]
+    // Editor state
     readonly columnViewStates: { // from left to right
         dependents: ColumnViewState
         center: ColumnViewState
@@ -83,31 +96,41 @@ interface EssentialState {
 // Essential state that shouldn't be serialized, either because it's session-specific
 // or (more importantly) CAN'T be serialized for some reason.
 interface EssentialStateUnserializable {
-    centeredItem: ColumnItem | null // WARNING: this holds derived state, and thus needs to be refreshed whenever ruleCards changes
+    // Editor state
+    centeredItem: Component | RuleCard | null // WARNING: this holds derived state, and thus needs to be refreshed whenever ruleCards changes
     editingRule: RuleCard | null
-    cachedCardAssignments: Map<RuleCard, Column> // cached so we can base next layout on last layout
+    // Caches to handle animation of added/removed cards
+    cachedRuleLayout: Map<RuleCard, ColumnElementLayoutInfo>
+    cachedRelationLayout: Map<Relation, ColumnElementLayoutInfo>
 }
 
 interface DerivedState {
-    readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
-    readonly derivations: Derivations
+    // Source code state
     readonly incompleteCards: RuleCard[]
-    readonly columnLayouts: { // from left to right
-        readonly ruleCardWidth: string // this is independent of any column width
-        readonly transitiveDependents: ColumnLayout
-        readonly dependents: ColumnLayout
-        readonly center: ColumnLayout
-        readonly dependencies: ColumnLayout
-        readonly transitiveDependencies: ColumnLayout
+    // The structure of the rule set
+    readonly ruleGraph: RuleGraphInfo<RuleCard> // determined by analysis of parsed rules
+    // Editor state
+    readonly columnLayout: { // from left to right
+        readonly ruleCardWidth: CssLength // this is the same for each of the three center columns
+        readonly transitiveDependents: ColumnLayoutInfo
+        readonly dependents: ColumnLayoutInfo
+        readonly center: ColumnLayoutInfo
+        readonly dependencies: ColumnLayoutInfo
+        readonly transitiveDependencies: ColumnLayoutInfo
     }
-    readonly columnAssignments: {
-        readonly card: Map<RuleCard, Column>
-        readonly relation: Map<Relation, Column>
+    readonly columns: {
+        readonly transitiveDependents: Set<Component>
+        readonly dependents: Set<Component>
+        readonly center: Component | RuleCard | null
+        readonly dependencies: Set<Component>
+        readonly transitiveDependencies: Set<Component>
     }
-    readonly columnYPositions: {
-        readonly card: Map<RuleCard, number>
-        readonly relation: Map<Relation, number>
+    readonly columnElementLayout: { // For visible elements
+        readonly rule: Map<RuleCard, ColumnElementLayoutInfo>
+        readonly relation: Map<Relation, ColumnElementLayoutInfo>
     }
+    // Evaluation
+    readonly derivations: Derivations
 }
 
 interface State extends EssentialState, EssentialStateUnserializable, DerivedState {}
@@ -144,7 +167,11 @@ function createState(existingState?: State): WithDerivedProps<State> {
     } else {
         essentialState = {
             ruleCards: [],
-            columnViewStates: {dependents: "DataHidden", center: "DataShown", dependencies: "DataHidden"},
+            "columnViewStates": {
+                "dependents": {"dataVisible": false, "rulesVisible": true},
+                "center": {"dataVisible": true, "rulesVisible": true},
+                "dependencies": {"dataVisible": false, "rulesVisible": true},
+            },
         }
     }
     function createUnserializableState<T>(propName: string, initialValue: T): void {
@@ -157,7 +184,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
     }
     createUnserializableState("centeredItem", null)
     createUnserializableState("editingRule", null)
-    createUnserializableState("cachedCardAssignments", new Map<RuleCard, Column>())
+    createUnserializableState("cachedRuleLayout", new Map<RuleCard, ColumnElementLayoutInfo>())
+    createUnserializableState("cachedRelationLayout", new Map<Relation, ColumnElementLayoutInfo>())
 
     return withDerivedProps<State>(essentialState as State, {
         ruleCards: {
@@ -169,6 +197,9 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     return state.centeredItem === componentOf(card.lastParsed.rule, state.ruleGraph)
                 }
             },
+        },
+        incompleteCards: state => {
+            return state.ruleCards.filter(card => card.lastParsed === null)
         },
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
         ruleGraph: state => {
@@ -183,15 +214,9 @@ function createState(existingState?: State): WithDerivedProps<State> {
             })
             return analyseRuleGraph(rawRules)
         },
-        derivations: state => {
-            return computeDerivations(state.ruleGraph)
-        },
-        incompleteCards: state => {
-            return state.ruleCards.filter(card => card.lastParsed === null)
-        },
-        columnLayouts: state => {
+        columnLayout: state => {
             function dataBarWidth(s: ColumnViewState): number {
-                return (s === "DataShown") ? dataShownWidth : dataHiddenWidth
+                return s.dataVisible ? dataVisibleWidth : dataHiddenWidth
             }
             // width info
             const dataWidth1 = dataBarWidth(state.columnViewStates.dependencies)
@@ -222,88 +247,183 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     { isRuleColumn: false, right: px(0), width: px(sideBannerWidth) },
             }
         },
-        columnAssignments: state => {
+        columns: state => {
+            if (state.centeredItem !== null) {
+                if (isRuleCard(state.centeredItem)) {
+                    return {
+                        transitiveDependents: new Set<Component>(),
+                        dependents: new Set<Component>(),
+                        center: state.centeredItem,
+                        dependencies: new Set<Component>(),
+                        transitiveDependencies: new Set<Component>(),
+                    }
+                }
+                else {
+                    const selectedComponent = state.centeredItem
+                    const transitiveDependents = new Set<Component>()
+                    const dependents = new Set<Component>()
+                    const dependencies = new Set<Component>()
+                    const transitiveDependencies = new Set<Component>()
+                    // Add transitives to a stack until we've processed all of them
+                    const transitivesToProcess: Component[] = []
+                    for (const dependent of selectedComponent.dependents) {
+                        dependents.add(dependent)
+                        transitivesToProcess.push(dependent)
+                    }
+                    while (transitivesToProcess.length > 0) {
+                        for (const transitive of (transitivesToProcess.pop()?.dependents as Set<Component>)) {
+                            transitiveDependents.add(transitive)
+                            transitivesToProcess.push(transitive)
+                        }
+                    }
+                    for (const dependency of selectedComponent.dependencies) {
+                        dependencies.add(dependency)
+                        transitivesToProcess.push(dependency)
+                    }
+                    while (transitivesToProcess.length > 0) {
+                        for (const transitive of (transitivesToProcess.pop()?.dependencies as Set<Component>)) {
+                            transitiveDependencies.add(transitive)
+                            transitivesToProcess.push(transitive)
+                        }
+                    }
+                    return {
+                        transitiveDependents,
+                        dependents,
+                        center: selectedComponent,
+                        dependencies,
+                        transitiveDependencies,
+                    }
+                }
+            }
+            else return {
+                transitiveDependents: new Set<Component>(),
+                dependents: new Set<Component>(),
+                center: null,
+                dependencies: new Set<Component>(),
+                transitiveDependencies: new Set<Component>(),
+            }
+        },
+        columnElementLayout: state => {
             // Clone the last layout so we can use it as a point of comparison
-            const lastCardAssignments = new Map(state.cachedCardAssignments)
-            // Re-use the existing Map to preserve identity
-            const cardAssignments = state.cachedCardAssignments
-            cardAssignments.clear()
-            // Gather the cards that were visible at the last timestep.
-            // We'll work out which of these are no longer visible, and animate them away.
-            const outgoingCards = new Set<RuleCard>()
-            lastCardAssignments.forEach((column, card) => {
-                if (column.layout.isRuleColumn) outgoingCards.add(card)
-            })
-            // Track which cards are newly displayed: we'll ensure they animate onto the screen.
+            const lastRuleLayout = state.cachedRuleLayout
+            const ruleLayout = new Map<RuleCard, ColumnElementLayoutInfo>()
+            const relationLayout = new Map<Relation, ColumnElementLayoutInfo>()
+            // Keep track of which rule cards are being added/removed from view,
+            // so we can animate them appropriately.
             const incomingCards = new Set<RuleCard>()
             setTimeout(() => {
-                // After this DOM update is complete, and the new cards have been added
-                // to the page, commence their animation by triggering a second DOM update.
-                incomingCards.forEach(card => {
-                    card.newlyDisplayed = false
-                })
-                defineDOMUpdate(() => { /* no work to do */ })({
+                // This code will run after the DOM elements have been added to the page,
+                // allowing us to commence their animation.
+                defineDOMUpdate(() => {
+                    incomingCards.forEach(card => card.animationState = "onScreen")
+                    // We kept the old cache until the DOM nodes were added, so they can
+                    // originate from where the relations were located before this re-layout.
+                    // Now we can update the cache.
+                    state.cachedRelationLayout = relationLayout
+                })({
                     type: "Start card animation",
                     target: null,
                 })
             }, 0)
+            const outgoingCards = new Set<RuleCard>()
+            for (const [card, layout] of lastRuleLayout) {
+                if (layout === undefined) {
+                    // This card was an outgoing card, so it's time to remove it entirely.
+                    lastRuleLayout.delete(card)
+                }
+                else {
+                    // Add all cards initially. If we discover the card is still visible,
+                    // we'll remove it from this set.
+                    outgoingCards.add(card)
+                }
+            }
+            lastRuleLayout.forEach((_, card) => {
+                outgoingCards.add(card)
+            })
 
-            // Assign the rule (and its whole component, if exists) to the given column
-            function assignComponentToColumn(component: Component, column: Column): void {
-                if (!column.items.has(component)) {
-                    column.items.add(component)
-                    for (const relation of component.relations) {
+            function layoutComponent(
+                component: Component,
+                topStart: number,
+                columnInfo: ColumnLayoutInfo,
+                layOutRules: boolean,
+            ): number {
+                let top = topStart
+                for (const relation of component.relations) {
+                    relationLayout.set(relation, {
+                        isCardColumn: false,
+                        right: columnInfo.right,
+                        top: px(top),
+                        width: columnInfo.width,
+                    })
+                    top += relationCardHeight
+                    if (layOutRules) {
                         for (const rule of relation.rules) {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                            cardAssignments.set(ruleCard, column)
-                            if (lastCardAssignments.has(ruleCard)) {
+                            ruleLayout.set(ruleCard, {
+                                isCardColumn: true,
+                                right: columnInfo.right,
+                                top: px(top),
+                                width: state.columnLayout.ruleCardWidth,
+                            })
+                            if (lastRuleLayout.has(ruleCard)) {
+                                ruleCard.animationState = "onScreen"
                                 outgoingCards.delete(ruleCard)
                             }
                             else {
-                                ruleCard.newlyDisplayed = true
+                                ruleCard.animationState = "incoming"
                                 incomingCards.add(ruleCard)
                             }
+                            top += ruleCard.cardHeight
                         }
                     }
                 }
+                return top
             }
-
+            function layoutComponents(
+                components: Set<Component>,
+                columnInfo: ColumnLayoutInfo,
+                layOutRules: boolean,
+            ) {
+                let top = 0
+                for (const component of components) {
+                    top += layoutComponent(component, top, columnInfo, layOutRules) + componentSpacing
+                }
+            }
             if (state.centeredItem !== null) {
-                // Put the centered rule/component into the middle column
-                const selectedComponentColumn: Column = observable({layout: state.columnLayouts.center, items: new Set()})
-                if (state.centeredItem !== null && isComponent(state.centeredItem)) {
-                    const selectedComponent = state.centeredItem
-                    assignComponentToColumn(selectedComponent, selectedComponentColumn)
-                    // Put dependencies and dependent components into adjacent columns
-                    const dependenciesColumn: Column = observable({layout: state.columnLayouts.dependencies, items: new Set()})
-                    const dependentsColumn: Column = observable({layout: state.columnLayouts.dependents, items: new Set()})
-                    selectedComponent.dependents.forEach(dependent => {
-                        assignComponentToColumn(dependent, dependentsColumn)
-                    })
-                    selectedComponent.dependencies.forEach(dependency => {
-                        assignComponentToColumn(dependency, dependenciesColumn)
+                if (isRuleCard(state.centeredItem)) {
+                    ruleLayout.set(state.centeredItem, {
+                        isCardColumn: true,
+                        right: state.columnLayout.center.right,
+                        top: px(0),
+                        width: state.columnLayout.ruleCardWidth,
                     })
                 }
-                else { // an INCOMPLETE rule is centered, so it will be the only thing in the column
-                    const ruleCard = state.centeredItem
-                    selectedComponentColumn.items.add(ruleCard)
-                    cardAssignments.set(ruleCard, selectedComponentColumn)
-                    if (lastCardAssignments.has(ruleCard)) {
-                        outgoingCards.delete(ruleCard)
-                    }
-                    else {
-                        ruleCard.newlyDisplayed = true
-                        incomingCards.add(ruleCard)
-                    }
+                else {
+                    layoutComponent(state.centeredItem, 0, state.columnLayout.center, true)
                 }
             }
-            return {card: cardAssignments, relation: new Map()}
+            layoutComponents(state.columns.transitiveDependents, state.columnLayout.transitiveDependents, false)
+            layoutComponents(state.columns.dependents, state.columnLayout.dependents, true)
+            layoutComponents(state.columns.dependencies, state.columnLayout.dependencies, true)
+            layoutComponents(state.columns.transitiveDependencies, state.columnLayout.transitiveDependencies, false)
+            // Now gather the relations which are not causally linked the the selected component.
+            for (const [_, relation] of state.ruleGraph.relations) {
+                if (!relationLayout.has(relation)) {
+                    relationLayout.set(relation, nonCausalArea)
+                }
+            }
+            // Keep the outgoing cards in the set of laid out cards;
+            // we're not going to use the layout information, but we
+            // need to keep the cards attached to the DOM.
+            outgoingCards.forEach(card => {
+                card.animationState = "outgoing"
+                ruleLayout.set(card, undefined as unknown as ColumnElementLayoutInfo)
+            })
+            state.cachedRuleLayout = ruleLayout
+            return {rule: ruleLayout, relation: relationLayout}
         },
-        columnYPositions: state => {
-            
-            // We compute this separately to columnAssignments so that the assignments
-            // aren't recomputed from scratch whenever a rule card is edited.
-            return {card: new Map(), relation: new Map()}
+        derivations: state => {
+            return computeDerivations(state.ruleGraph)
         },
     })
 }
@@ -532,6 +652,23 @@ document.body.prepend(
     div ({class: "separator"}),
 )
 
+function getRuleCardDimension(card: RuleCard, dimension: string) {
+    if (card.animationState === "onScreen") {
+        return (state.columnElementLayout.rule.get(card) as any)[dimension] as CssLength
+    }
+    else if (card.lastParsed !== null) {
+        const myRelation = state.ruleGraph.relations.get(card.lastParsed.rule.head.relationName) as Relation
+        const myRelationLayout = card.animationState === "incoming"
+            ? state.cachedRelationLayout.get(myRelation)            // if incoming
+            : state.columnElementLayout.relation.get(myRelation)    // if outgoing
+        return (myRelationLayout as any)[dimension] as CssLength
+    }
+    else return "123"
+}
+const ruleCardRight = (card: RuleCard): CssLength => getRuleCardDimension(card, "right")
+const ruleCardTop   = (card: RuleCard): CssLength => getRuleCardDimension(card, "top")
+const ruleCardWidth = (card: RuleCard): CssLength => getRuleCardDimension(card, "width")
+
 function overviewTextForIncompleteCard(card: RuleCard): string {
     // TODO: This criteria for showing incomplete text is probably silly.
     // We want cards to only be considered incomplete/not display with their component
@@ -667,6 +804,9 @@ app ("app", state,
                 ]),
             ]),
         ]),
+        div ({class: "row"}, [
+            h2("pinned relations --- recently edited relations --- search"),
+        ]),
         div ({class: "ruleGraphView"}, [
             $set (() => state.ruleGraph.relations, relationName => [
                 div ({
@@ -679,7 +819,7 @@ app ("app", state,
                     //p (relationName, {class: "relation"}),
                 ]),
             ]),
-            $set (() => state.columnAssignments.card, ruleCard => [
+            $set (() => state.columnElementLayout.rule, ruleCard => [
                 // div ({
                 //     class: "ruleCardShadow",
                 //     "z-index": () => computeZIndex(ruleCard) - 1, // render behind cards
@@ -694,16 +834,17 @@ app ("app", state,
                         ? "ruleCardError"
                         : ""
                     }`,
-                    right: () => state.columnAssignments.card.get(ruleCard)?.layout.right as string,
-                    top: () => px(0),
-                    width: () => state.columnLayouts.ruleCardWidth,
+                    right: () => ruleCardRight(ruleCard),
+                    top: () => ruleCardTop(ruleCard),
+                    width: () => ruleCardWidth(ruleCard),
                     height: () => `${ruleCard.cardHeight}px`,
+                    opacity: () => ruleCard.animationState === "outgoing" ? 0 : 1,
                 }, [
                     div ({class: "ruleCardBody"}, [
                         // Computed conclusions
                         // div ({
                         //     class: "ruleDataSide",
-                        //     width: () => ruleCard.isCentered ? px(dataShownWidth) : px(dataHiddenWidth),
+                        //     width: () => ruleCard.isCentered ? px(dataVisibleWidth) : px(dataHiddenWidth),
                         // }, [
                         //     div ({class: "dataSearchBar"}, [
                         //         img ("./glass-short.svg", {
@@ -817,63 +958,64 @@ app ("app", state,
                             }),
                         ]),
                     ]),
-                    div ({class: "dataTuckBar"}, [
-                        p (() => tuckBarText(ruleCard), {class: "factCount"}),
-                        div ({class: "grow"}),
-                        button ("✖", {
-                            class: "deleteCardButton",
-                            visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
-                            onclick: () => {
-                                state.cachedCardAssignments.delete(ruleCard) // don't animate deletion
-                                const deletionIndex = state.ruleCards.indexOf(ruleCard)
-                                if (state.editingRule === ruleCard) {
-                                    state.editingRule = null
-                                    // Need to release reference to the old component,
-                                    // since it will now be invalid.
-                                    state.centeredItem = null
-                                    // But now we'll need to find another rule in the old
-                                    // component, whose newly-computed component can be centered.
-                                    if (ruleCard.lastParsed !== null) {
-                                        const myRule = ruleCard.lastParsed.rule
-                                        const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
-                                        const myComponent = state.ruleGraph.components.get(myRelation) as Component
-                                        let candidateRuleCard: RuleCard | undefined = undefined
-                                        if (myRelation.rules.size > 0) {
-                                            // Select another rule in the relation
-                                            for (const rule of myRelation.rules) {
-                                                if (rule !== myRule) {
-                                                    candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                                                    break
-                                                }
-                                            }
-                                        }
-                                        else {
-                                            // Select the first rule from another relation in the component
-                                            for (const relation of myComponent.relations) {
-                                                if (relation !== myRelation && relation.rules.size > 0) {
-                                                    const rule = relation.rules.values().next().value
-                                                    candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                                                    break
-                                                }
-                                            }
-                                        }
+                    // div ({class: "dataTuckBar"}, [
+                    //     p (() => tuckBarText(ruleCard), {class: "factCount"}),
+                    //     div ({class: "grow"}),
+                    //     button ("✖", {
+                    //         class: "deleteCardButton",
+                    //         visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
+                    //         onclick: () => {
+                    //             console.error("WARN: Did I delete this TODO?")
+                    //             // TODO: Can I delete this line? state.cachedCardAssignments.delete(ruleCard) // don't animate deletion
+                    //             const deletionIndex = state.ruleCards.indexOf(ruleCard)
+                    //             if (state.editingRule === ruleCard) {
+                    //                 state.editingRule = null
+                    //                 // Need to release reference to the old component,
+                    //                 // since it will now be invalid.
+                    //                 state.centeredItem = null
+                    //                 // But now we'll need to find another rule in the old
+                    //                 // component, whose newly-computed component can be centered.
+                    //                 if (ruleCard.lastParsed !== null) {
+                    //                     const myRule = ruleCard.lastParsed.rule
+                    //                     const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
+                    //                     const myComponent = state.ruleGraph.components.get(myRelation) as Component
+                    //                     let candidateRuleCard: RuleCard | undefined = undefined
+                    //                     if (myRelation.rules.size > 0) {
+                    //                         // Select another rule in the relation
+                    //                         for (const rule of myRelation.rules) {
+                    //                             if (rule !== myRule) {
+                    //                                 candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                    //                                 break
+                    //                             }
+                    //                         }
+                    //                     }
+                    //                     else {
+                    //                         // Select the first rule from another relation in the component
+                    //                         for (const relation of myComponent.relations) {
+                    //                             if (relation !== myRelation && relation.rules.size > 0) {
+                    //                                 const rule = relation.rules.values().next().value
+                    //                                 candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                    //                                 break
+                    //                             }
+                    //                         }
+                    //                     }
 
-                                        if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
-                                            // Delete the rule card so that new components can be computed
-                                            state.ruleCards.removeAt(deletionIndex)
-                                            // Find the candidate rule's new component, and center it
-                                            state.centeredItem = componentOf(
-                                                candidateRuleCard.lastParsed.rule,
-                                                state.ruleGraph,
-                                            )
-                                            return // finish early, since we already deleted the card
-                                        }
-                                    }
-                                }
-                                state.ruleCards.removeAt(deletionIndex)
-                            },
-                        }),
-                    ]),
+                    //                     if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
+                    //                         // Delete the rule card so that new components can be computed
+                    //                         state.ruleCards.removeAt(deletionIndex)
+                    //                         // Find the candidate rule's new component, and center it
+                    //                         state.centeredItem = componentOf(
+                    //                             candidateRuleCard.lastParsed.rule,
+                    //                             state.ruleGraph,
+                    //                         )
+                    //                         return // finish early, since we already deleted the card
+                    //                     }
+                    //                 }
+                    //             }
+                    //             state.ruleCards.removeAt(deletionIndex)
+                    //         },
+                    //     }),
+                    // ]),
                 ]),
             ]),
         ]),

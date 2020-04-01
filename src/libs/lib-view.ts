@@ -674,6 +674,7 @@ declare global {
         "z-index": number
         "color": string
         "background-color": string
+        "opacity": number
     }
 }
 
@@ -691,6 +692,7 @@ const cssProperties = new Set([
     "z-index",
     "color",
     "background-color",
+    "opacity",
 ])
 
 // Defines a record of properties that can be assigned to an Element. If the property

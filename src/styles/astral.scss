@@ -140,7 +140,7 @@ $rule-anim-duration: 0.6s;
     position: absolute;
     box-sizing: border-box;
 // animation
-    transition-property: z-index, left, top, width, height;
+    transition-property: z-index, right, top, width, height, opacity;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
