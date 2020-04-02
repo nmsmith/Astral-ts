@@ -136,7 +136,7 @@ $overview-width: 200px;
 
 $rule-anim-duration: 0.6s;
 
-.ruleCardProps {
+.cardProps {
     position: absolute;
     box-sizing: border-box;
 // animation
@@ -144,8 +144,20 @@ $rule-anim-duration: 0.6s;
     transition-duration: $rule-anim-duration; // for movement animation
 }
 
+.relationBanner {
+    @extend .cardProps;
+    @extend .codeStyle;
+    //font-family: NotoSans, serif;
+    font-size: 18px;
+    user-select: none;
+    padding: 6px;
+    background-color: #af2b2b;
+    color: white;
+    padding-left: 14px;
+}
+
 .ruleCard {
-    @extend .ruleCardProps;
+    @extend .cardProps;
     z-index: 0; // manipulated in JS
     @extend .col;
 // border for delimiting adjacent cards
@@ -167,7 +179,7 @@ $error-back-color: #ffbfbf;
 }
 
 .ruleCardShadow {
-    @extend .ruleCardProps;
+    @extend .cardProps;
     z-index: -1; // manipulated in JS
     box-shadow: $standard-box-shadow;
 }

@@ -675,6 +675,7 @@ declare global {
         "color": string
         "background-color": string
         "opacity": number
+        "pointer-events": string
     }
 }
 
@@ -693,6 +694,7 @@ const cssProperties = new Set([
     "color",
     "background-color",
     "opacity",
+    "pointer-events",
 ])
 
 // Defines a record of properties that can be assigned to an Element. If the property

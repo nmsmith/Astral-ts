@@ -2,7 +2,7 @@ import "./reset.css"
 import "./styles/styles.scss"
 import "./globals"
 import Cycle from "json-cycle"
-import { toRefs, reactive as observable } from "@vue/reactivity"
+import { toRefs, reactive as observable, pauseTracking, resetTracking } from "@vue/reactivity"
 import { WithDerivedProps, withDerivedProps } from "./libs/lib-derived-state"
 import { h1, h2, h3, $if, $for, makeObjSeq, app, div, p, button, textarea, span, list, $set, defineDOMUpdate, img, input, br } from "./libs/lib-view"
 import {parseRule} from "./parser"
@@ -18,7 +18,7 @@ interface RuleCard {
         rule: Rule
     }
     // stuff for layout
-    animationState: "incoming" | "onScreen" | "outgoing" | "offScreen"
+    animationState: "incoming" | "onScreen" | "outgoing"
     cardHeight: number
     // derived properties
     readonly isCentered: boolean
@@ -29,7 +29,7 @@ function RuleCard(): RuleCard {
         rawText: "",
         parseErrorText: null,
         lastParsed: null,
-        animationState: "offScreen",
+        animationState: "outgoing",
         cardHeight: 123, // to be overwritten once page is constructed
     } as RuleCard
 }
@@ -61,8 +61,8 @@ interface ColumnLayoutInfo {
 
 interface ColumnElementLayoutInfo {
     readonly isCardColumn: boolean
+    readonly top: number       // keep this numeric so we can still do arithmetic
     readonly right: CssLength
-    readonly top: CssLength
     readonly width: CssLength
 }
 
@@ -76,10 +76,13 @@ const componentSpacing = 16
 
 const nonCausalArea: ColumnElementLayoutInfo = {
     isCardColumn: false,
+    top: 600,
     right: percent(40),
-    top: px(0),
     width: px(sideBannerWidth),
 }
+
+// Hack to fix animation delay for newly-added DOM elements that need to "animate into existence"
+let animationPauseForSync = false
 
 // Essential, persisted state. MUST be primitive data types (no Sets or Maps).
 interface EssentialState {
@@ -306,20 +309,24 @@ function createState(existingState?: State): WithDerivedProps<State> {
         },
         columnElementLayout: state => {
             // Clone the last layout so we can use it as a point of comparison
+            pauseTracking() // don't react when we update the cache in setTimeout()
             const lastRuleLayout = state.cachedRuleLayout
+            resetTracking()
             const ruleLayout = observable(new Map<RuleCard, ColumnElementLayoutInfo>())
             const relationLayout = observable(new Map<string, ColumnElementLayoutInfo>())
-            // Keep track of which rule cards are being added/removed from view,
-            // so we can animate them appropriately.
+            // Synchronize animation of existing cards with newly-added cards
             const incomingCards = new Set<RuleCard>()
+            animationPauseForSync = true
             setTimeout(() => {
                 // This code will run after the DOM elements have been added to the page,
                 // allowing us to commence their animation.
                 defineDOMUpdate(() => {
                     incomingCards.forEach(card => card.animationState = "onScreen")
+                    animationPauseForSync = false
                     // We kept the old cache until the DOM nodes were added, so they can
                     // originate from where the relations were located before this re-layout.
                     // Now we can update the cache.
+                    state.cachedRuleLayout = ruleLayout
                     state.cachedRelationLayout = relationLayout
                 })({
                     type: "Start card animation",
@@ -352,8 +359,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 for (const relation of component.relations) {
                     relationLayout.set(relation.name, {
                         isCardColumn: false,
+                        top,
                         right: columnInfo.right,
-                        top: px(top),
                         width: columnInfo.width,
                     })
                     top += relationCardHeight
@@ -362,8 +369,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
                             ruleLayout.set(ruleCard, {
                                 isCardColumn: true,
+                                top,
                                 right: columnInfo.right,
-                                top: px(top),
                                 width: state.columnLayout.ruleCardWidth,
                             })
                             if (lastRuleLayout.has(ruleCard)) {
@@ -394,8 +401,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 if (isRuleCard(state.centeredItem)) {
                     ruleLayout.set(state.centeredItem, {
                         isCardColumn: true,
+                        top: 0,
                         right: state.columnLayout.center.right,
-                        top: px(0),
                         width: state.columnLayout.ruleCardWidth,
                     })
                 }
@@ -420,7 +427,6 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 card.animationState = "outgoing"
                 ruleLayout.set(card, undefined as unknown as ColumnElementLayoutInfo)
             })
-            state.cachedRuleLayout = ruleLayout
             return {rule: ruleLayout, relation: relationLayout}
         },
         derivations: state => {
@@ -653,22 +659,50 @@ document.body.prepend(
     div ({class: "separator"}),
 )
 
-function getRuleCardDimension(card: RuleCard, dimension: string) {
-    if (card.animationState === "onScreen") {
-        return (state.columnElementLayout.rule.get(card) as any)[dimension] as CssLength
+function getRuleCardDimension(card: RuleCard, dimension: string): CssLength {
+    if (card.animationState === "onScreen") { // this is a one-frame delay to sync up with the "incoming" cards
+        const myLayout = animationPauseForSync
+            ? state.cachedRuleLayout.get(card) as ColumnElementLayoutInfo
+            : state.columnElementLayout.rule.get(card) as ColumnElementLayoutInfo
+        return (dimension === "top")
+            ? `${myLayout.top}px`
+            : (myLayout as any)[dimension] as CssLength
     }
     else if (card.lastParsed !== null) {
         const myRelation = state.ruleGraph.relations.get(card.lastParsed.rule.head.relationName) as Relation
-        const myRelationLayout = card.animationState === "incoming"
-            ? state.cachedRelationLayout.get(myRelation.name)            // if incoming
-            : state.columnElementLayout.relation.get(myRelation.name)    // if outgoing
-        return (myRelationLayout as any)[dimension] as CssLength
+        if (card.animationState === "incoming") {
+            // Use the previous layout of the relation card for this frame
+            const myRelationLayout = state.cachedRelationLayout.get(myRelation.name) as ColumnElementLayoutInfo
+            return (dimension === "top")
+                ? `${myRelationLayout.top + relationCardHeight}px`
+                : (myRelationLayout as any)[dimension] as CssLength
+        }
+        else { // outgoing
+            const myRelationLayout = animationPauseForSync
+                ? state.cachedRelationLayout.get(myRelation.name) as ColumnElementLayoutInfo
+                : state.columnElementLayout.relation.get(myRelation.name) as ColumnElementLayoutInfo
+            return (dimension === "top")
+            ? `${myRelationLayout.top + relationCardHeight}px`
+            : (myRelationLayout as any)[dimension] as CssLength
+        }
     }
     else return "123"
 }
 const ruleCardRight = (card: RuleCard): CssLength => getRuleCardDimension(card, "right")
 const ruleCardTop   = (card: RuleCard): CssLength => getRuleCardDimension(card, "top")
 const ruleCardWidth = (card: RuleCard): CssLength => getRuleCardDimension(card, "width")
+function relationCardRight(relationName: string): CssLength {
+    if (animationPauseForSync) return state.cachedRelationLayout.get(relationName)?.right as CssLength
+    else return state.columnElementLayout.relation.get(relationName)?.right as CssLength
+}
+function relationCardTop(relationName: string): CssLength {
+    if (animationPauseForSync) return `${state.cachedRelationLayout.get(relationName)?.top}px`
+    else return `${state.columnElementLayout.relation.get(relationName)?.top}px`
+}
+function relationCardWidth(relationName: string): CssLength {
+    if (animationPauseForSync) return state.cachedRelationLayout.get(relationName)?.width as CssLength
+    else return state.columnElementLayout.relation.get(relationName)?.width as CssLength
+}
 
 function overviewTextForIncompleteCard(card: RuleCard): string {
     // TODO: This criteria for showing incomplete text is probably silly.
@@ -790,18 +824,6 @@ app ("app", state,
                             p (() => overviewTextForIncompleteCard(card), {class: "relation incompleteCardSummaryText"}),
                         ]),
                     ]),
-                    // Iterate over the UNIQUE components stored in the component Map
-                    $for (() => new Set(state.ruleGraph.components.values()).values(), component => [
-                        div ({
-                            class: "component",
-                            onclick: () => state.centeredItem = component,
-                            left: () => state.centeredItem === component ? px(-12) : px(8),
-                        }, [
-                            $for (() => component.relations.values(), relation => [
-                                p ("(3) " + relation.name, {class: "relation"}),
-                            ]),
-                        ]),
-                    ]),
                 ]),
             ]),
         ]),
@@ -812,12 +834,15 @@ app ("app", state,
             $set (() => state.ruleGraph.relations, relationName => [
                 div ({
                     class: "relationBanner",
-                    // left: () => computeRelationLeft(relationName),
-                    // top: () => computeRelationTop(relationName),
-                    // width: () => computeRelationWidth(relationName),
-                    // height: () => computeRelationHeight(relationName),
+                    right: () => relationCardRight(relationName),
+                    top: () => relationCardTop(relationName),
+                    width: () => relationCardWidth(relationName),
+                    height: () => px(relationCardHeight),
+                    onclick: () => state.centeredItem = state.ruleGraph.components.get(
+                        state.ruleGraph.relations.get(relationName) as Relation
+                    ) as Component,
                 }, [
-                    //p (relationName, {class: "relation"}),
+                    p (relationName),
                 ]),
             ]),
             $set (() => state.columnElementLayout.rule, ruleCard => [
@@ -840,6 +865,7 @@ app ("app", state,
                     width: () => ruleCardWidth(ruleCard),
                     height: () => `${ruleCard.cardHeight}px`,
                     opacity: () => ruleCard.animationState === "outgoing" ? 0 : 1,
+                    "pointer-events": () => ruleCard.animationState === "onScreen" ? "auto" : "none",
                 }, [
                     div ({class: "ruleCardBody"}, [
                         // Computed conclusions
