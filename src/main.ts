@@ -101,7 +101,7 @@ interface EssentialStateUnserializable {
     editingRule: RuleCard | null
     // Caches to handle animation of added/removed cards
     cachedRuleLayout: Map<RuleCard, ColumnElementLayoutInfo>
-    cachedRelationLayout: Map<Relation, ColumnElementLayoutInfo>
+    cachedRelationLayout: Map<string, ColumnElementLayoutInfo>
 }
 
 interface DerivedState {
@@ -127,7 +127,7 @@ interface DerivedState {
     }
     readonly columnElementLayout: { // For visible elements
         readonly rule: Map<RuleCard, ColumnElementLayoutInfo>
-        readonly relation: Map<Relation, ColumnElementLayoutInfo>
+        readonly relation: Map<string, ColumnElementLayoutInfo>
     }
     // Evaluation
     readonly derivations: Derivations
@@ -185,7 +185,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
     createUnserializableState("centeredItem", null)
     createUnserializableState("editingRule", null)
     createUnserializableState("cachedRuleLayout", new Map<RuleCard, ColumnElementLayoutInfo>())
-    createUnserializableState("cachedRelationLayout", new Map<Relation, ColumnElementLayoutInfo>())
+    createUnserializableState("cachedRelationLayout", new Map<string, ColumnElementLayoutInfo>())
 
     return withDerivedProps<State>(essentialState as State, {
         ruleCards: {
@@ -204,8 +204,9 @@ function createState(existingState?: State): WithDerivedProps<State> {
         /* eslint-disable @typescript-eslint/explicit-function-return-type */
         ruleGraph: state => {
             // IMPORTANT: all proxied (i.e. state) objects which will be tested for equality in the future
-            // must be inserted into an existing proxied object so that they are not "double-proxied" when
-            // their parent is later wrapped in observable(). Rules are tested for equality in Map.get().
+            // must be inserted into an OBSERVABLE Map/Set/array so that they are inserted in raw form.
+            // Otherwise, if the object in question is extracted from state later, it will have a NEW
+            // proxy wrapper, which does not compare as equal to the old wrapper under the === operator.
             const rawRules = observable(new Map<Rule, RuleCard>())
             state.ruleCards.forEach(r => {
                 if (r.lastParsed !== null) {
@@ -260,10 +261,10 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 }
                 else {
                     const selectedComponent = state.centeredItem
-                    const transitiveDependents = new Set<Component>()
-                    const dependents = new Set<Component>()
-                    const dependencies = new Set<Component>()
-                    const transitiveDependencies = new Set<Component>()
+                    const transitiveDependents = observable(new Set<Component>())
+                    const dependents = observable(new Set<Component>())
+                    const dependencies = observable(new Set<Component>())
+                    const transitiveDependencies = observable(new Set<Component>())
                     // Add transitives to a stack until we've processed all of them
                     const transitivesToProcess: Component[] = []
                     for (const dependent of selectedComponent.dependents) {
@@ -306,8 +307,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
         columnElementLayout: state => {
             // Clone the last layout so we can use it as a point of comparison
             const lastRuleLayout = state.cachedRuleLayout
-            const ruleLayout = new Map<RuleCard, ColumnElementLayoutInfo>()
-            const relationLayout = new Map<Relation, ColumnElementLayoutInfo>()
+            const ruleLayout = observable(new Map<RuleCard, ColumnElementLayoutInfo>())
+            const relationLayout = observable(new Map<string, ColumnElementLayoutInfo>())
             // Keep track of which rule cards are being added/removed from view,
             // so we can animate them appropriately.
             const incomingCards = new Set<RuleCard>()
@@ -349,7 +350,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
             ): number {
                 let top = topStart
                 for (const relation of component.relations) {
-                    relationLayout.set(relation, {
+                    relationLayout.set(relation.name, {
                         isCardColumn: false,
                         right: columnInfo.right,
                         top: px(top),
@@ -408,8 +409,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
             layoutComponents(state.columns.transitiveDependencies, state.columnLayout.transitiveDependencies, false)
             // Now gather the relations which are not causally linked the the selected component.
             for (const [_, relation] of state.ruleGraph.relations) {
-                if (!relationLayout.has(relation)) {
-                    relationLayout.set(relation, nonCausalArea)
+                if (!relationLayout.has(relation.name)) {
+                    relationLayout.set(relation.name, nonCausalArea)
                 }
             }
             // Keep the outgoing cards in the set of laid out cards;
@@ -659,8 +660,8 @@ function getRuleCardDimension(card: RuleCard, dimension: string) {
     else if (card.lastParsed !== null) {
         const myRelation = state.ruleGraph.relations.get(card.lastParsed.rule.head.relationName) as Relation
         const myRelationLayout = card.animationState === "incoming"
-            ? state.cachedRelationLayout.get(myRelation)            // if incoming
-            : state.columnElementLayout.relation.get(myRelation)    // if outgoing
+            ? state.cachedRelationLayout.get(myRelation.name)            // if incoming
+            : state.columnElementLayout.relation.get(myRelation.name)    // if outgoing
         return (myRelationLayout as any)[dimension] as CssLength
     }
     else return "123"
