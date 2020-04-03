@@ -53,6 +53,7 @@ type ColumnViewState = {
 }
 
 interface ColumnLayoutInfo {
+    readonly viewState: ColumnViewState
     // We align column members to the right edge of their column
     // (since relation banners and rules both sit on this edge).
     readonly right: CssLength
@@ -60,13 +61,13 @@ interface ColumnLayoutInfo {
 }
 
 interface ColumnElementLayoutInfo {
-    readonly isCardColumn: boolean
-    readonly top: number       // keep this numeric so we can still do arithmetic
-    readonly right: CssLength
-    readonly width: CssLength
+    readonly columnInfo: ColumnLayoutInfo
+    // Keep these numeric so we can still do arithmetic
+    readonly top: number
+    readonly height: number
 }
 
-const relationCardHeight = 40
+const relationBannerHeight = 40
 const sideBannerWidth = 180 // px   This is the width of the "side bars"
 const dataVisibleWidth = 140 //px   Data column
 const dataHiddenWidth = 28 //px
@@ -75,10 +76,13 @@ const columnSpacing = 16 //px
 const componentSpacing = 16
 
 const nonCausalArea: ColumnElementLayoutInfo = {
-    isCardColumn: false,
+    columnInfo: {
+        viewState: {dataVisible: false, rulesVisible: false},
+        right: percent(40),
+        width: px(sideBannerWidth),
+    },
     top: 600,
-    right: percent(40),
-    width: px(sideBannerWidth),
+    height: relationBannerHeight,
 }
 
 // Hack to fix animation delay for newly-added DOM elements that need to "animate into existence"
@@ -240,15 +244,15 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 ruleCardWidth:
                     calc(oneThird, fixedWidthLostPerFlexColumn),
                 transitiveDependents:
-                    { isRuleColumn: false, right: calc(100, fixedRightOffset0), width: px(sideBannerWidth) },
+                    { viewState: {dataVisible: false, rulesVisible: false}, right: calc(100, fixedRightOffset0), width: px(sideBannerWidth) },
                 dependents:
-                    { isRuleColumn: true,  right: calc(2 * oneThird, fixedRightOffset1), width: calc(oneThird, fixedWidth1) },
+                    { viewState: state.columnViewStates.dependents,  right: calc(2 * oneThird, fixedRightOffset1), width: calc(oneThird, fixedWidth1) },
                 center:
-                    { isRuleColumn: true,  right: calc(oneThird, fixedRightOffset2), width: calc(oneThird, fixedWidth2) },
+                    { viewState: state.columnViewStates.center,  right: calc(oneThird, fixedRightOffset2), width: calc(oneThird, fixedWidth2) },
                 dependencies:
-                    { isRuleColumn: true,  right: px(fixedRightOffset3), width: calc(oneThird, fixedWidth3) },
+                    { viewState: state.columnViewStates.dependencies,  right: px(fixedRightOffset3), width: calc(oneThird, fixedWidth3) },
                 transitiveDependencies:
-                    { isRuleColumn: false, right: px(0), width: px(sideBannerWidth) },
+                    { viewState: {dataVisible: false, rulesVisible: false}, right: px(0), width: px(sideBannerWidth) },
             }
         },
         columns: state => {
@@ -357,21 +361,16 @@ function createState(existingState?: State): WithDerivedProps<State> {
             ): number {
                 let top = topStart
                 for (const relation of component.relations) {
-                    relationLayout.set(relation.name, {
-                        isCardColumn: false,
-                        top,
-                        right: columnInfo.right,
-                        width: columnInfo.width,
-                    })
-                    top += relationCardHeight
+                    const relationTop = top
+                    top += relationBannerHeight
+                    let relationHeight = relationBannerHeight
                     if (layOutRules) {
                         for (const rule of relation.rules) {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
                             ruleLayout.set(ruleCard, {
-                                isCardColumn: true,
+                                columnInfo,
                                 top,
-                                right: columnInfo.right,
-                                width: state.columnLayout.ruleCardWidth,
+                                height: -1, // unused
                             })
                             if (lastRuleLayout.has(ruleCard)) {
                                 ruleCard.animationState = "onScreen"
@@ -382,8 +381,14 @@ function createState(existingState?: State): WithDerivedProps<State> {
                                 incomingCards.add(ruleCard)
                             }
                             top += ruleCard.cardHeight
+                            relationHeight += ruleCard.cardHeight
                         }
                     }
+                    relationLayout.set(relation.name, {
+                        columnInfo,
+                        top: relationTop,
+                        height: relationHeight,
+                    })
                 }
                 return top
             }
@@ -394,16 +399,15 @@ function createState(existingState?: State): WithDerivedProps<State> {
             ) {
                 let top = 0
                 for (const component of components) {
-                    top += layoutComponent(component, top, columnInfo, layOutRules) + componentSpacing
+                    top = layoutComponent(component, top, columnInfo, layOutRules) + componentSpacing
                 }
             }
             if (state.centeredItem !== null) {
                 if (isRuleCard(state.centeredItem)) {
                     ruleLayout.set(state.centeredItem, {
-                        isCardColumn: true,
+                        columnInfo: state.columnLayout.center,
                         top: 0,
-                        right: state.columnLayout.center.right,
-                        width: state.columnLayout.ruleCardWidth,
+                        height: -1,
                     })
                 }
                 else {
@@ -581,12 +585,16 @@ function getInternalNegations(card: RuleCard): Set<number> {
     return getSetForRule(card, state.ruleGraph.internalNegations)
 }
 
-function getDerivations(card: RuleCard): Set<TupleWithDerivations> {
-    if (card.lastParsed !== null) {
-        return state.derivations.perRule.get(card.lastParsed.rule) as Set<TupleWithDerivations>
-    }
-    else return new Set()
+function getDerivations(relationName: string): TupleLookup {
+    return state.derivations.perRelation.get(state.ruleGraph.relations.get(relationName) as Relation) as TupleLookup
 }
+
+// function getDerivations(card: RuleCard): Set<TupleWithDerivations> {
+//     if (card.lastParsed !== null) {
+//         return state.derivations.perRule.get(card.lastParsed.rule) as Set<TupleWithDerivations>
+//     }
+//     else return new Set()
+// }
 
 function getDerivationCount(relation: Relation): number {
     const refs = state.derivations.perRelation.get(relation) as TupleLookup
@@ -659,31 +667,37 @@ document.body.prepend(
     div ({class: "separator"}),
 )
 
-function getRuleCardDimension(card: RuleCard, dimension: string): CssLength {
+function getRuleCardDimension(card: RuleCard, dimension: "right" | "top" | "width"): CssLength {
     if (card.animationState === "onScreen") { // this is a one-frame delay to sync up with the "incoming" cards
         const myLayout = animationPauseForSync
             ? state.cachedRuleLayout.get(card) as ColumnElementLayoutInfo
             : state.columnElementLayout.rule.get(card) as ColumnElementLayoutInfo
-        return (dimension === "top")
-            ? `${myLayout.top}px`
-            : (myLayout as any)[dimension] as CssLength
+        switch (dimension) {
+            case "right": return myLayout.columnInfo.right
+            case "top": return `${myLayout.top}px`
+            case "width": return state.columnLayout.ruleCardWidth
+        }
     }
     else if (card.lastParsed !== null) {
         const myRelation = state.ruleGraph.relations.get(card.lastParsed.rule.head.relationName) as Relation
         if (card.animationState === "incoming") {
             // Use the previous layout of the relation card for this frame
             const myRelationLayout = state.cachedRelationLayout.get(myRelation.name) as ColumnElementLayoutInfo
-            return (dimension === "top")
-                ? `${myRelationLayout.top + relationCardHeight}px`
-                : (myRelationLayout as any)[dimension] as CssLength
+            switch (dimension) {
+                case "right": return myRelationLayout.columnInfo.right
+                case "top": return `${myRelationLayout.top + relationBannerHeight}px`
+                case "width": return myRelationLayout.columnInfo.width
+            }
         }
         else { // outgoing
             const myRelationLayout = animationPauseForSync
                 ? state.cachedRelationLayout.get(myRelation.name) as ColumnElementLayoutInfo
                 : state.columnElementLayout.relation.get(myRelation.name) as ColumnElementLayoutInfo
-            return (dimension === "top")
-            ? `${myRelationLayout.top + relationCardHeight}px`
-            : (myRelationLayout as any)[dimension] as CssLength
+            switch (dimension) {
+                case "right": return myRelationLayout.columnInfo.right
+                case "top": return `${myRelationLayout.top + relationBannerHeight}px`
+                case "width": return myRelationLayout.columnInfo.width
+            }
         }
     }
     else return "123"
@@ -691,17 +705,24 @@ function getRuleCardDimension(card: RuleCard, dimension: string): CssLength {
 const ruleCardRight = (card: RuleCard): CssLength => getRuleCardDimension(card, "right")
 const ruleCardTop   = (card: RuleCard): CssLength => getRuleCardDimension(card, "top")
 const ruleCardWidth = (card: RuleCard): CssLength => getRuleCardDimension(card, "width")
-function relationCardRight(relationName: string): CssLength {
-    if (animationPauseForSync) return state.cachedRelationLayout.get(relationName)?.right as CssLength
-    else return state.columnElementLayout.relation.get(relationName)?.right as CssLength
+function relationRight(relationName: string): CssLength {
+    if (animationPauseForSync) return state.cachedRelationLayout.get(relationName)?.columnInfo.right as CssLength
+    else return state.columnElementLayout.relation.get(relationName)?.columnInfo.right as CssLength
 }
-function relationCardTop(relationName: string): CssLength {
+function relationTop(relationName: string): CssLength {
     if (animationPauseForSync) return `${state.cachedRelationLayout.get(relationName)?.top}px`
     else return `${state.columnElementLayout.relation.get(relationName)?.top}px`
 }
-function relationCardWidth(relationName: string): CssLength {
-    if (animationPauseForSync) return state.cachedRelationLayout.get(relationName)?.width as CssLength
-    else return state.columnElementLayout.relation.get(relationName)?.width as CssLength
+function relationWidth(relationName: string): CssLength {
+    if (animationPauseForSync) return state.cachedRelationLayout.get(relationName)?.columnInfo.width as CssLength
+    else return state.columnElementLayout.relation.get(relationName)?.columnInfo.width as CssLength
+}
+function relationHeight(relationName: string): CssLength {
+    if (animationPauseForSync) return px(state.cachedRelationLayout.get(relationName)?.height as number)
+    else return px(state.columnElementLayout.relation.get(relationName)?.height as number)
+}
+function relationDataVisible(relationName: string): boolean {
+    return state.columnElementLayout.relation.get(relationName)?.columnInfo.viewState.dataVisible as boolean
 }
 
 function overviewTextForIncompleteCard(card: RuleCard): string {
@@ -821,7 +842,7 @@ app ("app", state,
                             onclick: () => state.centeredItem = card,
                             left: () => state.centeredItem === card ? px(-12) : px(8),
                         }, [
-                            p (() => overviewTextForIncompleteCard(card), {class: "relation incompleteCardSummaryText"}),
+                            p (() => overviewTextForIncompleteCard(card), {class: "unparsedCard incompleteCardSummaryText"}),
                         ]),
                     ]),
                 ]),
@@ -833,16 +854,42 @@ app ("app", state,
         div ({class: "ruleGraphView"}, [
             $set (() => state.ruleGraph.relations, relationName => [
                 div ({
-                    class: "relationBanner",
-                    right: () => relationCardRight(relationName),
-                    top: () => relationCardTop(relationName),
-                    width: () => relationCardWidth(relationName),
-                    height: () => px(relationCardHeight),
+                    class: "relation",
+                    right: () => relationRight(relationName),
+                    top: () => relationTop(relationName),
+                    width: () => relationWidth(relationName),
+                    height: () => relationHeight(relationName),
                     onclick: () => state.centeredItem = state.ruleGraph.components.get(
                         state.ruleGraph.relations.get(relationName) as Relation
                     ) as Component,
                 }, [
-                    p (relationName),
+                    p (relationName, {
+                        class: "relationBanner",
+                        height: () => px(relationBannerHeight),
+                    }),
+                    div ({
+                        class: "dataColumn",
+                        width: () => relationDataVisible(relationName) ? px(dataVisibleWidth) : px(dataHiddenWidth),
+                    }, [
+                        div ({class: "dataSearchBar"}, [
+                            img ("./glass-short.svg", {
+                                class: "dataSearchIcon",
+                            }),
+                            input ({class: "dataSearchBox"}),
+                        ]),
+                        div ({
+                            class: "dataScrollPane",
+                        }, [
+                            $for (() => getDerivations(relationName).values(), tuple => [
+                                div ({
+                                    class: "data",
+                                    //color: () => ruleCard.isCentered ? "black" : "transparent",
+                                }, [
+                                    p (tupleToString(tuple.tuple)),
+                                ]),
+                            ]),
+                        ]),
+                    ]),
                 ]),
             ]),
             $set (() => state.columnElementLayout.rule, ruleCard => [
@@ -868,30 +915,6 @@ app ("app", state,
                     "pointer-events": () => ruleCard.animationState === "onScreen" ? "auto" : "none",
                 }, [
                     div ({class: "ruleCardBody"}, [
-                        // Computed conclusions
-                        // div ({
-                        //     class: "ruleDataSide",
-                        //     width: () => ruleCard.isCentered ? px(dataVisibleWidth) : px(dataHiddenWidth),
-                        // }, [
-                        //     div ({class: "dataSearchBar"}, [
-                        //         img ("./glass-short.svg", {
-                        //             class: "dataSearchIcon",
-                        //         }),
-                        //         input ({class: "dataSearchBox"}),
-                        //     ]),
-                        //     div ({
-                        //         class: "dataScrollPane",
-                        //     }, [
-                        //         $for (() => getDerivations(ruleCard).values(), tuple => [
-                        //             div ({
-                        //                 class: "data",
-                        //                 color: () => ruleCard.isCentered ? "black" : "transparent",
-                        //             }, [
-                        //                 p (tupleToString(tuple.tuple)),
-                        //             ]),
-                        //         ]),
-                        //     ]),
-                        // ]),
                         div ({
                             class: "ruleCodeSide",
                             "data-1": ruleCard, // needed elsewhere for JS-driven layout
