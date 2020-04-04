@@ -135,9 +135,13 @@ $rule-anim-duration: 0.6s;
 .relation {
     @extend .col;
     @extend .cardProps;
+    border-style: solid;
+    border-bottom-width: 1px;
+    border-color: $standard-border-color;
 }
 
 .relationBanner {
+    flex-shrink: 0;
     @extend.row;
     align-items: center;
     @extend .codeStyle;
@@ -175,8 +179,8 @@ $rule-anim-duration: 0.6s;
     z-index: 0; // manipulated in JS
     @extend .col;
 // border for delimiting adjacent cards
-    border-bottom-style: solid;
-    border-width: 1px;
+    border-style: solid;
+    border-bottom-width: 1px;
     border-color: $standard-border-color;
     background-color: white;
     padding: 6px 10px 16px 10px;
@@ -208,10 +212,11 @@ $error-back-color: #ffbfbf;
 .dataColumn {
     flex-grow: 1;
     @extend .col;
+    overflow: hidden;
     background-color: white;
     box-sizing: border-box;
     border-style: solid;
-    border-width: 0 1px 1px 0;
+    border-right-width: 1px;
     border-color: $standard-border-color;
     margin-right: 8px;
     transition-property: width;

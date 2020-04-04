@@ -835,6 +835,7 @@ app ("app", state,
                     div ({
                         class: "dataColumn",
                         width: () => relationDataVisible(relationName) ? px(dataVisibleWidth) : px(dataHiddenWidth),
+                        height: () => relationDataVisible(relationName) ? "auto" : "0",
                     }, [
                         // div ({class: "dataSearchBar"}, [
                         //     img ("./glass-short.svg", {
@@ -842,20 +843,20 @@ app ("app", state,
                         //     }),
                         //     input ({class: "dataSearchBox"}),
                         // ]),
-                        div ({
-                            class: "dataScrollPane",
-                        }, [
-                            $for (() => getDerivations(relationName).values(), tuple => [
+                        $if (() => relationDataVisible(relationName), {
+                            $then: () => [
                                 div ({
-                                    class: "data",
-                                    color: () => state.centeredItem === state.ruleGraph.components.get(state.ruleGraph.relations.get(relationName) as Relation)
-                                        ? "black"
-                                        : "transparent",
+                                    class: "dataScrollPane",
                                 }, [
-                                    p (tupleToString(tuple.tuple)),
+                                    $for (() => getDerivations(relationName).values(), tuple => [
+                                        div ({class: "data"}, [
+                                            p (tupleToString(tuple.tuple)),
+                                        ]),
+                                    ]),
                                 ]),
-                            ]),
-                        ]),
+                            ],
+                            $else: () => [],
+                        }),
                     ]),
                 ]),
             ]),
