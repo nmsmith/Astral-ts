@@ -722,7 +722,8 @@ function relationHeight(relationName: string): CssLength {
     else return px(state.columnElementLayout.relation.get(relationName)?.height as number)
 }
 function relationDataVisible(relationName: string): boolean {
-    return state.columnElementLayout.relation.get(relationName)?.columnInfo.viewState.dataVisible as boolean
+    if (animationPauseForSync) return state.cachedRelationLayout.get(relationName)?.columnInfo.viewState.dataVisible as boolean
+    else return state.columnElementLayout.relation.get(relationName)?.columnInfo.viewState.dataVisible as boolean
 }
 
 function overviewTextForIncompleteCard(card: RuleCard): string {
@@ -764,44 +765,6 @@ function tuckBarText(card: RuleCard): string {
         else return `${tuples.size} tuples`
     }
 }
-
-// When new rule cards are created, observe and record their height.
-// We need this to enable JS-driven layout.
-// We also re-record card height during every oninput() event of a rule's text area.
-const observer = new MutationObserver(mutations => {
-    // We need to set the height of the cards' text areas first, before we can measure card height.
-    // It's too much work to traverse the DOM trees to find each text area,
-    // so grab them by class name and conservatively set all of their heights.
-    const textAreas = document.getElementsByClassName("ruleCardTextArea")
-    for (let i = 0; i < textAreas.length; i++) {
-        (textAreas[i] as HTMLElement).style.height = textAreas[i].scrollHeight + "px"
-    }
-    // Traverse the ENTIRE tree of added nodes to check for rule nodes,
-    // measuring the height of each one.
-    let foundRule = false
-    function findRule(el: HTMLElement) {
-        if (el.className?.split(" ").indexOf("ruleCard") >= 0) {
-            (el as any)["data-1"].cardHeight = el.offsetHeight
-            foundRule = true
-        }
-        else if (el.children !== undefined) {
-            for (let j = 0; j < el.children.length; ++j) {
-                findRule(el.children[j] as HTMLElement)
-            }
-        }
-    }
-    mutations.forEach(mutation => {
-        for (let i = 0; i < mutation.addedNodes.length; i++) {
-            const el = mutation.addedNodes[i] as HTMLElement
-            findRule(el)
-        }
-    })
-    if (foundRule) {
-        // Create a new DOM update to apply the effect of the new ruleCardHeight(s)
-        defineDOMUpdate(() => { /*do nothing*/ })({type: "Apply new card height", target: null})
-    }
-})
-observer.observe(document, { childList: true, subtree: true })
 
 app ("app", state,
     div ({class: "view"}, [
@@ -885,7 +848,9 @@ app ("app", state,
                             $for (() => getDerivations(relationName).values(), tuple => [
                                 div ({
                                     class: "data",
-                                    //color: () => ruleCard.isCentered ? "black" : "transparent",
+                                    color: () => state.centeredItem === state.ruleGraph.components.get(state.ruleGraph.relations.get(relationName) as Relation)
+                                        ? "black"
+                                        : "transparent",
                                 }, [
                                     p (tupleToString(tuple.tuple)),
                                 ]),
@@ -904,7 +869,7 @@ app ("app", state,
                     right: () => ruleCardRight(ruleCard),
                     top: () => ruleCardTop(ruleCard),
                     width: () => ruleCardWidth(ruleCard),
-                    opacity: () => ruleCard.animationState === "outgoing" ? 0 : 1,
+                    opacity: () => ruleCard.animationState === "onScreen" ? 1 : 0,
                     "pointer-events": () => ruleCard.animationState === "onScreen" ? "auto" : "none",
                     "data-1": ruleCard, // needed elsewhere for JS-driven layout
                 }, [
@@ -1055,5 +1020,43 @@ app ("app", state,
 window.oncontextmenu = (e: Event): void => {
     e.preventDefault()
 }
+
+// When new rule cards are created, observe and record their height.
+// We need this to enable JS-driven layout.
+// We also re-record card height during every oninput() event of a rule's text area.
+const observer = new MutationObserver(mutations => {
+    // We need to set the height of the cards' text areas first, before we can measure card height.
+    // It's too much work to traverse the DOM trees to find each text area,
+    // so grab them by class name and conservatively set all of their heights.
+    const textAreas = document.getElementsByClassName("ruleCardTextArea")
+    for (let i = 0; i < textAreas.length; i++) {
+        (textAreas[i] as HTMLElement).style.height = textAreas[i].scrollHeight + "px"
+    }
+    // Traverse the ENTIRE tree of added nodes to check for rule nodes,
+    // measuring the height of each one.
+    let foundRule = false
+    function findRule(el: HTMLElement) {
+        if (el.className?.split(" ").indexOf("ruleCard") >= 0) {
+            (el as any)["data-1"].cardHeight = el.offsetHeight
+            foundRule = true
+        }
+        else if (el.children !== undefined) {
+            for (let j = 0; j < el.children.length; ++j) {
+                findRule(el.children[j] as HTMLElement)
+            }
+        }
+    }
+    mutations.forEach(mutation => {
+        for (let i = 0; i < mutation.addedNodes.length; i++) {
+            const el = mutation.addedNodes[i] as HTMLElement
+            findRule(el)
+        }
+    })
+    if (foundRule) {
+        // Create a new DOM update to apply the effect of the new ruleCardHeight(s)
+        defineDOMUpdate(() => { /*do nothing*/ })({type: "Apply new card height", target: null})
+    }
+})
+observer.observe(document, { childList: true, subtree: true })
 
 //#endregion
