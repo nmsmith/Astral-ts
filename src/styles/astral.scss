@@ -122,17 +122,6 @@ $overview-width: 200px;
     overflow: hidden;
 }
 
-.dataView {
-    height: 300px;
-    border-style: solid;
-    border-width: 1px 0 0 0;
-    border-color: $standard-border-color;
-}
-
-.labelError {
-    background-color: #ffbfbf;
-}
-
 $rule-anim-duration: 0.6s;
 
 .cardProps {
@@ -149,15 +138,36 @@ $rule-anim-duration: 0.6s;
 }
 
 .relationBanner {
+    @extend.row;
+    align-items: center;
     @extend .codeStyle;
     box-sizing: border-box;
     //font-family: NotoSans, serif;
     font-size: 18px;
     user-select: none;
-    padding: 6px;
+    padding-left: 6px;
     background-color: #af2b2b;
+}
+
+.tupleCount {
+    @extend .row;
+    align-items: center;
+    font-family: NotoSans, serif;
+    //font-weight: bold;
+    padding: 2px 6px 2px 6px;
+    font-size: 16px;
     color: white;
-    padding-left: 14px;
+    //border-style: solid;
+    //border-width: 1px;
+    border-radius: 8px;
+    border-color: white;
+    background-color: #c25151;
+    //box-shadow: $standard-box-shadow;
+}
+
+.relationName {
+    color: white;
+    padding-left: 8px;
 }
 
 .ruleCard {
@@ -169,11 +179,7 @@ $rule-anim-duration: 0.6s;
     border-width: 1px;
     border-color: $standard-border-color;
     background-color: white;
-}
-
-.ruleCardBody {
-    flex-grow: 1;
-    @extend .row;
+    padding: 6px 10px 16px 10px;
 }
 
 $error-back-color: #ffbfbf;
@@ -182,10 +188,21 @@ $error-back-color: #ffbfbf;
     background-color: $error-back-color;
 }
 
-.ruleCardShadow {
-    @extend .cardProps;
-    z-index: -1; // manipulated in JS
-    box-shadow: $standard-box-shadow;
+.ruleCardTextArea {
+    @extend .codeStyle;
+    overflow-y: hidden;
+    resize: none;
+    border-style: none;
+    padding: 0;
+    background-color: transparent;
+    min-height: 8px;
+}
+
+.errorText {
+    padding-top: 8px;
+    margin-bottom: -8px;
+    background-color: $error-back-color;
+    line-height: 22px;
 }
 
 .dataColumn {
@@ -236,16 +253,6 @@ $error-back-color: #ffbfbf;
     @extend .dataTextStyle;
 }
 
-.dataTuckBar {
-    @extend .row;
-    @extend .searchBarStyle;
-    font-style: italic;
-}
-
-.factCount {
-    padding: 4px;
-}
-
 .dataScrollPane {
     direction: rtl; // put scroll bar on LHS
     flex-grow: 1; // Grow, with a minimum height as given
@@ -272,26 +279,11 @@ $error-back-color: #ffbfbf;
     transition-duration: $rule-anim-duration;
 }
 
-.ruleCodeSide {
-    align-self: flex-start; // don't stretch; we need to measure true size
-    @extend .col;
-    //width: 200px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 6px;
-    padding-bottom: 16px;
-}
-
 .deleteCardButton {
     @extend .unstyledButton;
     @extend .noSelect;
     color: #aaaaaa;
     font-size: 1.2em;
-}
-
-.ruleCardTextWrapper {
-    position: relative; // reference point for glyphs
-    @extend .row; // so textarea can fill width
 }
 
 // .cardGlyphs {
@@ -312,19 +304,3 @@ $error-back-color: #ffbfbf;
 //     color: black;
 //     //background-color: white;
 // }
-
-.ruleCardTextArea {
-    @extend .codeStyle;
-    overflow-y: hidden;
-    resize: none;
-    border-style: none;
-    padding: 0;
-    background-color: transparent;
-}
-
-.errorText {
-    padding-top: 8px;
-    margin-bottom: -8px;
-    background-color: $error-back-color;
-    line-height: 22px;
-}

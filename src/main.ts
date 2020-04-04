@@ -17,7 +17,7 @@ interface RuleCard {
         readonly rawText: string
         rule: Rule
     }
-    // stuff for layout
+    // Stuff for layout. TODO: Don't serialize these.
     animationState: "incoming" | "onScreen" | "outgoing"
     cardHeight: number
     // derived properties
@@ -332,10 +332,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     // Now we can update the cache.
                     state.cachedRuleLayout = ruleLayout
                     state.cachedRelationLayout = relationLayout
-                })({
-                    type: "Start card animation",
-                    target: null,
-                })
+                })({type: "Start card animation", target: null})
             }, 0)
             const outgoingCards = new Set<RuleCard>()
             for (const [card, layout] of lastRuleLayout) {
@@ -353,10 +350,25 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 outgoingCards.add(card)
             })
 
+            function assignCardToColumn(ruleCard: RuleCard, columnInfo: ColumnLayoutInfo, top: number): void {
+                ruleLayout.set(ruleCard, {
+                    columnInfo,
+                    top,
+                    height: -1, // unused
+                })
+                if (lastRuleLayout.has(ruleCard)) {
+                    ruleCard.animationState = "onScreen"
+                    outgoingCards.delete(ruleCard)
+                }
+                else {
+                    ruleCard.animationState = "incoming"
+                    incomingCards.add(ruleCard)
+                }
+            }
             function layoutComponent(
                 component: Component,
-                topStart: number,
                 columnInfo: ColumnLayoutInfo,
+                topStart: number,
                 layOutRules: boolean,
             ): number {
                 let top = topStart
@@ -367,19 +379,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                     if (layOutRules) {
                         for (const rule of relation.rules) {
                             const ruleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                            ruleLayout.set(ruleCard, {
-                                columnInfo,
-                                top,
-                                height: -1, // unused
-                            })
-                            if (lastRuleLayout.has(ruleCard)) {
-                                ruleCard.animationState = "onScreen"
-                                outgoingCards.delete(ruleCard)
-                            }
-                            else {
-                                ruleCard.animationState = "incoming"
-                                incomingCards.add(ruleCard)
-                            }
+                            assignCardToColumn(ruleCard, columnInfo, top)
                             top += ruleCard.cardHeight
                             relationHeight += ruleCard.cardHeight
                         }
@@ -399,19 +399,15 @@ function createState(existingState?: State): WithDerivedProps<State> {
             ) {
                 let top = 0
                 for (const component of components) {
-                    top = layoutComponent(component, top, columnInfo, layOutRules) + componentSpacing
+                    top = layoutComponent(component, columnInfo, top, layOutRules) + componentSpacing
                 }
             }
             if (state.centeredItem !== null) {
                 if (isRuleCard(state.centeredItem)) {
-                    ruleLayout.set(state.centeredItem, {
-                        columnInfo: state.columnLayout.center,
-                        top: 0,
-                        height: -1,
-                    })
+                    assignCardToColumn(state.centeredItem, state.columnLayout.center, 0)
                 }
                 else {
-                    layoutComponent(state.centeredItem, 0, state.columnLayout.center, true)
+                    layoutComponent(state.centeredItem, state.columnLayout.center, 0, true)
                 }
             }
             layoutComponents(state.columns.transitiveDependents, state.columnLayout.transitiveDependents, false)
@@ -686,7 +682,9 @@ function getRuleCardDimension(card: RuleCard, dimension: "right" | "top" | "widt
             switch (dimension) {
                 case "right": return myRelationLayout.columnInfo.right
                 case "top": return `${myRelationLayout.top + relationBannerHeight}px`
-                case "width": return myRelationLayout.columnInfo.width
+                // WARNING: We can't use the relation's width here, otherwise the rule's textarea
+                // will have the wrong width on creation, and therefore calculate the wrong height.
+                case "width": return state.columnLayout.ruleCardWidth
             }
         }
         else { // outgoing
@@ -696,7 +694,9 @@ function getRuleCardDimension(card: RuleCard, dimension: "right" | "top" | "widt
             switch (dimension) {
                 case "right": return myRelationLayout.columnInfo.right
                 case "top": return `${myRelationLayout.top + relationBannerHeight}px`
-                case "width": return myRelationLayout.columnInfo.width
+                // WARNING: We can't use the relation's width here, otherwise the rule's textarea
+                // will have the wrong width on creation, and therefore calculate the wrong height.
+                case "width": return state.columnLayout.ruleCardWidth
             }
         }
     }
@@ -780,7 +780,7 @@ const observer = new MutationObserver(mutations => {
     // measuring the height of each one.
     let foundRule = false
     function findRule(el: HTMLElement) {
-        if (el.className?.split(" ").indexOf("ruleCodeSide") >= 0) {
+        if (el.className?.split(" ").indexOf("ruleCard") >= 0) {
             (el as any)["data-1"].cardHeight = el.offsetHeight
             foundRule = true
         }
@@ -798,10 +798,7 @@ const observer = new MutationObserver(mutations => {
     })
     if (foundRule) {
         // Create a new DOM update to apply the effect of the new ruleCardHeight(s)
-        defineDOMUpdate(() => { /* no work to do */ })({
-            type: "Apply new card height",
-            target: null,
-        })
+        defineDOMUpdate(() => { /*do nothing*/ })({type: "Apply new card height", target: null})
     }
 })
 observer.observe(document, { childList: true, subtree: true })
@@ -863,20 +860,25 @@ app ("app", state,
                         state.ruleGraph.relations.get(relationName) as Relation
                     ) as Component,
                 }, [
-                    p (relationName, {
+                    div ({
                         class: "relationBanner",
                         height: () => px(relationBannerHeight),
-                    }),
+                    }, [
+                        div ({class: "tupleCount"}, [
+                            p (() => getDerivations(relationName).size.toString()),
+                        ]),
+                        p (relationName, {class: "relationName"}),
+                    ]),
                     div ({
                         class: "dataColumn",
                         width: () => relationDataVisible(relationName) ? px(dataVisibleWidth) : px(dataHiddenWidth),
                     }, [
-                        div ({class: "dataSearchBar"}, [
-                            img ("./glass-short.svg", {
-                                class: "dataSearchIcon",
-                            }),
-                            input ({class: "dataSearchBox"}),
-                        ]),
+                        // div ({class: "dataSearchBar"}, [
+                        //     img ("./glass-short.svg", {
+                        //         class: "dataSearchIcon",
+                        //     }),
+                        //     input ({class: "dataSearchBox"}),
+                        // ]),
                         div ({
                             class: "dataScrollPane",
                         }, [
@@ -893,14 +895,6 @@ app ("app", state,
                 ]),
             ]),
             $set (() => state.columnElementLayout.rule, ruleCard => [
-                // div ({
-                //     class: "ruleCardShadow",
-                //     "z-index": () => computeZIndex(ruleCard) - 1, // render behind cards
-                //     left: () => computeLeftPosition(ruleCard),
-                //     top: () => computeTopPosition(ruleCard),
-                //     width: () => computeWidth(ruleCard),
-                //     height: () => `${ruleCard.cardHeight}px`,
-                // }),
                 div ({
                     class: () => `ruleCard ${
                         hasError(ruleCard)
@@ -910,104 +904,88 @@ app ("app", state,
                     right: () => ruleCardRight(ruleCard),
                     top: () => ruleCardTop(ruleCard),
                     width: () => ruleCardWidth(ruleCard),
-                    height: () => `${ruleCard.cardHeight}px`,
                     opacity: () => ruleCard.animationState === "outgoing" ? 0 : 1,
                     "pointer-events": () => ruleCard.animationState === "onScreen" ? "auto" : "none",
+                    "data-1": ruleCard, // needed elsewhere for JS-driven layout
                 }, [
-                    div ({class: "ruleCardBody"}, [
-                        div ({
-                            class: "ruleCodeSide",
-                            "data-1": ruleCard, // needed elsewhere for JS-driven layout
-                        }, [
-                            div ({class: "ruleCardTextWrapper"}, [
-                                // Rule text
-                                textarea ({
-                                    class: "ruleCardTextArea",
-                                    value: toRefs(ruleCard).rawText,
-                                    onfocus: () => {
-                                        state.editingRule = ruleCard
-                                        if (ruleCard.lastParsed !== null) {
-                                            state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
-                                        }
-                                    },
-                                    onkeydown: (event: KeyboardEvent) => {
-                                        const el = (event.target as HTMLTextAreaElement)
-                                        // React to vanilla key presses only
-                                        if (!event.ctrlKey && !event.metaKey) {
-                                            // Do basic autoformatting.
-                                            // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
-                                            if (event.key === ",") {
-                                                event.preventDefault()
-                                                setTimeout(() =>
-                                                    document.execCommand("insertText", false, ", "), 0)
-                                            }
-                                            else if (event.key === "Enter") {
-                                                event.preventDefault()
-                                                setTimeout(() =>
-                                                    document.execCommand("insertText", false, "\n  "), 0)
-                                            }
-                                            else if (event.key === "-") {
-                                                event.preventDefault()
-                                                setTimeout(() =>
-                                                    document.execCommand("insertText", false, "¬"), 0)
-                                            }
-                                            // Disallow spaces next to an existing space, unless at the start of a line
-                                            else if (
-                                                event.key === " " && !(
-                                                    el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
-                                                ) && !(
-                                                    el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
-                                                ) && (
-                                                    (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
-                                                )
-                                            ) {
-                                                event.preventDefault()
-                                            }
-                                        }
-                                    },
-                                    oninput: (event: Event) => {
-                                        const el = (event.target as HTMLTextAreaElement)
-                                        parseRuleCardFromText(ruleCard, ruleCard.rawText)
-                                        if (ruleCard.lastParsed !== null) {
-                                            // Center the component of the newly parsed rule
-                                            state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
-                                        }
-                                        else {
-                                            // Center just this rule card as a component
-                                            state.centeredItem = ruleCard
-                                        }
-        
-                                        const codeDiv = el.parentElement?.parentElement as HTMLElement
-                                        el.style.height = "auto"  // trigger the text box to auto-size
-                                        el.style.height = el.scrollHeight + "px" // new stretch it to fit contentss
-        
-                                        // Delay the reading of the rule div height until the
-                                        // currently-executing DOM update has fully finished
-                                        // (the div's height may change during the update).
-                                        setTimeout(() => {
-                                            // Create a new DOM update to finish the work.
-                                            defineDOMUpdate(() => {
-                                                // Record the height of the WHOLE rule div,
-                                                // so we can use it for code-driven layout.
-                                                ruleCard.cardHeight = codeDiv.offsetHeight
-                                            })({
-                                                type: "Measure card height",
-                                                target: null,
-                                            })
-                                        }, 0)
-                                    },
-                                }),
-                            ]),
-                            $if (() => hasError(ruleCard), {
-                                $then: () => [
-                                    p (() => getError(ruleCard), {
-                                        class: "errorText",
-                                    }),
-                                ],
-                                $else: () => [],
+                    textarea ({
+                        class: "ruleCardTextArea",
+                        value: toRefs(ruleCard).rawText,
+                        onfocus: () => {
+                            state.editingRule = ruleCard
+                            if (ruleCard.lastParsed !== null) {
+                                state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
+                            }
+                        },
+                        onkeydown: (event: KeyboardEvent) => {
+                            const el = (event.target as HTMLTextAreaElement)
+                            // React to vanilla key presses only
+                            if (!event.ctrlKey && !event.metaKey) {
+                                // Do basic autoformatting.
+                                // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
+                                if (event.key === ",") {
+                                    event.preventDefault()
+                                    setTimeout(() =>
+                                        document.execCommand("insertText", false, ", "), 0)
+                                }
+                                else if (event.key === "Enter") {
+                                    event.preventDefault()
+                                    setTimeout(() =>
+                                        document.execCommand("insertText", false, "\n  "), 0)
+                                }
+                                else if (event.key === "-") {
+                                    event.preventDefault()
+                                    setTimeout(() =>
+                                        document.execCommand("insertText", false, "¬"), 0)
+                                }
+                                // Disallow spaces next to an existing space, unless at the start of a line
+                                else if (
+                                    event.key === " " && !(
+                                        el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
+                                    ) && !(
+                                        el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
+                                    ) && (
+                                        (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
+                                    )
+                                ) {
+                                    event.preventDefault()
+                                }
+                            }
+                        },
+                        oninput: (event: Event) => {
+                            const el = (event.target as HTMLTextAreaElement)
+                            parseRuleCardFromText(ruleCard, ruleCard.rawText)
+                            if (ruleCard.lastParsed !== null) {
+                                // Center the component of the newly parsed rule
+                                state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
+                            }
+                            else {
+                                // Center just this rule card as a component
+                                state.centeredItem = ruleCard
+                            }
+
+                            const cardDiv = el.parentElement as HTMLElement
+                            el.style.height = "auto"  // trigger the text box to auto-size
+                            el.style.height = el.scrollHeight + "px" // new stretch it to fit contents
+
+                            // Delay the reading of the rule div height until the currently-executing DOM
+                            // update has fully finished (the div's height may change during the update).
+                            setTimeout(() => {
+                                defineDOMUpdate(() => {
+                                    // Record the height of the card, so we can do code-driven layout.
+                                    ruleCard.cardHeight = cardDiv.offsetHeight
+                                })({type: "Measure card height", target: null})
+                            }, 0)
+                        },
+                    }),
+                    $if (() => hasError(ruleCard), {
+                        $then: () => [
+                            p (() => getError(ruleCard), {
+                                class: "errorText",
                             }),
-                        ]),
-                    ]),
+                        ],
+                        $else: () => [],
+                    }),
                     // div ({class: "dataTuckBar"}, [
                     //     p (() => tuckBarText(ruleCard), {class: "factCount"}),
                     //     div ({class: "grow"}),
