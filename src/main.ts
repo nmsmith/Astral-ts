@@ -67,11 +67,13 @@ interface ColumnElementLayoutInfo {
     readonly height: number
 }
 
+const viewHeight = 1000 // TODO: This is a hack job
+const columnConfigBarHeight = 30
+const columnTopStart = columnConfigBarHeight
 const relationBannerHeight = 40
 const sideBannerWidth = 180 // px   This is the width of the "side bars"
 const dataVisibleWidth = 140 //px   Data column
-const dataHiddenWidth = 28 //px
-const oneThird = 100 / 3 //percent
+const dataHiddenWidth = 0 //px
 const columnSpacing = 16 //px
 const componentSpacing = 16
 
@@ -226,31 +228,44 @@ function createState(existingState?: State): WithDerivedProps<State> {
             function dataBarWidth(s: ColumnViewState): number {
                 return s.dataVisible ? dataVisibleWidth : dataHiddenWidth
             }
-            // width info
-            const dataWidth1 = dataBarWidth(state.columnViewStates.dependencies)
-            const dataWidth2 = dataBarWidth(state.columnViewStates.center)
-            const dataWidth3 = dataBarWidth(state.columnViewStates.dependents)
-            const totalFixedWidth = 2 * sideBannerWidth + 4 * columnSpacing + dataWidth1 + dataWidth2 + dataWidth3
-            const fixedWidthLostPerFlexColumn = -totalFixedWidth / 3
-            const fixedWidth1 = dataWidth1 + fixedWidthLostPerFlexColumn
-            const fixedWidth2 = dataWidth2 + fixedWidthLostPerFlexColumn
-            const fixedWidth3 = dataWidth3 + fixedWidthLostPerFlexColumn
-            // right info
+            const rulesVisible1 = state.columnViewStates.dependents.rulesVisible 
+            const rulesVisible2 = true
+            const rulesVisible3 = state.columnViewStates.dependencies.rulesVisible
+            const numFlexColumns = (rulesVisible1 ? 1 : 0) + (rulesVisible2 ? 1 : 0) + (rulesVisible3 ? 1 : 0)
+            // Fixed width
+            const fixedConsumed1 = rulesVisible1 ? dataBarWidth(state.columnViewStates.dependents) : sideBannerWidth
+            const fixedConsumed2 = rulesVisible2 ? dataBarWidth(state.columnViewStates.center) : sideBannerWidth
+            const fixedConsumed3 = rulesVisible3 ? dataBarWidth(state.columnViewStates.dependencies) : sideBannerWidth
+            const totalFixedWidth = 2 * sideBannerWidth + 4 * columnSpacing + fixedConsumed1 + fixedConsumed2 + fixedConsumed3
+            const fixedWidthLostPerFlexColumn = -totalFixedWidth / numFlexColumns
+            const fixedWidth1 = fixedConsumed1 + (rulesVisible1 ? fixedWidthLostPerFlexColumn : 0)
+            const fixedWidth2 = fixedConsumed2 + (rulesVisible2 ? fixedWidthLostPerFlexColumn : 0)
+            const fixedWidth3 = fixedConsumed3 + (rulesVisible3 ? fixedWidthLostPerFlexColumn : 0)
+            // Variable width
+            const percentPerFlexColumn = 100 / numFlexColumns
+            const percentWidth1 = state.columnViewStates.dependents.rulesVisible ? percentPerFlexColumn : 0
+            const percentWidth2 = percentPerFlexColumn
+            const percentWidth3 = state.columnViewStates.dependencies.rulesVisible ? percentPerFlexColumn : 0
+            // Fixed right offset
             const fixedRightOffset3 = sideBannerWidth + columnSpacing
             const fixedRightOffset2 = fixedRightOffset3 + columnSpacing + fixedWidth3
             const fixedRightOffset1 = fixedRightOffset2 + columnSpacing + fixedWidth2
             const fixedRightOffset0 = fixedRightOffset1 + columnSpacing + fixedWidth1
+            // Variable right offset
+            const percentRightOffset2 = percentWidth3
+            const percentRightOffset1 = percentRightOffset2 + percentWidth2
+            const percentRightOffset0 = percentRightOffset1 + percentWidth1 // which should be 100%
             return {
                 ruleCardWidth:
-                    calc(oneThird, fixedWidthLostPerFlexColumn),
+                    calc(percentPerFlexColumn, fixedWidthLostPerFlexColumn),
                 transitiveDependents:
-                    { viewState: {dataVisible: false, rulesVisible: false}, right: calc(100, fixedRightOffset0), width: px(sideBannerWidth) },
+                    { viewState: {dataVisible: false, rulesVisible: false}, right: calc(percentRightOffset0, fixedRightOffset0), width: px(sideBannerWidth) },
                 dependents:
-                    { viewState: state.columnViewStates.dependents,  right: calc(2 * oneThird, fixedRightOffset1), width: calc(oneThird, fixedWidth1) },
+                    { viewState: state.columnViewStates.dependents,  right: calc(percentRightOffset1, fixedRightOffset1), width: calc(percentWidth1, fixedWidth1) },
                 center:
-                    { viewState: state.columnViewStates.center,  right: calc(oneThird, fixedRightOffset2), width: calc(oneThird, fixedWidth2) },
+                    { viewState: state.columnViewStates.center,  right: calc(percentRightOffset2, fixedRightOffset2), width: calc(percentWidth2, fixedWidth2) },
                 dependencies:
-                    { viewState: state.columnViewStates.dependencies,  right: px(fixedRightOffset3), width: calc(oneThird, fixedWidth3) },
+                    { viewState: state.columnViewStates.dependencies,  right: px(fixedRightOffset3), width: calc(percentWidth3, fixedWidth3) },
                 transitiveDependencies:
                     { viewState: {dataVisible: false, rulesVisible: false}, right: px(0), width: px(sideBannerWidth) },
             }
@@ -320,7 +335,6 @@ function createState(existingState?: State): WithDerivedProps<State> {
             const relationLayout = observable(new Map<string, ColumnElementLayoutInfo>())
             // Synchronize animation of existing cards with newly-added cards
             const incomingCards = new Set<RuleCard>()
-            animationPauseForSync = true
             setTimeout(() => {
                 // This code will run after the DOM elements have been added to the page,
                 // allowing us to commence their animation.
@@ -370,8 +384,11 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 columnInfo: ColumnLayoutInfo,
                 topStart: number,
                 layOutRules: boolean,
+                isLastComponent: boolean, // extend the last relation of the last component
             ): number {
                 let top = topStart
+                const lastRelation = component.relations.size - 1
+                let i = 0
                 for (const relation of component.relations) {
                     const relationTop = top
                     top += relationBannerHeight
@@ -384,6 +401,10 @@ function createState(existingState?: State): WithDerivedProps<State> {
                             relationHeight += ruleCard.cardHeight
                         }
                     }
+                    if (isLastComponent && i === lastRelation) {
+                        relationHeight += viewHeight - top
+                    }
+                    else ++i
                     relationLayout.set(relation.name, {
                         columnInfo,
                         top: relationTop,
@@ -397,22 +418,25 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 columnInfo: ColumnLayoutInfo,
                 layOutRules: boolean,
             ) {
-                let top = 0
+                let top = columnTopStart
+                const lastComponent = components.size - 1
+                let i = 0
                 for (const component of components) {
-                    top = layoutComponent(component, columnInfo, top, layOutRules) + componentSpacing
+                    top = layoutComponent(component, columnInfo, top, layOutRules, i === lastComponent) + componentSpacing
+                    ++i
                 }
             }
             if (state.centeredItem !== null) {
                 if (isRuleCard(state.centeredItem)) {
-                    assignCardToColumn(state.centeredItem, state.columnLayout.center, 0)
+                    assignCardToColumn(state.centeredItem, state.columnLayout.center, columnTopStart)
                 }
                 else {
-                    layoutComponent(state.centeredItem, state.columnLayout.center, 0, true)
+                    layoutComponent(state.centeredItem, state.columnLayout.center, columnTopStart, true, true)
                 }
             }
             layoutComponents(state.columns.transitiveDependents, state.columnLayout.transitiveDependents, false)
-            layoutComponents(state.columns.dependents, state.columnLayout.dependents, true)
-            layoutComponents(state.columns.dependencies, state.columnLayout.dependencies, true)
+            layoutComponents(state.columns.dependents, state.columnLayout.dependents, state.columnViewStates.dependents.rulesVisible)
+            layoutComponents(state.columns.dependencies, state.columnLayout.dependencies, state.columnViewStates.dependencies.rulesVisible)
             layoutComponents(state.columns.transitiveDependencies, state.columnLayout.transitiveDependencies, false)
             // Now gather the relations which are not causally linked the the selected component.
             for (const [_, relation] of state.ruleGraph.relations) {
@@ -427,6 +451,8 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 card.animationState = "outgoing"
                 ruleLayout.set(card, undefined as unknown as ColumnElementLayoutInfo)
             })
+            // Only do the animation delay if we've actually laid out new rule cards
+            animationPauseForSync = incomingCards.size > 0 || outgoingCards.size > 0
             return {rule: ruleLayout, relation: relationLayout}
         },
         derivations: state => {
@@ -812,6 +838,42 @@ app ("app", state,
             h2("pinned relations --- recently edited relations --- search"),
         ]),
         div ({class: "ruleGraphView"}, [
+            div ({
+                class: "columnCollapseButton",
+                right: () => state.columnLayout.dependents.right,
+                width: () => state.columnLayout.dependents.width,
+                height: px(columnConfigBarHeight),
+                onclick: () => state.columnViewStates.dependents.dataVisible = !state.columnViewStates.dependents.dataVisible,
+            }),
+            div ({
+                class: "columnCollapseButton",
+                right: () => state.columnLayout.dependents.right,
+                width: () => state.columnViewStates.dependents.rulesVisible
+                    ? (state.columnViewStates.dependents.dataVisible
+                        ? state.columnLayout.ruleCardWidth
+                        : px(180))
+                    : px(90),
+                height: px(columnConfigBarHeight),
+                onclick: () => state.columnViewStates.dependents.rulesVisible = !state.columnViewStates.dependents.rulesVisible,
+            }),
+            div ({
+                class: "columnCollapseButton",
+                right: () => state.columnLayout.dependencies.right,
+                width: () => state.columnLayout.dependencies.width,
+                height: px(columnConfigBarHeight),
+                onclick: () => state.columnViewStates.dependencies.dataVisible = !state.columnViewStates.dependencies.dataVisible,
+            }),
+            div ({
+                class: "columnCollapseButton",
+                right: () => state.columnLayout.dependencies.right,
+                width: () =>  state.columnViewStates.dependencies.rulesVisible
+                    ? (state.columnViewStates.dependencies.dataVisible
+                        ? state.columnLayout.ruleCardWidth
+                        : px(180))
+                    : px(90),
+                height: px(columnConfigBarHeight),
+                onclick: () => state.columnViewStates.dependencies.rulesVisible = !state.columnViewStates.dependencies.rulesVisible,
+            }),
             $set (() => state.ruleGraph.relations, relationName => [
                 div ({
                     class: "relation",
@@ -1031,7 +1093,8 @@ const observer = new MutationObserver(mutations => {
     // so grab them by class name and conservatively set all of their heights.
     const textAreas = document.getElementsByClassName("ruleCardTextArea")
     for (let i = 0; i < textAreas.length; i++) {
-        (textAreas[i] as HTMLElement).style.height = textAreas[i].scrollHeight + "px"
+        (textAreas[i] as HTMLElement).style.height = "auto"
+        ;(textAreas[i] as HTMLElement).style.height = textAreas[i].scrollHeight + "px"
     }
     // Traverse the ENTIRE tree of added nodes to check for rule nodes,
     // measuring the height of each one.
