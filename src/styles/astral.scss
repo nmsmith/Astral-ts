@@ -78,8 +78,6 @@ $overview-width: 200px;
     z-index: 1;
 }
 
-// Box shadows don't work with clip paths, so we have to use a
-// CSS filter that approximates the box shadow parameters.
 .component {
     position: relative;
     box-sizing: border-box;
@@ -142,9 +140,6 @@ $rule-anim-duration: 0.6s;
 .relation {
     @extend .col;
     @extend .cardProps;
-    border-style: solid;
-    border-bottom-width: 1px;
-    border-color: $standard-border-color;
 }
 
 .relationBanner {
@@ -221,10 +216,11 @@ $error-back-color: #ffbfbf;
     flex-grow: 1;
     @extend .col;
     overflow: hidden;
-    background-color: white;
+    //background-color: white;
     margin-right: 8px;
     transition-property: width;
     transition-duration: $rule-anim-duration;
+    filter: drop-shadow(1px 1px 3px #777777);
 }
 
 .searchBarStyle {
@@ -280,10 +276,12 @@ $error-back-color: #ffbfbf;
 .data {
     direction: ltr; // reset direction
     @extend .dataTextStyle;
-    box-shadow: $standard-box-shadow;
     background-color: white;
     white-space: nowrap;
     overflow-x: hidden;
+    border-style: solid;
+    border-bottom-width: 1px;
+    border-color: $standard-border-color;
     transition-property: color;
     transition-duration: $rule-anim-duration;
 }

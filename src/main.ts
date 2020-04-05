@@ -68,8 +68,8 @@ interface ColumnElementLayoutInfo {
 }
 
 const viewHeight = 1000 // TODO: This is a hack job
-const columnConfigBarHeight = 30
-const columnTopStart = columnConfigBarHeight
+const columnConfigBarHeight = 24
+const columnTopStart = columnConfigBarHeight + 16
 const relationBannerHeight = 40
 const sideBannerWidth = 180 // px   This is the width of the "side bars"
 const dataVisibleWidth = 140 //px   Data column
@@ -259,7 +259,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 ruleCardWidth:
                     calc(percentPerFlexColumn, fixedWidthLostPerFlexColumn),
                 transitiveDependents:
-                    { viewState: {dataVisible: false, rulesVisible: false}, right: calc(percentRightOffset0, fixedRightOffset0), width: px(sideBannerWidth) },
+                    { viewState: {dataVisible: true, rulesVisible: false}, right: calc(percentRightOffset0, fixedRightOffset0), width: px(sideBannerWidth) },
                 dependents:
                     { viewState: state.columnViewStates.dependents,  right: calc(percentRightOffset1, fixedRightOffset1), width: calc(percentWidth1, fixedWidth1) },
                 center:
@@ -267,7 +267,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 dependencies:
                     { viewState: state.columnViewStates.dependencies,  right: px(fixedRightOffset3), width: calc(percentWidth3, fixedWidth3) },
                 transitiveDependencies:
-                    { viewState: {dataVisible: false, rulesVisible: false}, right: px(0), width: px(sideBannerWidth) },
+                    { viewState: {dataVisible: true, rulesVisible: false}, right: px(0), width: px(sideBannerWidth) },
             }
         },
         columns: state => {
@@ -843,6 +843,7 @@ app ("app", state,
                 right: () => state.columnLayout.dependents.right,
                 width: () => state.columnLayout.dependents.width,
                 height: px(columnConfigBarHeight),
+                "background-color": () => state.columnViewStates.dependents.dataVisible ? "#55e055" : "#eeeeee",
                 onclick: () => state.columnViewStates.dependents.dataVisible = !state.columnViewStates.dependents.dataVisible,
             }),
             div ({
@@ -854,6 +855,7 @@ app ("app", state,
                         : px(180))
                     : px(90),
                 height: px(columnConfigBarHeight),
+                "background-color": () => state.columnViewStates.dependents.rulesVisible ? "#55e055" : "#eeeeee",
                 onclick: () => state.columnViewStates.dependents.rulesVisible = !state.columnViewStates.dependents.rulesVisible,
             }),
             div ({
@@ -861,6 +863,7 @@ app ("app", state,
                 right: () => state.columnLayout.dependencies.right,
                 width: () => state.columnLayout.dependencies.width,
                 height: px(columnConfigBarHeight),
+                "background-color": () => state.columnViewStates.dependencies.dataVisible ? "#55e055" : "#eeeeee",
                 onclick: () => state.columnViewStates.dependencies.dataVisible = !state.columnViewStates.dependencies.dataVisible,
             }),
             div ({
@@ -872,6 +875,7 @@ app ("app", state,
                         : px(180))
                     : px(90),
                 height: px(columnConfigBarHeight),
+                "background-color": () => state.columnViewStates.dependencies.rulesVisible ? "#55e055" : "#eeeeee",
                 onclick: () => state.columnViewStates.dependencies.rulesVisible = !state.columnViewStates.dependencies.rulesVisible,
             }),
             $set (() => state.ruleGraph.relations, relationName => [
@@ -881,13 +885,13 @@ app ("app", state,
                     top: () => relationTop(relationName),
                     width: () => relationWidth(relationName),
                     height: () => relationHeight(relationName),
-                    onclick: () => state.centeredItem = state.ruleGraph.components.get(
-                        state.ruleGraph.relations.get(relationName) as Relation
-                    ) as Component,
                 }, [
                     div ({
                         class: "relationBanner",
                         height: () => px(relationBannerHeight),
+                        onclick: () => state.centeredItem = state.ruleGraph.components.get(
+                            state.ruleGraph.relations.get(relationName) as Relation
+                        ) as Component,
                     }, [
                         div ({class: "tupleCount"}, [
                             p (() => getDerivations(relationName).size.toString()),
@@ -939,12 +943,7 @@ app ("app", state,
                     textarea ({
                         class: "ruleCardTextArea",
                         value: toRefs(ruleCard).rawText,
-                        onfocus: () => {
-                            state.editingRule = ruleCard
-                            if (ruleCard.lastParsed !== null) {
-                                state.centeredItem = componentOf(ruleCard.lastParsed.rule, state.ruleGraph)
-                            }
-                        },
+                        onfocus: () => state.editingRule = ruleCard,
                         onkeydown: (event: KeyboardEvent) => {
                             const el = (event.target as HTMLTextAreaElement)
                             // React to vanilla key presses only
@@ -983,6 +982,50 @@ app ("app", state,
                         oninput: (event: Event) => {
                             const el = (event.target as HTMLTextAreaElement)
                             parseRuleCardFromText(ruleCard, ruleCard.rawText)
+                            // TODO: I can only fill in this logic after I make RELATIONS the basis
+                            // of layout. Relations should exist independent of rule cards.
+
+                            // const myLastRelation = ruleCard.lastParsed?.rule.head.relationName
+                            // // Grab any rule card from the center column, so we can re-center it after we parse
+                            // let lastCenteredRuleCard: RuleCard | null
+                            // if (state.centeredItem === null) lastCenteredRuleCard = null
+                            // else if (isRuleCard(state.centeredItem)) lastCenteredRuleCard = state.centeredItem
+                            // else {
+                            //     const firstRelation = state.centeredItem.relations.values().next().value as Relation
+                            //     if (firstRelation.rules.size > 0) {
+                            //         const rule = firstRelation.rules.values().next().value as Rule
+                            //         lastCenteredRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                            //     }
+                            //     else lastCenteredRuleCard = null
+                            // }
+                            // const previousColumn = state.columnElementLayout.rule.get(ruleCard)?.columnInfo
+                            // parseRuleCardFromText(ruleCard, ruleCard.rawText)
+                            // // Work out whether the rule card is still visible if we don't
+                            // const myNewRelation = ruleCard.lastParsed?.rule.head.relationName
+                            // function myRelationIsInColumn(c: Set<Component>): boolean {
+                            //     for (const component of c) {
+                            //         for (const relation of component.relations) {
+                            //             if (relation.name === myLastRelation) return true
+                            //         }
+                            //     }
+                            //     return false
+                            // }
+                            
+                            // const stillVisible =
+                            //     (state.columnViewStates.dependents.rulesVisible && myRelationIsInColumn(state.columns.dependents))
+                            //     || (state.columnViewStates.center.rulesVisible && myRelationIsInColumn(state.columns.center))
+                            //     || (state.columnViewStates.dependencies.rulesVisible && myRelationIsInColumn(state.columns.dependencies))
+                            
+                            // if (ruleCard.lastParsed !== null) {
+                            //     if (newColumn === previousColumn && previousColumn !== state.columnLayout.center && lastCenteredRuleCard !== null) {
+                            //         // Re-center the previously centered component
+                            //         state.centeredItem = componentOf(lastCenteredRuleCard.lastParsed?.rule as Rule, state.ruleGraph)
+                            //     }
+                            //     else
+                            //     { // The card moved (or remained in the center column), so we should center it
+                            //         state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
+                            //     }
+                            // }
                             if (ruleCard.lastParsed !== null) {
                                 // Center the component of the newly parsed rule
                                 state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
