@@ -67,15 +67,15 @@ interface ColumnElementLayoutInfo {
     readonly height: number
 }
 
-const viewHeight = 1000 // TODO: This is a hack job
+const viewHeight = 700 // TODO: This is a hack job
 const columnConfigBarHeight = 24
 const columnTopStart = columnConfigBarHeight + 16
 const relationBannerHeight = 40
-const sideBannerWidth = 180 // px   This is the width of the "side bars"
-const dataVisibleWidth = 140 //px   Data column
+const sideBannerWidth = 160 // px   This is the width of the "side bars"
+const dataVisibleWidth = 160 //px   Data column
 const dataHiddenWidth = 0 //px
-const columnSpacing = 16 //px
-const componentSpacing = 16
+const columnSpacing = 24 //px
+const componentSpacing = 24
 
 const nonCausalArea: ColumnElementLayoutInfo = {
     columnInfo: {
@@ -83,7 +83,7 @@ const nonCausalArea: ColumnElementLayoutInfo = {
         right: percent(40),
         width: px(sideBannerWidth),
     },
-    top: 600,
+    top: 700,
     height: relationBannerHeight,
 }
 
@@ -236,18 +236,21 @@ function createState(existingState?: State): WithDerivedProps<State> {
             const fixedConsumed1 = rulesVisible1 ? dataBarWidth(state.columnViewStates.dependents) : sideBannerWidth
             const fixedConsumed2 = rulesVisible2 ? dataBarWidth(state.columnViewStates.center) : sideBannerWidth
             const fixedConsumed3 = rulesVisible3 ? dataBarWidth(state.columnViewStates.dependencies) : sideBannerWidth
-            const totalFixedWidth = 2 * sideBannerWidth + 4 * columnSpacing + fixedConsumed1 + fixedConsumed2 + fixedConsumed3
+            const totalFixedWidth = 2 * sideBannerWidth + 6 * columnSpacing + fixedConsumed1 + fixedConsumed2 + fixedConsumed3
             const fixedWidthLostPerFlexColumn = -totalFixedWidth / numFlexColumns
+            const fixedWidth0 = sideBannerWidth
             const fixedWidth1 = fixedConsumed1 + (rulesVisible1 ? fixedWidthLostPerFlexColumn : 0)
             const fixedWidth2 = fixedConsumed2 + (rulesVisible2 ? fixedWidthLostPerFlexColumn : 0)
             const fixedWidth3 = fixedConsumed3 + (rulesVisible3 ? fixedWidthLostPerFlexColumn : 0)
+            const fixedWidth4 = sideBannerWidth
             // Variable width
             const percentPerFlexColumn = 100 / numFlexColumns
             const percentWidth1 = state.columnViewStates.dependents.rulesVisible ? percentPerFlexColumn : 0
             const percentWidth2 = percentPerFlexColumn
             const percentWidth3 = state.columnViewStates.dependencies.rulesVisible ? percentPerFlexColumn : 0
             // Fixed right offset
-            const fixedRightOffset3 = sideBannerWidth + columnSpacing
+            const fixedRightOffset4 = columnSpacing
+            const fixedRightOffset3 = fixedRightOffset4 + columnSpacing + fixedWidth4
             const fixedRightOffset2 = fixedRightOffset3 + columnSpacing + fixedWidth3
             const fixedRightOffset1 = fixedRightOffset2 + columnSpacing + fixedWidth2
             const fixedRightOffset0 = fixedRightOffset1 + columnSpacing + fixedWidth1
@@ -259,7 +262,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 ruleCardWidth:
                     calc(percentPerFlexColumn, fixedWidthLostPerFlexColumn),
                 transitiveDependents:
-                    { viewState: {dataVisible: true, rulesVisible: false}, right: calc(percentRightOffset0, fixedRightOffset0), width: px(sideBannerWidth) },
+                    { viewState: {dataVisible: true, rulesVisible: false}, right: calc(percentRightOffset0, fixedRightOffset0), width: px(fixedWidth0) },
                 dependents:
                     { viewState: state.columnViewStates.dependents,  right: calc(percentRightOffset1, fixedRightOffset1), width: calc(percentWidth1, fixedWidth1) },
                 center:
@@ -267,7 +270,7 @@ function createState(existingState?: State): WithDerivedProps<State> {
                 dependencies:
                     { viewState: state.columnViewStates.dependencies,  right: px(fixedRightOffset3), width: calc(percentWidth3, fixedWidth3) },
                 transitiveDependencies:
-                    { viewState: {dataVisible: true, rulesVisible: false}, right: px(0), width: px(sideBannerWidth) },
+                    { viewState: {dataVisible: true, rulesVisible: false}, right: px(fixedRightOffset4), width: px(fixedWidth4) },
             }
         },
         columns: state => {
@@ -839,282 +842,304 @@ app ("app", state,
         ]),
         div ({class: "ruleGraphView"}, [
             div ({
-                class: "columnCollapseButton",
+                class: "columnShade",
                 right: () => state.columnLayout.dependents.right,
                 width: () => state.columnLayout.dependents.width,
-                height: px(columnConfigBarHeight),
-                "background-color": () => state.columnViewStates.dependents.dataVisible ? "#55e055" : "#eeeeee",
-                onclick: () => state.columnViewStates.dependents.dataVisible = !state.columnViewStates.dependents.dataVisible,
+                height: percent(100),
             }),
             div ({
-                class: "columnCollapseButton",
-                right: () => state.columnLayout.dependents.right,
-                width: () => state.columnViewStates.dependents.rulesVisible
-                    ? (state.columnViewStates.dependents.dataVisible
-                        ? state.columnLayout.ruleCardWidth
-                        : px(180))
-                    : px(90),
-                height: px(columnConfigBarHeight),
-                "background-color": () => state.columnViewStates.dependents.rulesVisible ? "#55e055" : "#eeeeee",
-                onclick: () => state.columnViewStates.dependents.rulesVisible = !state.columnViewStates.dependents.rulesVisible,
-            }),
-            div ({
-                class: "columnCollapseButton",
+                class: "columnShade",
                 right: () => state.columnLayout.dependencies.right,
                 width: () => state.columnLayout.dependencies.width,
-                height: px(columnConfigBarHeight),
-                "background-color": () => state.columnViewStates.dependencies.dataVisible ? "#55e055" : "#eeeeee",
-                onclick: () => state.columnViewStates.dependencies.dataVisible = !state.columnViewStates.dependencies.dataVisible,
+                height: percent(100),
             }),
-            div ({
-                class: "columnCollapseButton",
-                right: () => state.columnLayout.dependencies.right,
-                width: () =>  state.columnViewStates.dependencies.rulesVisible
-                    ? (state.columnViewStates.dependencies.dataVisible
-                        ? state.columnLayout.ruleCardWidth
-                        : px(180))
-                    : px(90),
-                height: px(columnConfigBarHeight),
-                "background-color": () => state.columnViewStates.dependencies.rulesVisible ? "#55e055" : "#eeeeee",
-                onclick: () => state.columnViewStates.dependencies.rulesVisible = !state.columnViewStates.dependencies.rulesVisible,
-            }),
-            $set (() => state.ruleGraph.relations, relationName => [
+            div ({class: "shadowFilter"}, [
                 div ({
-                    class: "relation",
-                    right: () => relationRight(relationName),
-                    top: () => relationTop(relationName),
-                    width: () => relationWidth(relationName),
-                    height: () => relationHeight(relationName),
-                }, [
+                    class: "columnCollapseButton",
+                    right: () => state.columnLayout.dependents.right,
+                    width: () => state.columnLayout.dependents.width,
+                    height: px(columnConfigBarHeight),
+                    "background-color": () => state.columnViewStates.dependents.dataVisible ? "#55e055" : "#eeeeee",
+                    onclick: () => state.columnViewStates.dependents.dataVisible = !state.columnViewStates.dependents.dataVisible,
+                }),
+                div ({
+                    class: "columnCollapseButton",
+                    right: () => state.columnLayout.dependents.right,
+                    width: () => state.columnViewStates.dependents.rulesVisible
+                        ? (state.columnViewStates.dependents.dataVisible
+                            ? state.columnLayout.ruleCardWidth
+                            : px(180))
+                        : px(90),
+                    height: px(columnConfigBarHeight),
+                    "background-color": () => state.columnViewStates.dependents.rulesVisible ? "#55e055" : "#eeeeee",
+                    onclick: () => state.columnViewStates.dependents.rulesVisible = !state.columnViewStates.dependents.rulesVisible,
+                }),
+                div ({
+                    class: "columnCollapseButton",
+                    right: () => state.columnLayout.dependencies.right,
+                    width: () => state.columnLayout.dependencies.width,
+                    height: px(columnConfigBarHeight),
+                    "background-color": () => state.columnViewStates.dependencies.dataVisible ? "#55e055" : "#eeeeee",
+                    onclick: () => state.columnViewStates.dependencies.dataVisible = !state.columnViewStates.dependencies.dataVisible,
+                }),
+                div ({
+                    class: "columnCollapseButton",
+                    right: () => state.columnLayout.dependencies.right,
+                    width: () =>  state.columnViewStates.dependencies.rulesVisible
+                        ? (state.columnViewStates.dependencies.dataVisible
+                            ? state.columnLayout.ruleCardWidth
+                            : px(180))
+                        : px(90),
+                    height: px(columnConfigBarHeight),
+                    "background-color": () => state.columnViewStates.dependencies.rulesVisible ? "#55e055" : "#eeeeee",
+                    onclick: () => state.columnViewStates.dependencies.rulesVisible = !state.columnViewStates.dependencies.rulesVisible,
+                }),
+                $set (() => state.ruleGraph.relations, relationName => [
                     div ({
-                        class: "relationBanner",
-                        height: () => px(relationBannerHeight),
-                        onclick: () => state.centeredItem = state.ruleGraph.components.get(
-                            state.ruleGraph.relations.get(relationName) as Relation
-                        ) as Component,
+                        class: "relation",
+                        right: () => relationRight(relationName),
+                        top: () => relationTop(relationName),
+                        width: () => relationWidth(relationName),
+                        height: () => relationHeight(relationName),
                     }, [
-                        div ({class: "tupleCount"}, [
-                            p (() => getDerivations(relationName).size.toString()),
+                        div ({
+                            class: "relationBanner",
+                            height: () => px(relationBannerHeight),
+                            onclick: () => state.centeredItem = state.ruleGraph.components.get(
+                                state.ruleGraph.relations.get(relationName) as Relation
+                            ) as Component,
+                        }, [
+                            div ({class: "tupleCount"}, [
+                                p (() => getDerivations(relationName).size.toString()),
+                            ]),
+                            p (relationName, {class: "relationName"}),
                         ]),
-                        p (relationName, {class: "relationName"}),
-                    ]),
-                    div ({
-                        class: "dataColumn",
-                        width: () => relationDataVisible(relationName) ? px(dataVisibleWidth) : px(dataHiddenWidth),
-                        height: () => relationDataVisible(relationName) ? "auto" : "0",
-                    }, [
-                        // div ({class: "dataSearchBar"}, [
-                        //     img ("./glass-short.svg", {
-                        //         class: "dataSearchIcon",
-                        //     }),
-                        //     input ({class: "dataSearchBox"}),
-                        // ]),
+                        div ({
+                            class: "dataColumn",
+                            width: () => relationDataVisible(relationName) ? px(dataVisibleWidth) : px(dataHiddenWidth),
+                            height: () => relationDataVisible(relationName) ? "auto" : "0",
+                        }, [
+                            // div ({class: "dataSearchBar"}, [
+                            //     img ("./glass-short.svg", {
+                            //         class: "dataSearchIcon",
+                            //     }),
+                            //     input ({class: "dataSearchBox"}),
+                            // ]),
+                            $if (() => relationDataVisible(relationName), {
+                                $then: () => [
+                                    div ({
+                                        class: "dataScrollPane",
+                                    }, [
+                                        $for (() => getDerivations(relationName).values(), tuple => [
+                                            div ({class: "data"}, [
+                                                p (tupleToString(tuple.tuple)),
+                                            ]),
+                                        ]),
+                                    ]),
+                                ],
+                                $else: () => [],
+                            }),
+                        ]),
                         $if (() => relationDataVisible(relationName), {
                             $then: () => [
                                 div ({
-                                    class: "dataScrollPane",
-                                }, [
-                                    $for (() => getDerivations(relationName).values(), tuple => [
-                                        div ({class: "data"}, [
-                                            p (tupleToString(tuple.tuple)),
-                                        ]),
-                                    ]),
-                                ]),
+                                    class: "relationResizeBar",
+                                }),
                             ],
                             $else: () => [],
                         }),
                     ]),
                 ]),
-            ]),
-            $set (() => state.columnElementLayout.rule, ruleCard => [
-                div ({
-                    class: () => `ruleCard ${
-                        hasError(ruleCard)
-                        ? "ruleCardError"
-                        : ""
-                    }`,
-                    right: () => ruleCardRight(ruleCard),
-                    top: () => ruleCardTop(ruleCard),
-                    width: () => ruleCardWidth(ruleCard),
-                    opacity: () => ruleCard.animationState === "onScreen" ? 1 : 0,
-                    "pointer-events": () => ruleCard.animationState === "onScreen" ? "auto" : "none",
-                    "data-1": ruleCard, // needed elsewhere for JS-driven layout
-                }, [
-                    textarea ({
-                        class: "ruleCardTextArea",
-                        value: toRefs(ruleCard).rawText,
-                        onfocus: () => state.editingRule = ruleCard,
-                        onkeydown: (event: KeyboardEvent) => {
-                            const el = (event.target as HTMLTextAreaElement)
-                            // React to vanilla key presses only
-                            if (!event.ctrlKey && !event.metaKey) {
-                                // Do basic autoformatting.
-                                // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
-                                if (event.key === ",") {
-                                    event.preventDefault()
-                                    setTimeout(() =>
-                                        document.execCommand("insertText", false, ", "), 0)
+                $set (() => state.columnElementLayout.rule, ruleCard => [
+                    div ({
+                        class: () => `ruleCard ${
+                            hasError(ruleCard)
+                            ? "ruleCardError"
+                            : ""
+                        }`,
+                        right: () => ruleCardRight(ruleCard),
+                        top: () => ruleCardTop(ruleCard),
+                        width: () => ruleCardWidth(ruleCard),
+                        opacity: () => ruleCard.animationState === "onScreen" ? 1 : 0,
+                        "pointer-events": () => ruleCard.animationState === "onScreen" ? "auto" : "none",
+                        "data-1": ruleCard, // needed elsewhere for JS-driven layout
+                    }, [
+                        textarea ({
+                            class: "ruleCardTextArea",
+                            value: toRefs(ruleCard).rawText,
+                            onfocus: () => state.editingRule = ruleCard,
+                            onkeydown: (event: KeyboardEvent) => {
+                                const el = (event.target as HTMLTextAreaElement)
+                                // React to vanilla key presses only
+                                if (!event.ctrlKey && !event.metaKey) {
+                                    // Do basic autoformatting.
+                                    // Note: execCommand() is needed to preserve the browser's undo stack, and setTimeout() prevents a nested DOM update.
+                                    if (event.key === ",") {
+                                        event.preventDefault()
+                                        setTimeout(() =>
+                                            document.execCommand("insertText", false, ", "), 0)
+                                    }
+                                    else if (event.key === "Enter") {
+                                        event.preventDefault()
+                                        setTimeout(() =>
+                                            document.execCommand("insertText", false, "\n  "), 0)
+                                    }
+                                    else if (event.key === "-") {
+                                        event.preventDefault()
+                                        setTimeout(() =>
+                                            document.execCommand("insertText", false, "¬"), 0)
+                                    }
+                                    // Disallow spaces next to an existing space, unless at the start of a line
+                                    else if (
+                                        event.key === " " && !(
+                                            el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
+                                        ) && !(
+                                            el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
+                                        ) && (
+                                            (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
+                                        )
+                                    ) {
+                                        event.preventDefault()
+                                    }
                                 }
-                                else if (event.key === "Enter") {
-                                    event.preventDefault()
-                                    setTimeout(() =>
-                                        document.execCommand("insertText", false, "\n  "), 0)
+                            },
+                            oninput: (event: Event) => {
+                                const el = (event.target as HTMLTextAreaElement)
+                                parseRuleCardFromText(ruleCard, ruleCard.rawText)
+                                // TODO: I can only fill in this logic after I make RELATIONS the basis
+                                // of layout. Relations should exist independent of rule cards.
+    
+                                // const myLastRelation = ruleCard.lastParsed?.rule.head.relationName
+                                // // Grab any rule card from the center column, so we can re-center it after we parse
+                                // let lastCenteredRuleCard: RuleCard | null
+                                // if (state.centeredItem === null) lastCenteredRuleCard = null
+                                // else if (isRuleCard(state.centeredItem)) lastCenteredRuleCard = state.centeredItem
+                                // else {
+                                //     const firstRelation = state.centeredItem.relations.values().next().value as Relation
+                                //     if (firstRelation.rules.size > 0) {
+                                //         const rule = firstRelation.rules.values().next().value as Rule
+                                //         lastCenteredRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                                //     }
+                                //     else lastCenteredRuleCard = null
+                                // }
+                                // const previousColumn = state.columnElementLayout.rule.get(ruleCard)?.columnInfo
+                                // parseRuleCardFromText(ruleCard, ruleCard.rawText)
+                                // // Work out whether the rule card is still visible if we don't
+                                // const myNewRelation = ruleCard.lastParsed?.rule.head.relationName
+                                // function myRelationIsInColumn(c: Set<Component>): boolean {
+                                //     for (const component of c) {
+                                //         for (const relation of component.relations) {
+                                //             if (relation.name === myLastRelation) return true
+                                //         }
+                                //     }
+                                //     return false
+                                // }
+                                
+                                // const stillVisible =
+                                //     (state.columnViewStates.dependents.rulesVisible && myRelationIsInColumn(state.columns.dependents))
+                                //     || (state.columnViewStates.center.rulesVisible && myRelationIsInColumn(state.columns.center))
+                                //     || (state.columnViewStates.dependencies.rulesVisible && myRelationIsInColumn(state.columns.dependencies))
+                                
+                                // if (ruleCard.lastParsed !== null) {
+                                //     if (newColumn === previousColumn && previousColumn !== state.columnLayout.center && lastCenteredRuleCard !== null) {
+                                //         // Re-center the previously centered component
+                                //         state.centeredItem = componentOf(lastCenteredRuleCard.lastParsed?.rule as Rule, state.ruleGraph)
+                                //     }
+                                //     else
+                                //     { // The card moved (or remained in the center column), so we should center it
+                                //         state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
+                                //     }
+                                // }
+                                if (ruleCard.lastParsed !== null) {
+                                    // Center the component of the newly parsed rule
+                                    state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
                                 }
-                                else if (event.key === "-") {
-                                    event.preventDefault()
-                                    setTimeout(() =>
-                                        document.execCommand("insertText", false, "¬"), 0)
+                                else {
+                                    // Center just this rule card as a component
+                                    state.centeredItem = ruleCard
                                 }
-                                // Disallow spaces next to an existing space, unless at the start of a line
-                                else if (
-                                    event.key === " " && !(
-                                        el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === "\n"
-                                    ) && !(
-                                        el.selectionStart > 1 && ruleCard.rawText[el.selectionStart-2] === "\n"
-                                    ) && (
-                                        (el.selectionStart >= 1 && ruleCard.rawText[el.selectionStart-1] === " ") || (el.selectionEnd < ruleCard.rawText.length && ruleCard.rawText[el.selectionEnd] === " ")
-                                    )
-                                ) {
-                                    event.preventDefault()
-                                }
-                            }
-                        },
-                        oninput: (event: Event) => {
-                            const el = (event.target as HTMLTextAreaElement)
-                            parseRuleCardFromText(ruleCard, ruleCard.rawText)
-                            // TODO: I can only fill in this logic after I make RELATIONS the basis
-                            // of layout. Relations should exist independent of rule cards.
-
-                            // const myLastRelation = ruleCard.lastParsed?.rule.head.relationName
-                            // // Grab any rule card from the center column, so we can re-center it after we parse
-                            // let lastCenteredRuleCard: RuleCard | null
-                            // if (state.centeredItem === null) lastCenteredRuleCard = null
-                            // else if (isRuleCard(state.centeredItem)) lastCenteredRuleCard = state.centeredItem
-                            // else {
-                            //     const firstRelation = state.centeredItem.relations.values().next().value as Relation
-                            //     if (firstRelation.rules.size > 0) {
-                            //         const rule = firstRelation.rules.values().next().value as Rule
-                            //         lastCenteredRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                            //     }
-                            //     else lastCenteredRuleCard = null
-                            // }
-                            // const previousColumn = state.columnElementLayout.rule.get(ruleCard)?.columnInfo
-                            // parseRuleCardFromText(ruleCard, ruleCard.rawText)
-                            // // Work out whether the rule card is still visible if we don't
-                            // const myNewRelation = ruleCard.lastParsed?.rule.head.relationName
-                            // function myRelationIsInColumn(c: Set<Component>): boolean {
-                            //     for (const component of c) {
-                            //         for (const relation of component.relations) {
-                            //             if (relation.name === myLastRelation) return true
-                            //         }
-                            //     }
-                            //     return false
-                            // }
-                            
-                            // const stillVisible =
-                            //     (state.columnViewStates.dependents.rulesVisible && myRelationIsInColumn(state.columns.dependents))
-                            //     || (state.columnViewStates.center.rulesVisible && myRelationIsInColumn(state.columns.center))
-                            //     || (state.columnViewStates.dependencies.rulesVisible && myRelationIsInColumn(state.columns.dependencies))
-                            
-                            // if (ruleCard.lastParsed !== null) {
-                            //     if (newColumn === previousColumn && previousColumn !== state.columnLayout.center && lastCenteredRuleCard !== null) {
-                            //         // Re-center the previously centered component
-                            //         state.centeredItem = componentOf(lastCenteredRuleCard.lastParsed?.rule as Rule, state.ruleGraph)
-                            //     }
-                            //     else
-                            //     { // The card moved (or remained in the center column), so we should center it
-                            //         state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
-                            //     }
-                            // }
-                            if (ruleCard.lastParsed !== null) {
-                                // Center the component of the newly parsed rule
-                                state.centeredItem = componentOf(ruleCard.lastParsed?.rule as Rule, state.ruleGraph)
-                            }
-                            else {
-                                // Center just this rule card as a component
-                                state.centeredItem = ruleCard
-                            }
-
-                            const cardDiv = el.parentElement as HTMLElement
-                            el.style.height = "auto"  // trigger the text box to auto-size
-                            el.style.height = el.scrollHeight + "px" // new stretch it to fit contents
-
-                            // Delay the reading of the rule div height until the currently-executing DOM
-                            // update has fully finished (the div's height may change during the update).
-                            setTimeout(() => {
-                                defineDOMUpdate(() => {
-                                    // Record the height of the card, so we can do code-driven layout.
-                                    ruleCard.cardHeight = cardDiv.offsetHeight
-                                })({type: "Measure card height", target: null})
-                            }, 0)
-                        },
-                    }),
-                    $if (() => hasError(ruleCard), {
-                        $then: () => [
-                            p (() => getError(ruleCard), {
-                                class: "errorText",
-                            }),
-                        ],
-                        $else: () => [],
-                    }),
-                    // div ({class: "dataTuckBar"}, [
-                    //     p (() => tuckBarText(ruleCard), {class: "factCount"}),
-                    //     div ({class: "grow"}),
-                    //     button ("✖", {
-                    //         class: "deleteCardButton",
-                    //         visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
-                    //         onclick: () => {
-                    //             console.error("WARN: Did I delete this TODO?")
-                    //             // TODO: Can I delete this line? state.cachedCardAssignments.delete(ruleCard) // don't animate deletion
-                    //             const deletionIndex = state.ruleCards.indexOf(ruleCard)
-                    //             if (state.editingRule === ruleCard) {
-                    //                 state.editingRule = null
-                    //                 // Need to release reference to the old component,
-                    //                 // since it will now be invalid.
-                    //                 state.centeredItem = null
-                    //                 // But now we'll need to find another rule in the old
-                    //                 // component, whose newly-computed component can be centered.
-                    //                 if (ruleCard.lastParsed !== null) {
-                    //                     const myRule = ruleCard.lastParsed.rule
-                    //                     const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
-                    //                     const myComponent = state.ruleGraph.components.get(myRelation) as Component
-                    //                     let candidateRuleCard: RuleCard | undefined = undefined
-                    //                     if (myRelation.rules.size > 0) {
-                    //                         // Select another rule in the relation
-                    //                         for (const rule of myRelation.rules) {
-                    //                             if (rule !== myRule) {
-                    //                                 candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                    //                                 break
-                    //                             }
-                    //                         }
-                    //                     }
-                    //                     else {
-                    //                         // Select the first rule from another relation in the component
-                    //                         for (const relation of myComponent.relations) {
-                    //                             if (relation !== myRelation && relation.rules.size > 0) {
-                    //                                 const rule = relation.rules.values().next().value
-                    //                                 candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
-                    //                                 break
-                    //                             }
-                    //                         }
-                    //                     }
-
-                    //                     if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
-                    //                         // Delete the rule card so that new components can be computed
-                    //                         state.ruleCards.removeAt(deletionIndex)
-                    //                         // Find the candidate rule's new component, and center it
-                    //                         state.centeredItem = componentOf(
-                    //                             candidateRuleCard.lastParsed.rule,
-                    //                             state.ruleGraph,
-                    //                         )
-                    //                         return // finish early, since we already deleted the card
-                    //                     }
-                    //                 }
-                    //             }
-                    //             state.ruleCards.removeAt(deletionIndex)
-                    //         },
-                    //     }),
-                    // ]),
+    
+                                const cardDiv = el.parentElement as HTMLElement
+                                el.style.height = "auto"  // trigger the text box to auto-size
+                                el.style.height = el.scrollHeight + "px" // new stretch it to fit contents
+    
+                                // Delay the reading of the rule div height until the currently-executing DOM
+                                // update has fully finished (the div's height may change during the update).
+                                setTimeout(() => {
+                                    defineDOMUpdate(() => {
+                                        // Record the height of the card, so we can do code-driven layout.
+                                        ruleCard.cardHeight = cardDiv.offsetHeight
+                                    })({type: "Measure card height", target: null})
+                                }, 0)
+                            },
+                        }),
+                        $if (() => hasError(ruleCard), {
+                            $then: () => [
+                                p (() => getError(ruleCard), {
+                                    class: "errorText",
+                                }),
+                            ],
+                            $else: () => [],
+                        }),
+                        // div ({class: "dataTuckBar"}, [
+                        //     p (() => tuckBarText(ruleCard), {class: "factCount"}),
+                        //     div ({class: "grow"}),
+                        //     button ("✖", {
+                        //         class: "deleteCardButton",
+                        //         visibility: () => state.editingRule === ruleCard ? "visible" : "hidden",
+                        //         onclick: () => {
+                        //             console.error("WARN: Did I delete this TODO?")
+                        //             // TODO: Can I delete this line? state.cachedCardAssignments.delete(ruleCard) // don't animate deletion
+                        //             const deletionIndex = state.ruleCards.indexOf(ruleCard)
+                        //             if (state.editingRule === ruleCard) {
+                        //                 state.editingRule = null
+                        //                 // Need to release reference to the old component,
+                        //                 // since it will now be invalid.
+                        //                 state.centeredItem = null
+                        //                 // But now we'll need to find another rule in the old
+                        //                 // component, whose newly-computed component can be centered.
+                        //                 if (ruleCard.lastParsed !== null) {
+                        //                     const myRule = ruleCard.lastParsed.rule
+                        //                     const myRelation = state.ruleGraph.relations.get(myRule.head.relationName) as Relation
+                        //                     const myComponent = state.ruleGraph.components.get(myRelation) as Component
+                        //                     let candidateRuleCard: RuleCard | undefined = undefined
+                        //                     if (myRelation.rules.size > 0) {
+                        //                         // Select another rule in the relation
+                        //                         for (const rule of myRelation.rules) {
+                        //                             if (rule !== myRule) {
+                        //                                 candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                        //                                 break
+                        //                             }
+                        //                         }
+                        //                     }
+                        //                     else {
+                        //                         // Select the first rule from another relation in the component
+                        //                         for (const relation of myComponent.relations) {
+                        //                             if (relation !== myRelation && relation.rules.size > 0) {
+                        //                                 const rule = relation.rules.values().next().value
+                        //                                 candidateRuleCard = state.ruleGraph.rules.get(rule) as RuleCard
+                        //                                 break
+                        //                             }
+                        //                         }
+                        //                     }
+    
+                        //                     if (candidateRuleCard !== undefined && candidateRuleCard.lastParsed !== null) {
+                        //                         // Delete the rule card so that new components can be computed
+                        //                         state.ruleCards.removeAt(deletionIndex)
+                        //                         // Find the candidate rule's new component, and center it
+                        //                         state.centeredItem = componentOf(
+                        //                             candidateRuleCard.lastParsed.rule,
+                        //                             state.ruleGraph,
+                        //                         )
+                        //                         return // finish early, since we already deleted the card
+                        //                     }
+                        //                 }
+                        //             }
+                        //             state.ruleCards.removeAt(deletionIndex)
+                        //         },
+                        //     }),
+                        // ]),
+                    ]),
                 ]),
             ]),
         ]),

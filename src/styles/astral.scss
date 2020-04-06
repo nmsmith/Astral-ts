@@ -112,12 +112,24 @@ $overview-width: 200px;
     border-style: solid;
     border-width: 1px;
     border-color: $standard-border-color;
-    filter: drop-shadow(1px 1px 3px #777777);
 // create an origin for child "absolute" positioning
     position: relative;
     z-index: 0;
     height: 800px;
     overflow: hidden;
+}
+
+.shadowFilter {
+    filter: drop-shadow(1px 1px 3px #777777);
+}
+
+.columnShade {
+    position: absolute;
+    background-color: #dddddd;
+    border-style: solid;
+    border-width: 16px;
+    border-color: #dddddd;
+    margin-right: -16px;
 }
 
 $rule-anim-duration: 0.6s;
@@ -140,6 +152,15 @@ $rule-anim-duration: 0.6s;
 .relation {
     @extend .col;
     @extend .cardProps;
+    //background-color: #ffe8e8;
+    box-sizing: content-box;
+    border-style: solid;
+    border-width: 6px;//0px 6px 0px 6px;
+    border-radius: 8px;
+    margin-right: -6px;
+    margin-top: -6px;
+    border-color: #af2b2b;
+    //box-shadow: $standard-box-shadow inset;
 }
 
 .relationBanner {
@@ -153,6 +174,12 @@ $rule-anim-duration: 0.6s;
     user-select: none;
     padding-left: 6px;
     background-color: #af2b2b;
+}
+
+.relationResizeBar {
+    height: 22px;
+    background-color: #af2b2b;
+    //filter: drop-shadow(1px 1px 3px #777777);
 }
 
 .tupleCount {
@@ -197,7 +224,8 @@ $error-back-color: #ffbfbf;
 
 .ruleCardTextArea {
     @extend .codeStyle;
-    overflow-y: hidden;
+    white-space: nowrap;
+    overflow: hidden;
     resize: none;
     border-style: none;
     padding: 0;
@@ -216,7 +244,6 @@ $error-back-color: #ffbfbf;
     flex-grow: 1;
     @extend .col;
     overflow: hidden;
-    //background-color: white;
     margin-right: 8px;
     transition-property: width;
     transition-duration: $rule-anim-duration;
@@ -265,7 +292,7 @@ $error-back-color: #ffbfbf;
     box-sizing: border-box;
     overflow-x: hidden;
     overflow-y: scroll;
-    padding: 7px 5px 7px 5px;
+    //padding: 7px 5px 7px 5px;
     transition-property: height flex-grow;
     transition-duration: 0.3s;
     // border-style: solid;
