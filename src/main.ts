@@ -70,7 +70,7 @@ interface ColumnElementLayoutInfo {
 const viewHeight = 700 // TODO: This is a hack job
 const columnConfigBarHeight = 24
 const columnTopStart = columnConfigBarHeight + 16
-const relationBannerHeight = 40
+const relationBannerHeight = 32
 const sideBannerWidth = 160 // px   This is the width of the "side bars"
 const dataVisibleWidth = 160 //px   Data column
 const dataHiddenWidth = 0 //px
