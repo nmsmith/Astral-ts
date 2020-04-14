@@ -798,27 +798,6 @@ function tuckBarText(card: RuleCard): string {
 app ("app", state,
     div ({class: "view"}, [
         div ({class: "row"}, [
-            div ({class: "col"}, [
-                h1 ("Design directions"),
-                list ({class: "ideaList"}, {class: "listItem"}, [
-                    h3 ("Keep interactions tablet-friendly (material design, drag to resize...). Working on a program can be a kinesthetic experience."),
-                    h3 ("Information design: show the data, and show comparisons."),
-                    h3 ("The neighbourhood of an element should always be visible, so that the effects of incremental changes are obvious (Lean on video games e.g. Factorio: inherently local cause-and-effect)."),
-                    h3 ("Andy Matuschak (his notes): we learn SKILLS and UNDERSTANDING through doing, and observing/mimicking the tacit knowledge of \"experts\" (craftsmen, Twitch streamers, lecturers explaining)."),
-                    h3 ("But how do we develop NEW APPROACHES to (as opposed to understanding of) a problem/task? First, gain a MASTERFUL UNDERSTANDING of the existing problem & approaches, and then develop approaches from there (e.g. reasoning by first principles)."),
-                    h3 ("As I keep re-discovering, graphs are crap, and there is no \"magic\" visualisation waiting to be invented. What core visual primitives can communicate data and their relationships? Relative positioning, shape and colour matching... Review literature."),
-                    h3 ("Let the person who defines a relation label its meaning, and show it in tooltips: http://worrydream.com/#!/LearnableProgramming"),
-                ]),
-                br(),
-                h1 ("Implementation approach"),
-                list ({class: "ideaList"}, {class: "listItem"}, [
-                    h3 ("By default, when I ask \"how do I implement this feature?\", start by looking at Soufflé, which is the only modern, scalable, \"production-ready\" Datalog system."),
-                    h3 ("Only worry about finding efficient EVALUATION SCHEMES for generic Datalog programs. All other computations (e.g. statics, debug info) can be encoded as Datalog programs."),
-                    h3 ("Principle: debugging is \"always on\", even for end-users. At minimum this means recording event history, but if exploring a single moment in time, it means storing all tuples."),
-                    h3 ("Top-down execution is not parallelizable, since it requires coordination on caches to prevent work duplication (and it relies on a sequential call stack). Top-down ≡ lazy bottom-up. Ideal world: parallel array iteration & message passing, not sequential recursion & synchronization (\"DFS is hard to parallelize\")."),
-                ]),
-                br(),
-            ]),
             div ({class: "ruleOverview"}, [
                 button ("Add rule", {
                     class: "addRuleButton",
